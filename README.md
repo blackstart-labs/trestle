@@ -99,6 +99,7 @@ publish images, deploy, or create releases.
 
 ## Documentation
 
+- [Product documentation, feature status and roadmap](docs/README.md)
 - [Architecture and dependency policy](docs/architecture.md)
 - [Initial threat model](docs/threat-model.md)
 - [Deployment, migrations, backups and troubleshooting](docs/operations.md)
@@ -108,10 +109,12 @@ publish images, deploy, or create releases.
 
 ## Direction
 
-Next: identity, revocable sessions, workspace isolation, then one authorized
+Next: finish the product-definition documentation, then the frontend foundation
+and accessible application shell. Resolve identity/bootstrap/recovery decisions
+before implementing sessions and isolated workspaces, followed by one authorized
 project/task workflow. Boards, time tracking, Markdown knowledge management,
 integrations and automation follow incrementally. These are plans, not current
-capabilities.
+capabilities; see the implementation tracker for dependencies.
 
 ## License
 
