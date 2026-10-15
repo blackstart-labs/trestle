@@ -1,8 +1,9 @@
 # Identity and workspaces
 
 Status: **planned specification; not implemented**. Linked requirements: PR-01,
-PR-07, PR-08; UC-02; NFR-SEC and NFR-DATA. Bootstrap/enrollment/recovery and exact
-session policy remain material decisions to resolve before implementation.
+PR-07, PR-08; UC-02; NFR-SEC and NFR-DATA. The maintainer approved the
+[initial identity policy](../security/identity-policy.md) on 2026-10-15. Policy
+gate closed; concrete contracts, measurements, implementation and tests remain.
 
 ## 1. Purpose
 
@@ -26,8 +27,9 @@ and workspace-owner responsibilities are distinct even when one person fills bot
 - ID-06: store timezone/locale preferences without changing historical instants.
 
 Initial M03a should implement the smallest approved bootstrap/login/logout and
-workspace-membership slice. M03b adds invitation/recovery lifecycle only after
-its channel and abuse controls are specified. No public registration is implied.
+workspace-membership slice, with operator CLI provisioning and recovery. M03b
+adds invitations and any self-service recovery only after separate channel/abuse
+specifications. No public registration or email delivery is included initially.
 
 ## 4. User stories
 
@@ -83,15 +85,15 @@ billing identity are distinct. Teams/assignees are not implicit grants.
 Feature migrations will introduce `users`, `sessions`, `workspaces`,
 `workspace_memberships` and appropriately restricted audit records. These tables
 do not exist yet. Users need stable IDs and a carefully defined normalized login
-identity; password credentials use Argon2id if local passwords are selected.
+identity; local password credentials use Argon2id as approved.
 Sessions store a digest of a high-entropy opaque token, expiry/revocation and
 actor association; never store raw reusable tokens. Membership needs foreign
 keys and unique `(workspace_id, user_id)` plus constrained role values.
 
 Index session-token digest and expiry, normalized login identity, user/workspace
 membership lookup. Owner preservation is a transaction/concurrency invariant,
-not a simple row CHECK. Define email normalization (do not blindly rewrite local
-parts), maximum lengths and account reactivation rules before migration.
+not a simple row CHECK. Use the policy's ASCII username normalization/uniqueness;
+define password/body limits and account reactivation rules before migration.
 
 ## 10. Proposed HTTP contracts
 
@@ -106,8 +108,9 @@ All following product endpoints are **proposed and absent**:
 | `GET /api/v1/workspaces/{id}/members` | Authorized admin → bounded safe member projections | Concealed 404 or authorized-action 403 |
 | Membership mutation interface | Target user/role plus expected version → updated safe membership | 409 stale/last-owner conflict; authorized actor only |
 
-Membership method/path and creation/invitation/recovery bodies await the decision
-gate. Use [shared conventions](../api/api-conventions.md) and
+Membership method/path and creation contracts still require concrete execution
+design. Initial recovery/provisioning is CLI-only; invitations remain deferred.
+Use [shared conventions](../api/api-conventions.md) and
 [error contract](../api/error-contract.md); do not expose password hashes,
 session digests, private contact fields or reset/invite tokens in projections.
 
@@ -117,11 +120,13 @@ Opaque browser cookie with Secure in HTTPS deployment, HttpOnly, deliberate
 SameSite and path/domain policy; no localStorage credentials. Resolve current
 session and membership server-side, with CSRF defenses for cookie-authenticated
 writes. Local HTTP development is an explicit exception, not a production default.
-Reauthentication requirements for owner/security changes must be approved.
+Apply the approved session lifetimes, loopback development exception and
+five-minute ownership-transfer reauthentication policy, with tests before sign-off.
 
 ## 12. Validation and edge cases
 
-Handle duplicate/Unicode login identities, very long passwords/inputs, invalid
+Reject non-ASCII/out-of-alphabet usernames; handle case-colliding identities,
+very long passwords/inputs, invalid
 locale/timezone, disabled users, stale tabs, concurrent login/logout, redirects,
 multiple workspaces, inactive final owners and repeated invitation/reset use.
 Rate-limit login/recovery by approved account/network policy without logging
@@ -182,17 +187,16 @@ not passwords, cookies or document content. Diagnose clock skew, cookie Secure/
 proxy settings, revoked access and database limits with safe guidance. Protected
 backups include credentials/session metadata and need encryption/access controls.
 
-## 20. Definition of done and material decision gate
+## 20. Definition of done and approved policy gate
 
-Close and record decisions for (a) bootstrap authority/channel, (b) registration
-versus invite-only enrollment and invitation delivery, (c) account/owner recovery,
-(d) session absolute/idle lifetimes and rotation, (e) owner transfer and privileged
-reauthentication, (f) login normalization and rate-limit policy. These materially
-affect the security model and require review before code, not assumptions hidden
-in an authentication library.
+The maintainer approved operator CLI bootstrap/provisioning/recovery, no public
+registration or initial email delivery, bounded opaque sessions, owner-only
+transfer with fresh password verification, local username normalization and
+source-IP login limits. See [ADR-0004](../adr/0004-local-identity-and-operator-recovery.md)
+and the linked policy for authoritative values and trust limitations.
 
 Then implement the scoped M03a/M03b criteria, migrations, safe HTTP contracts,
 server authorization, UI states, security/concurrency/browser tests and measured
 resource bounds. Run quality checks, review, update matrix/docs and commit the
-verified slice when authorized. A specification with open decisions is not a
-completed identity feature or permission guarantee.
+verified slice when authorized. Approved policy is not a completed identity
+feature or permission guarantee; no authentication code or schema exists yet.

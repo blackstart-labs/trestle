@@ -19,6 +19,7 @@ requirements are not evidence that functionality exists.
 | Current deployment/configuration | [Operations guide](operations.md) |
 | Threats and permissions | [Current threat model](threat-model.md), [permissions matrix](security/permissions-matrix.md) |
 | Planned product security | [Product threat model](security/threat-model.md) |
+| Approved identity security policy | [Policy values/trust boundaries](security/identity-policy.md), [ADR-0004](adr/0004-local-identity-and-operator-recovery.md) |
 | Deployment/platform evidence | [Deployment architecture](architecture/deployment-architecture.md), [Termux evaluation](operations/android-termux.md) |
 | Design direction | [Design principles](design/design-principles.md) |
 | Test and release policy | [Testing strategy](testing/testing-strategy.md), [release checklist](testing/release-checklist.md) |

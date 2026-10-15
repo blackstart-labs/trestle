@@ -18,6 +18,11 @@ viewer. Team membership, assignment and customer associations do not grant acces
 on their own. Initial implementation may expose fewer roles, but must not silently
 merge their security semantics.
 
+The maintainer approved owner-only transfer with password reauthentication fresh
+within five minutes, and operator CLI provisioning/recovery without implicit
+workspace membership. See [identity policy](identity-policy.md). These remain
+requirements, not implemented authorization controls.
+
 | Operation | Workspace owner | Workspace admin | Project manager | Project contributor | Project viewer / workspace guest |
 | --- | --- | --- | --- | --- | --- |
 | Workspace settings | Yes | Yes, excluding ownership/security-root changes | No | No | No |

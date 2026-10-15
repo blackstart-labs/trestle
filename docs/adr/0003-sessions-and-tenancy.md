@@ -14,6 +14,7 @@ localStorage. Future scoped integration tokens are a different credential type,
 not a reason to weaken browser sessions. Membership checks remain server-side
 for every protected interface; database constraints prevent cross-tenant links.
 
-Bootstrap, enrollment/recovery channels, session expiry and ownership transfer
-remain decision gates in the identity feature specification. This ADR records
-the already-approved direction, not a completed authentication implementation.
+Bootstrap, enrollment/recovery, session expiry and ownership policy were resolved
+by [ADR-0004](0004-local-identity-and-operator-recovery.md) and its linked policy.
+Concrete implementation and security/concurrency evidence remain pending. These
+ADRs record approved direction, not completed authentication functionality.

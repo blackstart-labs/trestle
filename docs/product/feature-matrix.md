@@ -14,7 +14,7 @@ migration policy; nothing is deprecated currently.
 | Frontend foundation / PR-07/08/10 | Implemented | Svelte/Vite/TypeScript; embedded assets; visible readiness/retry, no product UI | [Spec](../features/frontend-foundation.md), [M01b evidence](../verification-frontend.md) |
 | Application shell / PR-07 | Implemented | Real section navigation, skip/focus, local appearance preference and existing readiness | [M02 spec](../features/application-shell.md), [evidence](../verification-shell.md) |
 | Design system and mobile workflows / PR-07 | Partial | Semantic light/dark tokens; native button/select and feedback; responsive public shell | [Tokens](../design/design-tokens.md), [components](../design/components.md); no product/mobile workflow or full accessibility certification |
-| Identity/workspaces / PR-01 | Planned | [Initial specification](../features/identity-and-workspaces.md); material decisions still open | Bootstrap/enrollment/recovery gate and permission matrix |
+| Identity/workspaces / PR-01 | Planned | [Feature specification](../features/identity-and-workspaces.md); [security policy approved](../security/identity-policy.md), no executable authentication | M03a.1 contracts/hash measurements/tests, then multi-user membership and owner/recovery verification |
 | Projects/tasks / PR-02 | Planned | Canonical terminology only; no tables/endpoints | Identity isolation, then feature specifications |
 | Custom statuses / PR-03 | Planned | Stable categories required; no engine | Task/project constraints and transition/remap specification |
 | Kanban/table/list/saved views / PR-02, PR-04 | Planned | No product views or ordering persistence | Task interfaces, ordering ADR and concurrency tests |
@@ -29,5 +29,6 @@ migration policy; nothing is deprecated currently.
 
 Suites `tests/config.rs`, `tests/http.rs`, and `tests/database.rs` establish the
 foundation only; executed counts/results belong in the linked verification
-record. No current tests establish login, authorization, tenant
-isolation, UI accessibility, product throughput, or financial correctness.
+record. M02 additionally tests the public shell's contrast/accessibility subset.
+No current tests establish login, authorization, tenant isolation, product
+throughput or financial correctness; shell checks are not full WCAG certification.

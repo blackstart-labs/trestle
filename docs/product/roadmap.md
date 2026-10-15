@@ -9,8 +9,10 @@ Status reviewed 2026-10-15. This file owns work ordering; the
 | M01a | 1 | Tested Rust backend, config, PostgreSQL migration path, diagnostics, health and local delivery | Approved foundation spec | Verified; commit `79478d7` |
 | M01b | 1 | Frontend build/type/test/CI foundation with same-origin asset delivery | M00, frontend ADR | Implemented; see frontend verification record |
 | M02 | 2 | Semantic tokens, accessible responsive shell, reusable forms/feedback | M01b, design acceptance criteria | Implemented scoped shell; see application-shell specification and verification |
-| M03a | 3 | Resolve identity security decisions; implement bootstrap/login/logout/revocation and workspace membership authorization | M01a, M02, identity specification | Specification drafted; not implementation-ready until decision gate closes |
-| M03b | 3 | Invitations, ownership/account recovery and membership lifecycle | M03a, channel/recovery decision | Not started |
+| M03a | 3 | Bootstrap/login/logout/revocation and workspace membership authorization | M01a, M02, identity specification | Security policy approved; implementation not started |
+| M03a.1 | 3 | One-time CLI bootstrap plus real browser login/current-user/logout and initial workspace access, with expiry/CSRF/login limits | M03a policy, executable contracts/hash measurements/test seams | Next implementation slice; no identity code yet |
+| M03a.2 | 3 | Operator provisioning/recovery, membership lifecycle and owner transfer/revocation races across workspaces | M03a.1, scoped permission contracts | Not started; required before claiming complete identity/workspace isolation |
+| M03b | 3 | Invitations and any self-service recovery via approved delivery channels | M03a, separate channel/recovery specification | Deferred; no SMTP or public enrollment in M03a |
 | M04a | 4 | Authorized projects, canonical tasks and paginated list end to end | M03a, project/task specs | Not started |
 | M04b | 4 | Labels/assignees/comments/history/subtasks and filtering | M04a | Not started |
 | M05a | 5 | Custom status administration and consistent transitions | M04a, category/remap rules | Not started |
@@ -43,8 +45,9 @@ security limits, commits, unresolved work and the next concrete increment.
 
 ## Next concrete milestone
 
-M03a decision gate: resolve bootstrap authority, enrollment/invitation and account/
-owner recovery channels, exact session expiry/rotation, owner-transfer/
-reauthentication, login normalization and abuse limits. Record material security
-decisions before implementing the smallest trusted identity/workspace slice.
-M02's public shell is not a project application or an authentication guarantee.
+M03a.1: turn the [approved identity policy](../security/identity-policy.md) into
+executable CLI/HTTP/configuration contracts, agree test seams and measure Argon2id
+cost, then implement one-time bootstrap and the real sign-in/session/workspace
+access journey. No public registration/email or fake signed-in screens. M03a.2
+must establish multi-user provisioning, membership and ownership correctness
+before the whole identity/workspace capability is marked complete.

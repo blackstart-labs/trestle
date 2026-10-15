@@ -138,8 +138,9 @@ publish images, deploy, or create releases.
 
 ## Direction
 
-Next: resolve identity/bootstrap/recovery and session-policy decisions before
-implementing sessions and isolated workspaces (M03a), followed by one authorized
+Next: implement the first bootstrap/sign-in/session/workspace-access slice under
+the [approved identity policy](docs/security/identity-policy.md) (M03a.1), then
+multi-user membership/recovery/ownership and one authorized
 project/task workflow. Boards, time tracking, Markdown knowledge management,
 integrations and automation follow incrementally. These are plans, not current
 capabilities; see the implementation tracker for dependencies.
