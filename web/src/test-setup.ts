@@ -3,5 +3,6 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });

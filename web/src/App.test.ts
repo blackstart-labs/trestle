@@ -1,6 +1,91 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App.svelte";
+
+beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
+});
+
+test("appearance applies and saves a local override through its labelled control", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 503 })),
+  );
+  render(App);
+  await fireEvent.change(screen.getByLabelText("Theme"), {
+    target: { value: "dark" },
+  });
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(localStorage.getItem("trestle.theme")).toBe("dark");
+  expect(screen.getByText("Theme saved on this browser.")).toBeTruthy();
+});
+
+test.each([
+  ["dark", "dark"],
+  ["light", "light"],
+  ["system", "system"],
+  ["untrusted value", "system"],
+])("saved theme %s restores safely as %s", async (stored, expected) => {
+  localStorage.setItem("trestle.theme", stored);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 503 })),
+  );
+  render(App);
+  await waitFor(() =>
+    expect(document.documentElement.dataset.theme).toBe(expected),
+  );
+  expect(screen.getByLabelText("Theme")).toHaveProperty("value", expected);
+  expect(document.body.textContent).not.toContain("untrusted value");
+});
+
+test("blocked storage reads preserve a usable system-themed shell", async () => {
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("private storage details");
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 503 })),
+  );
+  render(App);
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Theme storage is unavailable",
+  );
+  expect(document.documentElement.dataset.theme).toBe("system");
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toContain("unavailable"),
+  );
+  expect(document.body.textContent).not.toContain("private storage details");
+});
+
+test("failed preference writes apply temporarily and recover on another change", async () => {
+  const write = vi
+    .spyOn(Storage.prototype, "setItem")
+    .mockImplementation(() => {
+      throw new Error("private quota details");
+    });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response("", { status: 503 })),
+  );
+  render(App);
+  await fireEvent.change(screen.getByLabelText("Theme"), {
+    target: { value: "dark" },
+  });
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(screen.getByRole("alert").textContent).toMatch(
+    /may not\s+survive a reload/,
+  );
+  expect(document.body.textContent).not.toContain("private quota details");
+  write.mockRestore();
+  await fireEvent.change(screen.getByLabelText("Theme"), {
+    target: { value: "light" },
+  });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(localStorage.getItem("trestle.theme")).toBe("light");
+  expect(screen.getByText("Theme saved on this browser.")).toBeTruthy();
+});
 
 test("checks actual database readiness on opening the foundation page", async () => {
   const fetch = vi.fn().mockResolvedValue(

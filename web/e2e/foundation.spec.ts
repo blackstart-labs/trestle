@@ -16,6 +16,11 @@ test("Rust serves the compiled foundation with a real unavailable readiness chec
   await expect(page.getByRole("status")).toHaveText(
     "Database connection unavailable.",
   );
+  // The shell now has navigation before this control. Anchor navigation must
+  // focus its heading, then Tab reaches the readiness action naturally.
+  await page
+    .getByRole("link", { name: "Instance status", exact: true })
+    .click();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Check again" })).toBeFocused();
   const readiness = page.waitForResponse((response) =>
@@ -34,7 +39,7 @@ test("Rust serves the compiled foundation with a real unavailable readiness chec
 test("foundation remains readable at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto("/");
-  await expect(page.getByRole("button")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check again" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText(
     "Database connection unavailable.",
   );

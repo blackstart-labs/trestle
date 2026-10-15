@@ -4,8 +4,9 @@ An open-source, self-hosted productivity platform under development.
 
 **Implemented:** a Rust HTTP backend foundation, PostgreSQL connectivity,
 explicit migrations, JSON health checks, structured diagnostics, and automated
-tests, plus a Svelte foundation page with a real readiness check, embedded in the
-Rust binary. There is no account system, workspace, project, task, timer,
+tests, plus a responsive Svelte shell with light/dark/system appearance, keyboard
+navigation and a real readiness check, embedded in the Rust binary.
+There is no account system, workspace, project, task, timer,
 document editor, or integration yet. This is not a production-ready release.
 
 ## Requirements
@@ -48,6 +49,12 @@ before any Cargo build/test/run, and rebuild the binary after frontend changes.
 The runtime needs no Node, npm, source tree or asset directory. For local UI
 development, run the backend and `npm run dev --prefix web`; Vite binds loopback
 and proxies `/health` to port 3000. Do not expose Vite as a production server.
+
+The shell's Overview, Appearance and Instance status links are real in-page
+sections, not product routes. Theme preference is saved only on this browser;
+blocked storage shows a warning without breaking the page. No accounts or
+workspaces are simulated. See the [shell specification](docs/features/application-shell.md)
+and [design tokens](docs/design/design-tokens.md).
 
 ## HTTP interface
 
@@ -131,8 +138,8 @@ publish images, deploy, or create releases.
 
 ## Direction
 
-Next: the accessible application shell and design tokens (M02). Resolve identity/bootstrap/recovery decisions
-before implementing sessions and isolated workspaces, followed by one authorized
+Next: resolve identity/bootstrap/recovery and session-policy decisions before
+implementing sessions and isolated workspaces (M03a), followed by one authorized
 project/task workflow. Boards, time tracking, Markdown knowledge management,
 integrations and automation follow incrementally. These are plans, not current
 capabilities; see the implementation tracker for dependencies.

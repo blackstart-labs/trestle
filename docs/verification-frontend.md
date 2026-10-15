@@ -1,5 +1,8 @@
 # Frontend foundation verification (M01b)
 
+Historical M01b record at `243a53e`. See [M02 verification](verification-shell.md)
+for subsequent shell changes and current rerun evidence.
+
 Date: 2026-10-15. Linux x86_64; Node 24.21.0/npm 11.19.0,
 Rust 1.99.0; PostgreSQL 18.6 in the pinned disposable Docker image.
 Scope: [frontend foundation specification](features/frontend-foundation.md).

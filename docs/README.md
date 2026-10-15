@@ -25,6 +25,7 @@ requirements are not evidence that functionality exists.
 | Executed checks | [Verification record](verification.md) |
 | Next identity feature specification | [Identity and workspaces](features/identity-and-workspaces.md) |
 | Frontend foundation | [Specification](features/frontend-foundation.md), [verification](verification-frontend.md) |
+| Application shell/design primitives | [Specification](features/application-shell.md), [tokens](design/design-tokens.md), [components](design/components.md), [verification](verification-shell.md) |
 
 ## Structure and change policy
 

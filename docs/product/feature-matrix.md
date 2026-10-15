@@ -12,8 +12,8 @@ migration policy; nothing is deprecated currently.
 | CI and deployment / PR-08 | Partial | Workflow, Docker image and dev database configuration | Local lint/build/runtime pass; hosted CI, production upgrades and full notices remain unverified |
 | Product documentation / PR-10 | Partial | Vision, requirements, inventory, roadmap, core architecture and initial identity spec | This documentation milestone; detailed later feature specs not written yet |
 | Frontend foundation / PR-07/08/10 | Implemented | Svelte/Vite/TypeScript; embedded assets; visible readiness/retry, no product UI | [Spec](../features/frontend-foundation.md), [M01b evidence](../verification-frontend.md) |
-| Application shell / PR-07 | Planned | No navigation, tokens or shared components | M02 design acceptance criteria |
-| Design system and mobile workflows / PR-07 | Planned | Principles documented; no tokens/components implemented | Tokens, keyboard/touch specification and responsive checks |
+| Application shell / PR-07 | Implemented | Real section navigation, skip/focus, local appearance preference and existing readiness | [M02 spec](../features/application-shell.md), [evidence](../verification-shell.md) |
+| Design system and mobile workflows / PR-07 | Partial | Semantic light/dark tokens; native button/select and feedback; responsive public shell | [Tokens](../design/design-tokens.md), [components](../design/components.md); no product/mobile workflow or full accessibility certification |
 | Identity/workspaces / PR-01 | Planned | [Initial specification](../features/identity-and-workspaces.md); material decisions still open | Bootstrap/enrollment/recovery gate and permission matrix |
 | Projects/tasks / PR-02 | Planned | Canonical terminology only; no tables/endpoints | Identity isolation, then feature specifications |
 | Custom statuses / PR-03 | Planned | Stable categories required; no engine | Task/project constraints and transition/remap specification |

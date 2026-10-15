@@ -8,7 +8,7 @@ Status reviewed 2026-10-15. This file owns work ordering; the
 | M00 | 0 | Product source-of-truth docs, architecture ADRs, domain/permission/design direction and measurable test plan | Reference extraction | Core documentation delivered; detailed specs and open security decisions remain explicit |
 | M01a | 1 | Tested Rust backend, config, PostgreSQL migration path, diagnostics, health and local delivery | Approved foundation spec | Verified; commit `79478d7` |
 | M01b | 1 | Frontend build/type/test/CI foundation with same-origin asset delivery | M00, frontend ADR | Implemented; see frontend verification record |
-| M02 | 2 | Semantic tokens, accessible responsive shell, reusable forms/feedback | M01b, design acceptance criteria | Not started |
+| M02 | 2 | Semantic tokens, accessible responsive shell, reusable forms/feedback | M01b, design acceptance criteria | Implemented scoped shell; see application-shell specification and verification |
 | M03a | 3 | Resolve identity security decisions; implement bootstrap/login/logout/revocation and workspace membership authorization | M01a, M02, identity specification | Specification drafted; not implementation-ready until decision gate closes |
 | M03b | 3 | Invitations, ownership/account recovery and membership lifecycle | M03a, channel/recovery decision | Not started |
 | M04a | 4 | Authorized projects, canonical tasks and paginated list end to end | M03a, project/task specs | Not started |
@@ -43,6 +43,8 @@ security limits, commits, unresolved work and the next concrete increment.
 
 ## Next concrete milestone
 
-M02: specify semantic tokens and a real accessible responsive shell without fake
-dashboards. M01b's embedded foundation is not a project application. Before M03a,
-resolve the identity specification's bootstrap/enrollment/recovery decisions.
+M03a decision gate: resolve bootstrap authority, enrollment/invitation and account/
+owner recovery channels, exact session expiry/rotation, owner-transfer/
+reauthentication, login normalization and abuse limits. Record material security
+decisions before implementing the smallest trusted identity/workspace slice.
+M02's public shell is not a project application or an authentication guarantee.

@@ -1,7 +1,9 @@
 # Design system direction
 
-Status: design-system direction only. M01b supplies a minimal readable foundation
-page, not shared tokens/themes/components. M02 must turn this into a design system.
+Status: M02 implements the responsive public shell, semantic light/dark tokens,
+native select/button and feedback primitives. [Tokens](design-tokens.md) and
+[component contracts](components.md) describe that subset. Product views, dialogs,
+tables, editors and a complete accessibility audit remain future work.
 
 ## Identity and hierarchy
 
