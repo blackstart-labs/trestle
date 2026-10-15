@@ -10,8 +10,8 @@ Status: initial architecture approved; product domains are not implemented.
   Rust 1.94 or newer; the selected toolchain is 1.99.0.
 - Keep migrations explicit (`trestle migrate`), separate from HTTP startup.
   This permits a future migration role distinct from the runtime database role.
-- Serve the future Svelte/Vite/TypeScript frontend from the same origin. There
-  is no frontend or production Node process in this milestone.
+- Serve the Svelte/Vite/TypeScript foundation from the same origin. `build.rs`
+  embeds the production output; Node/npm are build/test tools only.
 - Future tenancy is workspace-based. Future browser authentication uses
   revocable server-side sessions; no authentication library is selected yet.
 
@@ -22,11 +22,14 @@ Status: initial architecture approved; product domains are not implemented.
 | `config` | Parse known environment settings, validate bounds, keep credentials out of diagnostics. |
 | `database` | Construct a bounded lazy PostgreSQL pool and execute embedded migrations explicitly. |
 | `http` | Construct the router; translate health checks and errors into stable JSON responses. |
+| `assets` / `build.rs` | Embed reviewed frontend output and mount exact GET/HEAD routes; no disk reads or SPA fallback. |
 | binary | Initialize diagnostics, choose serve/migrate mode, bind, handle shutdown, close the pool. |
 
 Configuration parsing, HTTP responses, and migration execution are the agreed
 test seams. Tests use these public interfaces, including real PostgreSQL for
 migrations and successful readiness checks.
+M01b additionally tests visible browser readiness interactions and compiled asset
+delivery through HTTP and Chromium; see its feature specification.
 
 ## Future module design
 

@@ -11,6 +11,8 @@ with your installation's administration tools, then export a PostgreSQL
 From the repository root:
 
 ```bash
+npm ci --prefix web --ignore-scripts
+npm run build --prefix web
 cargo build --locked --release
 ./target/release/trestle migrate
 ./target/release/trestle
@@ -18,6 +20,9 @@ cargo build --locked --release
 
 The application defaults to `127.0.0.1:3000` and does not require a database
 connection to start serving liveness. Readiness reports database outages.
+The root page and compiled assets are embedded in the binary. Node/npm are only
+needed when building/testing, never on the deployed host. Missing `web/dist`
+fails Cargo with build instructions. Rebuild the frontend and binary together.
 Supply `TRESTLE_BIND_ADDR` explicitly to expose another interface. Run behind a
 TLS reverse proxy with appropriate connection, timeout, and rate limits before
 any non-local exposure. The app itself serves plaintext HTTP/1.
@@ -53,6 +58,9 @@ configuration and must be checked on the deployment host.
 
 Build with `docker build --tag trestle:local .` (or `podman build`). The image
 contains a non-root application process, license, and certificate-data notice.
+Its build stage also compiles the frontend with pinned Node/npm; only the Rust
+binary containing those assets reaches the runtime. The browser license inventory
+is available at `/assets/third-party-licenses.txt`.
 It does not contain source secrets or a PostgreSQL server. Container networking
 is distinct from the host: **do not** use a host-loopback database URL inside
 the app container. Use a private network and the database container's DNS name,

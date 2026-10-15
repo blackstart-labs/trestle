@@ -4,12 +4,14 @@ An open-source, self-hosted productivity platform under development.
 
 **Implemented:** a Rust HTTP backend foundation, PostgreSQL connectivity,
 explicit migrations, JSON health checks, structured diagnostics, and automated
-tests. There is no frontend, account system, workspace, project, task, timer,
+tests, plus a Svelte foundation page with a real readiness check, embedded in the
+Rust binary. There is no account system, workspace, project, task, timer,
 document editor, or integration yet. This is not a production-ready release.
 
 ## Requirements
 
 - Rust toolchain from `rust-toolchain.toml` (Rustup installs it on first use).
+- Node 24.21.0 (`.node-version`) and npm 11.19.0, for building/testing only.
 - PostgreSQL 18 (the tested database major).
 - Docker with Compose, Podman with a Compose provider, or a local PostgreSQL
   installation. OpenSSL is used below only to generate a local password.
@@ -19,6 +21,8 @@ document editor, or integration yet. This is not a production-ready release.
 From the repository root, in one shell:
 
 ```bash
+npm ci --prefix web --ignore-scripts
+npm run build --prefix web
 export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 export DATABASE_URL="postgres://trestle:${POSTGRES_PASSWORD}@127.0.0.1:5432/trestle"
 docker compose up -d --wait db
@@ -39,6 +43,12 @@ a provider-free Podman command and a direct PostgreSQL path.
 The app does not load `.env` automatically. `.env.example` documents settings
 without working credentials; supply actual values through the environment.
 
+Open <http://127.0.0.1:3000/>. Cargo requires `web/dist`: build the frontend
+before any Cargo build/test/run, and rebuild the binary after frontend changes.
+The runtime needs no Node, npm, source tree or asset directory. For local UI
+development, run the backend and `npm run dev --prefix web`; Vite binds loopback
+and proxies `/health` to port 3000. Do not expose Vite as a production server.
+
 ## HTTP interface
 
 ```bash
@@ -48,16 +58,20 @@ curl --fail http://127.0.0.1:3000/health/ready
 
 | Request | Response |
 | --- | --- |
+| `GET /` | Foundation HTML with external compiled JS/CSS |
+| `GET /assets/<known file>` | Embedded JS/CSS or frontend license text; no filesystem lookup |
 | `GET /health/live` | `200 {"status":"ok"}`; no database access |
 | `GET /health/ready` | `200 {"status":"ok"}` when `SELECT 1` succeeds |
 | Unavailable or timed-out database | `503 {"error":{"code":"unavailable","message":"Service unavailable"}}` |
 | Unknown route | `404 {"error":{"code":"not_found","message":"Not found"}}` |
 | Unsupported method on a known route | `405 {"error":{"code":"method_not_allowed","message":"Method not allowed"}}` |
 
-Responses are JSON with `Cache-Control: no-store` and
+Health/errors are JSON. All responses have `Cache-Control: no-store` and
 `X-Content-Type-Options: nosniff`. `HEAD` follows normal HTTP semantics (no body).
 Readiness checks connectivity, **not** schema compatibility or migration status.
 Run migrations as a separate deployment step. No product endpoints exist.
+Production responses also carry a restrictive same-origin CSP. Unknown paths
+never fall back to HTML; no client-side product routing is implemented yet.
 
 ## Configuration
 
@@ -77,6 +91,14 @@ Diagnostics are JSON at info level, without raw request URLs or database errors.
 ## Checks
 
 ```bash
+npm ci --prefix web --ignore-scripts
+npm run format:check --prefix web
+npm run check --prefix web
+npm test --prefix web
+npm audit --prefix web --audit-level=low
+npm run build --prefix web
+npm exec --prefix web -- playwright install chromium
+npm run test:e2e --prefix web
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --test config
@@ -109,8 +131,7 @@ publish images, deploy, or create releases.
 
 ## Direction
 
-Next: finish the product-definition documentation, then the frontend foundation
-and accessible application shell. Resolve identity/bootstrap/recovery decisions
+Next: the accessible application shell and design tokens (M02). Resolve identity/bootstrap/recovery decisions
 before implementing sessions and isolated workspaces, followed by one authorized
 project/task workflow. Boards, time tracking, Markdown knowledge management,
 integrations and automation follow incrementally. These are plans, not current

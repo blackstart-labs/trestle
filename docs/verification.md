@@ -1,5 +1,8 @@
 # Foundation verification
 
+Historical M01a record at commit `79478d7`. For subsequent frontend changes and
+current rerun results, see [M01b verification](verification-frontend.md).
+
 Date: 2026-10-15. Environment: Linux x86_64, Rust 1.99.0, Docker 29.8.2,
 Docker Compose 2.36.0, PostgreSQL 18.6 in the pinned PostgreSQL image.
 These are functional checks, not performance benchmarks or security guarantees.

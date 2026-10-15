@@ -73,6 +73,7 @@ impl IntoResponse for HttpError {
 
 pub fn router(pool: PgPool, timeout: Duration) -> Router {
     Router::new()
+        .merge(crate::assets::router())
         .route(
             "/health/live",
             get(|| async { Json(Health { status: "ok" }) }),
@@ -110,6 +111,10 @@ async fn request_diagnostics_and_headers(request: Request, next: Next) -> Respon
     response.headers_mut().insert(
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
+    );
+    response.headers_mut().insert(
+        "content-security-policy",
+        HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"),
     );
     response
 }

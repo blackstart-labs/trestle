@@ -15,7 +15,7 @@ Browser ── same-origin HTTPS ── operator reverse proxy
                                  PostgreSQL
 ```
 
-The frontend will be built to static assets; Node is a development/build tool,
+The foundation frontend builds to embedded static assets; Node is a development/build tool,
 not a required production server. Direct binary and Docker/Podman deployment
 share the same configuration and explicit migration entry point. No separate
 worker, broker, Redis, object-storage service or search cluster is required by

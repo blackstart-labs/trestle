@@ -11,12 +11,13 @@ migration policy; nothing is deprecated currently.
 | Backend foundation / PR-08, PR-10 | Implemented | Rust config, live/ready, explicit metadata migration, logs/errors | [Approved scope](../foundation-milestone.md), `src/`, [verification](../verification.md), commit `79478d7` |
 | CI and deployment / PR-08 | Partial | Workflow, Docker image and dev database configuration | Local lint/build/runtime pass; hosted CI, production upgrades and full notices remain unverified |
 | Product documentation / PR-10 | Partial | Vision, requirements, inventory, roadmap, core architecture and initial identity spec | This documentation milestone; detailed later feature specs not written yet |
-| Frontend foundation and application shell / PR-07 | Planned | Svelte/Vite/TypeScript direction only | Frontend ADR and design acceptance before UI implementation |
+| Frontend foundation / PR-07/08/10 | Implemented | Svelte/Vite/TypeScript; embedded assets; visible readiness/retry, no product UI | [Spec](../features/frontend-foundation.md), [M01b evidence](../verification-frontend.md) |
+| Application shell / PR-07 | Planned | No navigation, tokens or shared components | M02 design acceptance criteria |
 | Design system and mobile workflows / PR-07 | Planned | Principles documented; no tokens/components implemented | Tokens, keyboard/touch specification and responsive checks |
 | Identity/workspaces / PR-01 | Planned | [Initial specification](../features/identity-and-workspaces.md); material decisions still open | Bootstrap/enrollment/recovery gate and permission matrix |
 | Projects/tasks / PR-02 | Planned | Canonical terminology only; no tables/endpoints | Identity isolation, then feature specifications |
 | Custom statuses / PR-03 | Planned | Stable categories required; no engine | Task/project constraints and transition/remap specification |
-| Kanban/table/list/saved views / PR-02, PR-04 | Planned | No frontend or ordering persistence | Task interfaces, ordering ADR and concurrency tests |
+| Kanban/table/list/saved views / PR-02, PR-04 | Planned | No product views or ordering persistence | Task interfaces, ordering ADR and concurrency tests |
 | Milestones/cycles/roadmaps / PR-04 | Planned | Milestones distinct from tasks | Progress/date rules and planning specification |
 | Timers/manual entries/timesheets / PR-04 | Planned | No time-entry tables or browser timers | Timer overlap/idempotency/DST specification |
 | Reports/rates/budgets/capacity / PR-04 | Planned | No aggregates or financial behavior | Approved formulas and reliable underlying records |

@@ -5,8 +5,9 @@ status: accepted
 
 Use Svelte, Vite and TypeScript as the primary frontend direction, approved after
 the initial audit. Serve build assets from the Rust application's origin; do
-not require a production Node server. No frontend dependencies or UI exist yet;
-the implementation milestone must select maintained versions and verify output.
+not require a production Node server. M01b implements this with pinned build
+dependencies, a readiness foundation page and assets embedded in the binary.
+Product UI/routing remains planned; see its feature specification and evidence.
 
 Server-rendered forms/partial updates reduce client machinery for simple pages
 but complicate shared rich board/table/editor state; a full SSR application

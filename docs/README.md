@@ -24,6 +24,7 @@ requirements are not evidence that functionality exists.
 | Test and release policy | [Testing strategy](testing/testing-strategy.md), [release checklist](testing/release-checklist.md) |
 | Executed checks | [Verification record](verification.md) |
 | Next identity feature specification | [Identity and workspaces](features/identity-and-workspaces.md) |
+| Frontend foundation | [Specification](features/frontend-foundation.md), [verification](verification-frontend.md) |
 
 ## Structure and change policy
 

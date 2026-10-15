@@ -1,7 +1,7 @@
 # Module interfaces and ownership
 
-Status: logical ownership plan. Current code remains `config`, `database`,
-`http` and the binary; do not scaffold empty domains.
+Status: logical ownership plan. Current code is `config`, `database`, `http`,
+embedded `assets` and the binary; do not scaffold empty domains.
 
 | Future module | Owns | Exposes to callers | Must not do |
 | --- | --- | --- | --- |

@@ -10,6 +10,9 @@ tree; preserve other contributors' uncommitted work.
   PostgreSQL for database behavior and never a production database.
 - Run formatting, Clippy, tests, dependency checks and release build as listed
   in the README. Report checks you could not run accurately.
+- Build `web/dist` before Cargo; run the frontend format/type/DOM/browser checks
+  too. Commit the npm lockfile, not node_modules/dist. Review generated bundled
+  license notices and `npm audit`; do not bypass advisories to make CI green.
 - Add forward migrations; never edit applied migrations or delete existing data
   without explicit approval and a recovery plan.
 - Keep domain rules out of HTTP handlers. Do not add speculative abstractions,

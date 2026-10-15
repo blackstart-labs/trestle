@@ -6,6 +6,13 @@ binary/container distributions. Other Rust dependencies have their own license
 and attribution requirements; this file is not an exhaustive release notice
 inventory. Generate and review that inventory before publishing a release.
 
+The frontend build uses Vite's bundled-dependency license inventory, embedded
+and served at `/assets/third-party-licenses.txt`. The initial bundle includes
+Svelte 5.57.2 and esm-env 1.2.2 under MIT, with their full upstream notices.
+Build/test tooling is not shipped in the runtime image. Review this generated
+inventory on frontend dependency changes; it does not replace the Rust release
+notice review described above.
+
 ## Community Data License Agreement - Permissive - Version 2.0
 
 This is the Community Data License Agreement - Permissive, Version

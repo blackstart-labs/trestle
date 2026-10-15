@@ -32,6 +32,20 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Frontend checks and build
+        working-directory: web
+        run: |
+          npm ci --ignore-scripts
+          npm run format:check
+          npm run check
+          npm test
+          npm audit --audit-level=low
+          npm run build
       - name: Install pinned toolchain
         run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -43,6 +57,11 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Tests and PostgreSQL migrations
         run: cargo test --locked
+      - name: Browser smoke against Rust
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
       - name: Release build
         run: cargo build --locked --release
       - name: Install dependency checker

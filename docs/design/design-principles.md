@@ -1,7 +1,7 @@
 # Design system direction
 
-Status: specification direction only; no frontend, tokens, themes or components
-have been implemented. M01b/M02 must turn this into verified interfaces.
+Status: design-system direction only. M01b supplies a minimal readable foundation
+page, not shared tokens/themes/components. M02 must turn this into a design system.
 
 ## Identity and hierarchy
 

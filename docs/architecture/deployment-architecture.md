@@ -21,7 +21,7 @@ schema-dependent binary.
 | macOS / Windows server or source build | Unverified | Do not claim support merely because Rust is portable |
 | Linux ARM64 | Unverified | No build/runtime evidence yet |
 | Android/Termux server | Evaluation planned | No toolchain/PostgreSQL/storage/process-continuity evidence |
-| Desktop/tablet/mobile browsers | Planned clients | No frontend exists to establish supported-browser claims |
+| Desktop/tablet/mobile browsers | Partial | Foundation smoke tested in Chromium/320px viewport; no product-browser support matrix yet |
 | Native desktop/mobile app | Not an initial target | Responsive web does not imply native packages or offline sync |
 
 Configure process/container resource limits and DB pool budgets together; they
