@@ -1,0 +1,17 @@
+**
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!LICENSE
+!THIRD_PARTY_NOTICES.md
+!src/
+!src/**
+!migrations/
+!migrations/**
+!build.rs
+!web/
+!web/**
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_DB: trestle_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trestle_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Disposable loopback-only CI server; not a deployment authentication policy.
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Frontend checks and build
+        working-directory: web
+        run: |
+          npm ci --ignore-scripts
+          npm run format:check
+          npm run check
+          npm test
+          npm audit --audit-level=low
+          npm run build
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Lint and type check all targets
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests and PostgreSQL migrations
+        run: cargo test --locked
+      - name: Browser smoke against Rust
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Release build
+        run: cargo build --locked --release
+      - name: Install dependency checker
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: Advisories, licenses and dependency sources
+        run: cargo deny check
+      - name: Container build verification
+        run: docker build --tag trestle:ci .

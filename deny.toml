@@ -1,0 +1,33 @@
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    # Bundled Mozilla root certificate data; retain its license when distributing.
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+# Audit dependencies automatically; review the existing root LICENSE manually.
+# Trestle is not published to crates.io. Avoid cargo-deny's heuristic choosing
+# "or-later" from the generic license's illustrative application notice.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
