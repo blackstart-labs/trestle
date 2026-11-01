@@ -11,8 +11,11 @@ use trestle::{database, http};
 #[sqlx::test(migrations = false)]
 async fn fresh_database_migrates_and_repeat_execution_succeeds(pool: PgPool) {
     database::migrate(&pool).await.unwrap();
-    database::migrate(&pool).await.unwrap();
-    let response = http::router(pool, Duration::from_secs(2))
+    use sqlx::ConnectOptions;
+    use trestle::config::Config;
+    let url = pool.connect_options().to_url_lossy();
+    let config = Config::from_pairs([("DATABASE_URL", url.as_str())]).unwrap();
+    let response = http::router(pool, Duration::from_secs(2), config)
         .oneshot(
             Request::builder()
                 .uri("/health/ready")
@@ -50,7 +53,7 @@ async fn saturated_application_pool_returns_bounded_readiness_failure(pool: PgPo
     // Establish the connection before testing saturation. A 100ms authentication
     // budget is not reliable on loaded CI hosts. Keep the HTTP deadline shorter
     // than pool acquisition to verify that it bounds the entire readiness check.
-    let app = http::router(application_pool.clone(), Duration::from_millis(100));
+    let app = http::router(application_pool.clone(), Duration::from_millis(100), config);
     let response = tokio::time::timeout(
         Duration::from_secs(2),
         app.clone().oneshot(

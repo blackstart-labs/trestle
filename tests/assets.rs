@@ -10,7 +10,7 @@ fn app() -> axum::Router {
     let config =
         Config::from_pairs([("DATABASE_URL", "postgres://user:secret@127.0.0.1:1/trestle")])
             .unwrap();
-    http::router(database::pool(&config), config.db_timeout)
+    http::router(database::pool(&config), config.db_timeout, config)
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn referenced_assets_have_correct_types_and_security_headers() {
 async fn unknown_paths_never_fall_back_to_html() {
     for path in [
         "/assets/missing.js",
-        "/api/v1/workspaces",
+        "/api/v1/nonexistent",
         "/src/App.svelte",
         "/assets/../index.html",
         "/assets/%2e%2e/index.html",

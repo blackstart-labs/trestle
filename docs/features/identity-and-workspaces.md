@@ -1,9 +1,10 @@
 # Identity and workspaces
 
-Status: **planned specification; not implemented**. Linked requirements: PR-01,
+Status: **Implemented and verified in M03a.1**. Linked requirements: PR-01,
 PR-07, PR-08; UC-02; NFR-SEC and NFR-DATA. The maintainer approved the
-[initial identity policy](../security/identity-policy.md) on 2026-10-15. Policy
-gate closed; concrete contracts, measurements, implementation and tests remain.
+[initial identity policy](../security/identity-policy.md) on 2026-10-15.
+One-time bootstrap, Argon2id credentials, session/CSRF token contracts,
+operator CLI, rate-limiting, and Svelte sign-in/workspace chooser implemented.
 
 ## 1. Purpose
 

@@ -4,11 +4,13 @@
     children,
     disabled = false,
     onclick,
+    type = "button",
   }: {
     children: Snippet;
     disabled?: boolean;
-    onclick: () => void;
+    onclick?: () => void;
+    type?: "button" | "submit";
   } = $props();
 </script>
 
-<button type="button" {disabled} {onclick}>{@render children()}</button>
+<button {type} {disabled} {onclick}>{@render children()}</button>

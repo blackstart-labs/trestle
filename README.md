@@ -1,25 +1,63 @@
 # Trestle
 
-An open-source, self-hosted productivity platform under development.
+An open-source, self-hosted productivity platform unifying projects, time tracking, knowledge management, and developer workflows in one lightweight system.
 
 **Implemented:** a Rust HTTP backend foundation, PostgreSQL connectivity,
-explicit migrations, JSON health checks, structured diagnostics, and automated
-tests, plus a responsive Svelte shell with light/dark/system appearance, keyboard
-navigation and a real readiness check, embedded in the Rust binary.
-There is no account system, workspace, project, task, timer,
-document editor, or integration yet. This is not a production-ready release.
+explicit migrations, JSON health checks, structured diagnostics, Argon2id identity
+and sessions, workspace tenancy, and automated tests, plus a responsive Svelte
+application shell with light/dark/system appearance, keyboard navigation, real
+readiness check, sign-in, and workspace selector embedded in the single Rust binary.
+
+## Quick start (one-command setup)
+
+Run the entire application with one command from GitHub across **Linux, macOS, and Windows** (automatically detects free ports, configures PostgreSQL, builds the frontend, migrates, bootstraps, and launches Trestle):
+
+#### Linux / macOS / WSL:
+```bash
+git clone https://github.com/maruf-pfc/trestle.git && cd trestle && ./run.sh
+```
+
+#### Windows (PowerShell):
+```powershell
+git clone https://github.com/maruf-pfc/trestle.git; cd trestle; .\run.ps1
+```
+
+#### Windows (Command Prompt):
+```cmd
+git clone https://github.com/maruf-pfc/trestle.git && cd trestle && run.cmd
+```
+
+Or if you already have the repository cloned:
+- **Linux / macOS:** `./run.sh`
+- **Windows:** `.\run.ps1` or `run.cmd`
+
+### What the runner handles automatically:
+
+1. **Port conflict resolution:** If port `5432` (PostgreSQL) or `3000` (web application) is already in use by another database or application on your system, `run.sh` automatically finds and binds to the next available free ports without colliding.
+2. **Environment & credentials:** Generates a secure `.env` file with a dedicated database password and saves your configured ports.
+3. **Database startup:** Launches PostgreSQL 18 via Docker Compose (or Podman Compose) and waits for connection readiness.
+4. **Frontend build:** Checks and builds production assets into `web/dist` embedded into the Rust executable.
+5. **Database migrations:** Automatically applies all schema migrations.
+6. **Admin bootstrap:** Sets up the initial operator account (`admin` / `adminpassword123`). Pass `./run.sh --interactive` if you prefer to prompt for custom credentials.
+7. **Application launch:** Starts the HTTP server and displays the local URL (`http://127.0.0.1:3000` or auto-selected port).
+
+To stop background services:
+
+```bash
+./run.sh stop
+```
 
 ## Requirements
 
 - Rust toolchain from `rust-toolchain.toml` (Rustup installs it on first use).
-- Node 24.21.0 (`.node-version`) and npm 11.19.0, for building/testing only.
+- Node 24.22.0 (`.node-version`) and npm 11.19.1, for building/testing only.
 - PostgreSQL 18 (the tested database major).
 - Docker with Compose, Podman with a Compose provider, or a local PostgreSQL
-  installation. OpenSSL is used below only to generate a local password.
+  installation.
 
-## Start locally
+## Manual development start
 
-From the repository root, in one shell:
+If you prefer to run each step manually in separate commands:
 
 ```bash
 npm ci --prefix web --ignore-scripts
