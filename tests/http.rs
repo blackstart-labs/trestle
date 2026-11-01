@@ -12,7 +12,7 @@ fn app() -> axum::Router {
         ("TRESTLE_DB_TIMEOUT_MS", "100"),
     ])
     .unwrap();
-    http::router(database::pool(&config), config.db_timeout)
+    http::router(database::pool(&config), config.db_timeout, config)
 }
 
 #[tokio::test]

@@ -1,25 +1,37 @@
+pub mod me;
+pub mod middleware;
+pub mod session;
+pub mod workspaces;
+
 use axum::{
     Json, Router,
     extract::{MatchedPath, Request, State},
     http::{HeaderValue, StatusCode},
-    middleware::{self, Next},
+    middleware::Next,
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{delete, get, post},
 };
 use serde::Serialize;
 use sqlx::PgPool;
 use std::time::{Duration, Instant};
 use tracing::Instrument;
 
+use crate::config::Config;
+use crate::identity::{Hasher, LoginLimiter};
+
 #[derive(Serialize)]
 struct Health {
     status: &'static str,
 }
 
+/// Shared application state injected into all handlers.
 #[derive(Clone)]
-struct AppState {
-    pool: PgPool,
-    timeout: Duration,
+pub struct AppState {
+    pub pool: PgPool,
+    pub timeout: Duration,
+    pub config: Config,
+    pub hasher: Hasher,
+    pub limiter: LoginLimiter,
 }
 
 #[derive(Serialize)]
@@ -71,7 +83,25 @@ impl IntoResponse for HttpError {
     }
 }
 
-pub fn router(pool: PgPool, timeout: Duration) -> Router {
+pub fn router(pool: PgPool, timeout: Duration, config: Config) -> Router {
+    let hasher = Hasher::new(
+        config.argon2_m_cost,
+        config.argon2_t_cost,
+        config.argon2_parallelism,
+    )
+    .unwrap_or_else(|_| {
+        tracing::warn!("argon2 parameters invalid, using defaults");
+        Hasher::default_params()
+    });
+
+    let state = AppState {
+        pool: pool.clone(),
+        timeout,
+        config,
+        hasher,
+        limiter: LoginLimiter::new(),
+    };
+
     Router::new()
         .merge(crate::assets::router())
         .route(
@@ -79,10 +109,58 @@ pub fn router(pool: PgPool, timeout: Duration) -> Router {
             get(|| async { Json(Health { status: "ok" }) }),
         )
         .route("/health/ready", get(readiness))
+        // Identity API
+        .route("/api/v1/session", post(session_post))
+        .route("/api/v1/session", delete(session_delete))
+        .route("/api/v1/me", get(me::me))
+        .route("/api/v1/workspaces", get(workspaces::list_workspaces))
         .fallback(|| async { HttpError::NotFound })
         .method_not_allowed_fallback(|| async { HttpError::MethodNotAllowed })
-        .with_state(AppState { pool, timeout })
-        .layer(middleware::from_fn(request_diagnostics_and_headers))
+        .with_state(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            self::middleware::csrf_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            self::middleware::resolve_session_middleware,
+        ))
+        .layer(axum::middleware::from_fn(request_diagnostics_and_headers))
+}
+
+pub struct ClientIp(pub std::net::IpAddr);
+
+impl<S: Sync> axum::extract::FromRequestParts<S> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let ip = parts
+            .extensions
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+            .map(|ci| ci.0.ip())
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+        Ok(ClientIp(ip))
+    }
+}
+
+async fn session_post(
+    State(state): State<AppState>,
+    ClientIp(peer_ip): ClientIp,
+    headers: axum::http::HeaderMap,
+    body: axum::extract::Json<session::LoginRequest>,
+) -> Response {
+    session::login(State(state), peer_ip, headers, body).await
+}
+
+/// Logout: requires authenticated session (validated by extractor).
+async fn session_delete(
+    State(state): State<AppState>,
+    authenticated: self::middleware::AuthenticatedSession,
+) -> Response {
+    session::logout(State(state), authenticated).await
 }
 
 async fn readiness(State(state): State<AppState>) -> Response {

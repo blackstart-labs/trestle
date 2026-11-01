@@ -1,11 +1,27 @@
 use sqlx::postgres::PgConnectOptions;
 use std::{collections::BTreeMap, fmt, net::SocketAddr, time::Duration};
 
+/// Argon2id parameter defaults (benchmarked on reference host 2026-11-01).
+/// m=65536 KiB (64 MiB), t=2, p=1 → ~122ms per hash on this host.
+pub const DEFAULT_ARGON2_M_COST: u32 = 65_536;
+pub const DEFAULT_ARGON2_T_COST: u32 = 2;
+pub const DEFAULT_ARGON2_PARALLELISM: u32 = 1;
+
+#[derive(Clone)]
 pub struct Config {
     pub bind_addr: SocketAddr,
     pub max_db_connections: u32,
     pub db_timeout: Duration,
     pub(crate) database: PgConnectOptions,
+    /// Enable development mode: relaxes cookie Secure requirement for loopback HTTP.
+    /// Must only be used with a loopback bind address.
+    pub dev_mode: bool,
+    /// Argon2id memory cost in KiB.
+    pub argon2_m_cost: u32,
+    /// Argon2id time cost (number of passes).
+    pub argon2_t_cost: u32,
+    /// Argon2id parallelism factor.
+    pub argon2_parallelism: u32,
 }
 
 impl fmt::Debug for Config {
@@ -15,6 +31,10 @@ impl fmt::Debug for Config {
             .field("max_db_connections", &self.max_db_connections)
             .field("db_timeout", &self.db_timeout)
             .field("database", &"[REDACTED]")
+            .field("dev_mode", &self.dev_mode)
+            .field("argon2_m_cost", &self.argon2_m_cost)
+            .field("argon2_t_cost", &self.argon2_t_cost)
+            .field("argon2_parallelism", &self.argon2_parallelism)
             .finish()
     }
 }
@@ -46,6 +66,19 @@ impl Config {
             (
                 "TRESTLE_DB_TIMEOUT_MS",
                 "TRESTLE_DB_TIMEOUT_MS must be valid Unicode",
+            ),
+            ("TRESTLE_DEV_MODE", "TRESTLE_DEV_MODE must be valid Unicode"),
+            (
+                "TRESTLE_ARGON2_M_COST",
+                "TRESTLE_ARGON2_M_COST must be valid Unicode",
+            ),
+            (
+                "TRESTLE_ARGON2_T_COST",
+                "TRESTLE_ARGON2_T_COST must be valid Unicode",
+            ),
+            (
+                "TRESTLE_ARGON2_PARALLELISM",
+                "TRESTLE_ARGON2_PARALLELISM must be valid Unicode",
             ),
         ] {
             match std::env::var(key) {
@@ -104,11 +137,54 @@ impl Config {
             10000,
             "TRESTLE_DB_TIMEOUT_MS must be an integer from 100 to 10000",
         )?;
+
+        // Development mode: only valid when bind address is loopback.
+        let dev_mode = values
+            .get("TRESTLE_DEV_MODE")
+            .map(String::as_str)
+            .unwrap_or("false")
+            == "true";
+        if dev_mode && !bind_addr.ip().is_loopback() {
+            return Err(ConfigError(
+                "TRESTLE_DEV_MODE=true is only permitted with a loopback bind address",
+            ));
+        }
+
+        let argon2_m_cost = bounded_number(
+            &values,
+            "TRESTLE_ARGON2_M_COST",
+            DEFAULT_ARGON2_M_COST,
+            // OWASP minimum: 19456. Allow lower only for test builds.
+            19_456,
+            524_288, // 512 MiB maximum
+            "TRESTLE_ARGON2_M_COST must be an integer from 19456 to 524288",
+        )?;
+        let argon2_t_cost = bounded_number(
+            &values,
+            "TRESTLE_ARGON2_T_COST",
+            DEFAULT_ARGON2_T_COST,
+            1,
+            16,
+            "TRESTLE_ARGON2_T_COST must be an integer from 1 to 16",
+        )?;
+        let argon2_parallelism = bounded_number(
+            &values,
+            "TRESTLE_ARGON2_PARALLELISM",
+            DEFAULT_ARGON2_PARALLELISM,
+            1,
+            8,
+            "TRESTLE_ARGON2_PARALLELISM must be an integer from 1 to 8",
+        )?;
+
         Ok(Self {
             bind_addr,
             max_db_connections,
             db_timeout: Duration::from_millis(u64::from(timeout_ms)),
             database,
+            dev_mode,
+            argon2_m_cost,
+            argon2_t_cost,
+            argon2_parallelism,
         })
     }
 }
