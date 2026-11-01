@@ -16,7 +16,12 @@ fn main() {
     paths.sort();
     let mut generated = String::from("pub const ASSETS: &[(&str, &str, &[u8])] = &[\n");
     for path in paths {
-        let relative = path.strip_prefix(&dist).unwrap().to_str().unwrap();
+        let relative = path
+            .strip_prefix(&dist)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace('\\', "/");
         let route = if relative == "index.html" {
             String::from("/")
         } else {

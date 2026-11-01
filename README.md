@@ -10,19 +10,28 @@ readiness check, sign-in, and workspace selector embedded in the single Rust bin
 
 ## Quick start (one-command setup)
 
-Run the entire application with one command from GitHub (automatically detects free ports, configures PostgreSQL, builds the frontend, migrates, bootstraps, and launches Trestle):
+Run the entire application with one command from GitHub across **Linux, macOS, and Windows** (automatically detects free ports, configures PostgreSQL, builds the frontend, migrates, bootstraps, and launches Trestle):
 
+#### Linux / macOS / WSL:
 ```bash
 git clone https://github.com/maruf-pfc/trestle.git && cd trestle && ./run.sh
 ```
 
-Or if you already have the repository:
-
-```bash
-./run.sh
+#### Windows (PowerShell):
+```powershell
+git clone https://github.com/maruf-pfc/trestle.git; cd trestle; .\run.ps1
 ```
 
-### What `./run.sh` handles automatically:
+#### Windows (Command Prompt):
+```cmd
+git clone https://github.com/maruf-pfc/trestle.git && cd trestle && run.cmd
+```
+
+Or if you already have the repository cloned:
+- **Linux / macOS:** `./run.sh`
+- **Windows:** `.\run.ps1` or `run.cmd`
+
+### What the runner handles automatically:
 
 1. **Port conflict resolution:** If port `5432` (PostgreSQL) or `3000` (web application) is already in use by another database or application on your system, `run.sh` automatically finds and binds to the next available free ports without colliding.
 2. **Environment & credentials:** Generates a secure `.env` file with a dedicated database password and saves your configured ports.
