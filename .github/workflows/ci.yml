@@ -8,9 +8,103 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  # ----------------------------------------------------------------------------
+  # Stage 1: Frontend lint, type check, unit tests, dependency audit & build
+  # ----------------------------------------------------------------------------
+  frontend:
+    name: Frontend (Lint, Test, Audit & Build)
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci --ignore-scripts
+      - name: Format check
+        working-directory: web
+        run: npm run format:check
+      - name: Type check (svelte-check)
+        working-directory: web
+        run: npm run check
+      - name: Unit tests (Vitest)
+        working-directory: web
+        run: npm test
+      - name: Dependency vulnerability audit
+        working-directory: web
+        run: npm audit --audit-level=low
+      - name: Production asset build
+        working-directory: web
+        run: npm run build
+      - name: Upload compiled frontend bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
+  # ----------------------------------------------------------------------------
+  # Stage 2: Security & license compliance (cargo-deny)
+  # ----------------------------------------------------------------------------
+  security:
+    name: Security (Cargo Deny)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Install dependency checker
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: Advisories, licenses and dependency sources
+        run: cargo deny check
+
+  # ----------------------------------------------------------------------------
+  # Stage 3: Rust code formatting & Clippy lints
+  # ----------------------------------------------------------------------------
+  rust-lint:
+    name: Rust (Format & Clippy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: frontend
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Download compiled frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Formatting check
+        run: cargo fmt --all -- --check
+      - name: Lint and type check all targets
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  # ----------------------------------------------------------------------------
+  # Stage 4: Backend tests & PostgreSQL schema migrations
+  # ----------------------------------------------------------------------------
+  backend-test:
+    name: Backend (Tests & Migrations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: frontend
     services:
       postgres:
         image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
@@ -25,7 +119,47 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      # Disposable loopback-only CI server; not a deployment authentication policy.
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Download compiled frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Tests and PostgreSQL migrations
+        run: cargo test --locked
+
+  # ----------------------------------------------------------------------------
+  # Stage 5: Playwright browser smoke tests against live Rust server
+  # ----------------------------------------------------------------------------
+  e2e:
+    name: E2E (Playwright Browser Tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: frontend
+    services:
+      postgres:
+        image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+        env:
+          POSTGRES_DB: trestle_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trestle_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
       DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
       CARGO_TERM_COLOR: always
     steps:
@@ -37,36 +171,49 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Frontend checks and build
+      - name: Install frontend dependencies
         working-directory: web
-        run: |
-          npm ci --ignore-scripts
-          npm run format:check
-          npm run check
-          npm test
-          npm audit --audit-level=low
-          npm run build
+        run: npm ci --ignore-scripts
+      - name: Download compiled frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
       - name: Install pinned toolchain
         run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Formatting
-        run: cargo fmt --all -- --check
-      - name: Lint and type check all targets
-        run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Tests and PostgreSQL migrations
-        run: cargo test --locked
-      - name: Browser smoke against Rust
+      - name: Install Playwright Chromium
         working-directory: web
-        run: |
-          npx playwright install --with-deps chromium
-          npm run test:e2e
-      - name: Release build
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke tests against Rust server
+        working-directory: web
+        run: npm run test:e2e
+
+  # ----------------------------------------------------------------------------
+  # Stage 6: Production release binary and Docker container verification
+  # ----------------------------------------------------------------------------
+  package:
+    name: Release & Container Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [frontend, rust-lint, backend-test]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Download compiled frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Release binary build
         run: cargo build --locked --release
-      - name: Install dependency checker
-        run: cargo install cargo-deny --version 0.20.2 --locked
-      - name: Advisories, licenses and dependency sources
-        run: cargo deny check
       - name: Container build verification
         run: docker build --tag trestle:ci .
