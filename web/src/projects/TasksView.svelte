@@ -5,6 +5,9 @@
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
   import TaskDetailDrawer from "./TaskDetailDrawer.svelte";
+  import StatusManagerModal, {
+    type TaskStatus,
+  } from "./StatusManagerModal.svelte";
   import type { Project } from "./ProjectsView.svelte";
   import type {
     Label,
@@ -22,6 +25,9 @@
     title: string;
     description: string;
     status: "backlog" | "unstarted" | "started" | "completed" | "cancelled";
+    status_id?: string | null;
+    status_name?: string | null;
+    status_color?: string | null;
     priority: "none" | "low" | "medium" | "high" | "urgent";
     due_date: string | null;
     created_by: string | null;
@@ -47,6 +53,7 @@
   let limit = $state(20);
   let offset = $state(0);
   let statusFilter = $state<string>("all");
+  let statusIdFilter = $state<string>("");
   let labelFilter = $state<string>("");
   let assigneeFilter = $state<string>("");
   let loading = $state(true);
@@ -54,17 +61,22 @@
   let successMessage = $state<string | null>(null);
 
   // Available metadata for filters
+  let projectStatuses = $state<TaskStatus[]>([]);
   let projectLabels = $state<Label[]>([]);
   let workspaceMembers = $state<WorkspaceMember[]>([]);
 
   // Task detail drawer
   let selectedTask = $state<Task | null>(null);
 
+  // Workflow status manager modal
+  let showStatusManager = $state(false);
+
   // New task modal
   let showCreate = $state(false);
   let createTitle = $state("");
   let createDesc = $state("");
   let createStatus = $state<string>("unstarted");
+  let createStatusId = $state<string>("");
   let createPriority = $state<string>("none");
   let createDueDate = $state("");
   let creating = $state(false);
@@ -75,7 +87,10 @@
   );
 
   const hasActiveFilters = $derived(
-    statusFilter !== "all" || labelFilter !== "" || assigneeFilter !== "",
+    statusFilter !== "all" ||
+      statusIdFilter !== "" ||
+      labelFilter !== "" ||
+      assigneeFilter !== "",
   );
 
   const statusCategories = [
@@ -111,7 +126,9 @@
     errorMessage = null;
 
     let url = `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks?limit=${limit}&offset=${offset}`;
-    if (statusFilter !== "all") {
+    if (statusIdFilter) {
+      url += `&status_id=${encodeURIComponent(statusIdFilter)}`;
+    } else if (statusFilter !== "all") {
       url += `&status=${encodeURIComponent(statusFilter)}`;
     }
     if (labelFilter) {
@@ -143,6 +160,26 @@
     }
   }
 
+  export async function loadProjectStatuses() {
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/statuses`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        projectStatuses = data.statuses || [];
+        if (projectStatuses.length > 0 && !createStatusId) {
+          const defaultStatus =
+            projectStatuses.find((s) => s.category === "unstarted") ||
+            projectStatuses[0];
+          createStatusId = defaultStatus.id;
+        }
+      }
+    } catch {
+      // safe fallback
+    }
+  }
+
   export async function loadLabelsAndMembers() {
     try {
       const [labelsRes, membersRes] = await Promise.all([
@@ -166,6 +203,14 @@
 
   function handleStatusFilter(newStatus: string) {
     statusFilter = newStatus;
+    statusIdFilter = "";
+    offset = 0;
+    void loadTasks();
+  }
+
+  function handleStatusIdFilter(e: Event) {
+    statusIdFilter = (e.target as HTMLSelectElement).value;
+    statusFilter = "all";
     offset = 0;
     void loadTasks();
   }
@@ -184,6 +229,7 @@
 
   function handleResetFilters() {
     statusFilter = "all";
+    statusIdFilter = "";
     labelFilter = "";
     assigneeFilter = "";
     offset = 0;
@@ -222,12 +268,21 @@
 
     creating = true;
     try {
+      let resolvedCategory = createStatus;
+      if (createStatusId) {
+        const matched = projectStatuses.find((s) => s.id === createStatusId);
+        if (matched) resolvedCategory = matched.category;
+      }
+
       const payload: Record<string, unknown> = {
         title: trimmedTitle,
         description: createDesc.trim(),
-        status: createStatus,
+        status: resolvedCategory,
         priority: createPriority,
       };
+      if (createStatusId) {
+        payload.status_id = createStatusId;
+      }
       if (createDueDate.trim()) {
         payload.due_date = createDueDate.trim();
       }
@@ -267,11 +322,16 @@
     }
   }
 
-  async function handleStatusChange(task: Task, nextStatus: string) {
+  async function handleStatusChange(task: Task, nextStatusOrId: string) {
     const csrf = getCsrfToken();
     if (!csrf) return;
 
     try {
+      const isStatusId = projectStatuses.some((s) => s.id === nextStatusOrId);
+      const payload = isStatusId
+        ? { status_id: nextStatusOrId }
+        : { status: nextStatusOrId };
+
       const res = await fetch(
         `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${task.id}`,
         {
@@ -281,7 +341,7 @@
             "X-CSRF-Token": csrf,
             Accept: "application/json",
           },
-          body: JSON.stringify({ status: nextStatus }),
+          body: JSON.stringify(payload),
         },
       );
 
@@ -348,6 +408,7 @@
   onMount(() => {
     void loadTasks();
     void loadLabelsAndMembers();
+    void loadProjectStatuses();
   });
 </script>
 
@@ -368,9 +429,17 @@
         Tasks for {project.name}
       </h2>
     </div>
-    <Button onclick={() => (showCreate = true)}>
-      {#snippet children()}New task{/snippet}
-    </Button>
+    <div class="header-actions">
+      <Button type="button" onclick={() => (showStatusManager = true)}>
+        {#snippet children()}
+          <Icon name="settings" size={14} class="btn-icon" />
+          Workflow statuses
+        {/snippet}
+      </Button>
+      <Button onclick={() => (showCreate = true)}>
+        {#snippet children()}New task{/snippet}
+      </Button>
+    </div>
   </div>
 
   {#if successMessage}
@@ -397,6 +466,21 @@
     </div>
 
     <div class="filter-dropdowns">
+      <!-- Status Filter Dropdown (Custom Statuses) -->
+      {#if projectStatuses.length > 0}
+        <select
+          class="filter-select"
+          value={statusIdFilter}
+          onchange={handleStatusIdFilter}
+          aria-label="Filter tasks by custom status"
+        >
+          <option value="">All statuses</option>
+          {#each projectStatuses as st (st.id)}
+            <option value={st.id}>{st.name} ({st.category})</option>
+          {/each}
+        </select>
+      {/if}
+
       <!-- Label Filter Dropdown -->
       {#if projectLabels.length > 0}
         <select
@@ -475,13 +559,21 @@
           <div class="row-3">
             <div class="field">
               <label for="task-status">Status</label>
-              <select id="task-status" bind:value={createStatus}>
-                <option value="unstarted">Unstarted</option>
-                <option value="backlog">Backlog</option>
-                <option value="started">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              {#if projectStatuses.length > 0}
+                <select id="task-status" bind:value={createStatusId}>
+                  {#each projectStatuses as s (s.id)}
+                    <option value={s.id}>{s.name} ({s.category})</option>
+                  {/each}
+                </select>
+              {:else}
+                <select id="task-status" bind:value={createStatus}>
+                  <option value="unstarted">Unstarted</option>
+                  <option value="backlog">Backlog</option>
+                  <option value="started">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              {/if}
             </div>
 
             <div class="field">
@@ -579,6 +671,15 @@
                   <span>{task.due_date}</span>
                 </span>
               {/if}
+              <!-- Status badge -->
+              <span
+                class="status-badge"
+                style="--status-color: {task.status_color || '#315b3b'};"
+              >
+                <span class="status-dot-sm" aria-hidden="true"></span>
+                <span>{task.status_name || task.status}</span>
+              </span>
+
               {#if task.priority !== "none"}
                 <span class="priority-tag" data-priority={task.priority}>
                   {task.priority}
@@ -616,19 +717,39 @@
           </div>
 
           <div class="task-controls">
-            <select
-              class="status-select"
-              aria-label="Status for {task.human_key}"
-              value={task.status}
-              onchange={(e) =>
-                handleStatusChange(task, (e.target as HTMLSelectElement).value)}
-            >
-              <option value="backlog">Backlog</option>
-              <option value="unstarted">Unstarted</option>
-              <option value="started">In progress</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+            {#if projectStatuses.length > 0}
+              <select
+                class="status-select"
+                aria-label="Status for {task.human_key}"
+                value={task.status_id || task.status}
+                onchange={(e) =>
+                  handleStatusChange(
+                    task,
+                    (e.target as HTMLSelectElement).value,
+                  )}
+              >
+                {#each projectStatuses as s (s.id)}
+                  <option value={s.id}>{s.name}</option>
+                {/each}
+              </select>
+            {:else}
+              <select
+                class="status-select"
+                aria-label="Status for {task.human_key}"
+                value={task.status}
+                onchange={(e) =>
+                  handleStatusChange(
+                    task,
+                    (e.target as HTMLSelectElement).value,
+                  )}
+              >
+                <option value="backlog">Backlog</option>
+                <option value="unstarted">Unstarted</option>
+                <option value="started">In progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            {/if}
 
             {#if canDelete}
               <button
@@ -670,10 +791,25 @@
     task={selectedTask}
     {workspace}
     {project}
+    statuses={projectStatuses}
     onclose={() => (selectedTask = null)}
     ontaskupdated={(updated) => {
       tasks = tasks.map((t) => (t.id === updated.id ? updated : t));
       selectedTask = updated;
+    }}
+  />
+{/if}
+
+<!-- Workflow Status Manager Modal -->
+{#if showStatusManager}
+  <StatusManagerModal
+    {workspace}
+    {project}
+    statuses={projectStatuses}
+    onclose={() => (showStatusManager = false)}
+    onstatusesupdated={(updated) => {
+      projectStatuses = updated;
+      void loadTasks();
     }}
   />
 {/if}
@@ -711,6 +847,17 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--space-4);
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  :global(.btn-icon) {
+    margin-right: var(--space-1);
+    vertical-align: middle;
   }
   .title-group {
     display: flex;
@@ -914,6 +1061,27 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.0625rem 0.375rem;
+    border-radius: var(--badge-radius);
+    background: var(--surface);
+    border: var(--border-width) solid var(--border);
+    color: var(--text);
+  }
+
+  .status-dot-sm {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background-color: var(--status-color, #315b3b);
+    flex-shrink: 0;
   }
 
   .priority-tag {

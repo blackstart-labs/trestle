@@ -12,7 +12,8 @@ use uuid::Uuid;
 use crate::http::{AppState, HttpError, middleware::AuthenticatedSession};
 use crate::identity::store::{self, StoreError};
 use crate::projects::{
-    CreateProjectParams, CreateTaskParams, Project, Task, UpdateTaskParams, store as projects_store,
+    CreateProjectParams, CreateStatusParams, CreateTaskParams, Project, Task, TaskStatus,
+    UpdateStatusParams, UpdateTaskParams, store as projects_store,
 };
 
 #[derive(Serialize)]
@@ -240,6 +241,9 @@ pub struct TaskItem {
     pub due_date: Option<String>,
     pub created_by: Option<String>,
     pub parent_id: Option<String>,
+    pub status_id: Option<String>,
+    pub status_name: Option<String>,
+    pub status_color: Option<String>,
     pub labels: Vec<LabelItem>,
     pub assignees: Vec<AssigneeItem>,
     pub created_at: String,
@@ -262,6 +266,9 @@ impl From<Task> for TaskItem {
             due_date: t.due_date.map(|d| d.to_string()),
             created_by: t.created_by.map(|u| u.to_string()),
             parent_id: t.parent_id.map(|u| u.to_string()),
+            status_id: t.status_id.map(|u| u.to_string()),
+            status_name: t.status_name,
+            status_color: t.status_color,
             labels: t.labels.into_iter().map(LabelItem::from).collect(),
             assignees: t.assignees.into_iter().map(AssigneeItem::from).collect(),
             created_at: t
@@ -277,6 +284,69 @@ impl From<Task> for TaskItem {
 }
 
 #[derive(Serialize)]
+pub struct TaskStatusItem {
+    pub id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub category: String,
+    pub color: String,
+    pub position: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<TaskStatus> for TaskStatusItem {
+    fn from(s: TaskStatus) -> Self {
+        Self {
+            id: s.id.to_string(),
+            workspace_id: s.workspace_id.to_string(),
+            project_id: s.project_id.to_string(),
+            name: s.name,
+            category: s.category,
+            color: s.color,
+            position: s.position,
+            created_at: s
+                .created_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| s.created_at.to_string()),
+            updated_at: s
+                .updated_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| s.updated_at.to_string()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct StatusListResponse {
+    pub statuses: Vec<TaskStatusItem>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateStatusRequest {
+    pub name: String,
+    pub category: String,
+    pub color: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateStatusRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ReorderStatusesRequest {
+    pub status_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct DeleteStatusQuery {
+    pub remap_to: Option<Uuid>,
+}
+
+#[derive(Serialize)]
 pub struct PaginatedTasksResponse {
     pub tasks: Vec<TaskItem>,
     pub total: i64,
@@ -287,6 +357,7 @@ pub struct PaginatedTasksResponse {
 #[derive(Deserialize, Default)]
 pub struct TaskListQuery {
     pub status: Option<String>,
+    pub status_id: Option<Uuid>,
     pub label_id: Option<Uuid>,
     pub assignee_id: Option<Uuid>,
     pub limit: Option<i64>,
@@ -298,6 +369,7 @@ pub struct CreateTaskRequest {
     pub title: String,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub status_id: Option<Uuid>,
     pub priority: Option<String>,
     pub due_date: Option<String>,
     pub parent_id: Option<Uuid>,
@@ -316,6 +388,7 @@ pub struct UpdateTaskRequest {
     pub title: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub status_id: Option<Uuid>,
     pub priority: Option<String>,
     #[serde(default, deserialize_with = "deserialize_some")]
     pub due_date: Option<Option<String>>,
@@ -556,6 +629,7 @@ pub async fn list_tasks(
 
     let params = projects_store::ListTasksParams {
         status_filter: query.status.as_deref(),
+        status_id: query.status_id,
         label_filter: query.label_id,
         assignee_filter: query.assignee_id,
         limit,
@@ -596,7 +670,7 @@ pub async fn create_task(
     }
 
     let status = payload.status.unwrap_or_else(|| "unstarted".to_string());
-    if !validate_status(&status) {
+    if payload.status_id.is_none() && !validate_status(&status) {
         return HttpError::BadRequest("Invalid task status").into_response();
     }
 
@@ -626,6 +700,7 @@ pub async fn create_task(
         priority,
         due_date,
         parent_id: payload.parent_id,
+        status_id: payload.status_id,
     };
 
     match projects_store::create_task(
@@ -686,6 +761,7 @@ pub async fn update_task(
     }
 
     if let Some(ref s) = payload.status
+        && payload.status_id.is_none()
         && !validate_status(s)
     {
         return HttpError::BadRequest("Invalid task status").into_response();
@@ -723,6 +799,7 @@ pub async fn update_task(
         title: payload.title.map(|t| t.trim().to_string()),
         description: payload.description,
         status: payload.status,
+        status_id: payload.status_id,
         priority: payload.priority,
         due_date: parsed_due_date,
     };
@@ -1053,7 +1130,7 @@ pub async fn create_subtask(
     }
 
     let status = payload.status.unwrap_or_else(|| "unstarted".to_string());
-    if !validate_status(&status) {
+    if payload.status_id.is_none() && !validate_status(&status) {
         return HttpError::BadRequest("Invalid subtask status").into_response();
     }
 
@@ -1083,6 +1160,7 @@ pub async fn create_subtask(
         priority,
         due_date,
         parent_id: Some(task_id),
+        status_id: payload.status_id,
     };
 
     match projects_store::create_task(
@@ -1223,6 +1301,224 @@ pub async fn list_task_activity(
         Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to list task activities");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Status Handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses
+pub async fn list_project_statuses(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id)): Path<(Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::list_project_statuses(&state.pool, workspace_id, project_id).await {
+        Ok(statuses) => Json(StatusListResponse {
+            statuses: statuses.into_iter().map(TaskStatusItem::from).collect(),
+        })
+        .into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list project statuses");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses
+pub async fn create_project_status(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<CreateStatusRequest>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    if caller_role != "owner" && caller_role != "admin" {
+        return HttpError::Forbidden.into_response();
+    }
+
+    let name = payload.name.trim();
+    if name.is_empty() || name.len() > 50 {
+        return HttpError::BadRequest("Status name must be between 1 and 50 characters")
+            .into_response();
+    }
+
+    if !validate_status(&payload.category) {
+        return HttpError::BadRequest("Invalid status category").into_response();
+    }
+
+    if let Some(ref c) = payload.color
+        && !validate_hex_color(c)
+    {
+        return HttpError::BadRequest("Color must be a valid hex code (e.g. #315b3b)")
+            .into_response();
+    }
+
+    let params = CreateStatusParams {
+        name: name.to_string(),
+        category: payload.category,
+        color: payload.color,
+    };
+
+    match projects_store::create_project_status(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        params,
+    )
+    .await
+    {
+        Ok(status) => (StatusCode::CREATED, Json(TaskStatusItem::from(status))).into_response(),
+        Err(StoreError::Conflict) => {
+            HttpError::Conflict("Status name already exists in this project").into_response()
+        }
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create status");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// PATCH /api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses/{status_id}
+pub async fn update_project_status(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, status_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<UpdateStatusRequest>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    if caller_role != "owner" && caller_role != "admin" {
+        return HttpError::Forbidden.into_response();
+    }
+
+    if let Some(ref name) = payload.name {
+        let n = name.trim();
+        if n.is_empty() || n.len() > 50 {
+            return HttpError::BadRequest("Status name must be between 1 and 50 characters")
+                .into_response();
+        }
+    }
+
+    if let Some(ref c) = payload.color
+        && !validate_hex_color(c)
+    {
+        return HttpError::BadRequest("Color must be a valid hex code (e.g. #315b3b)")
+            .into_response();
+    }
+
+    let params = UpdateStatusParams {
+        name: payload.name,
+        color: payload.color,
+    };
+
+    match projects_store::update_project_status(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        status_id,
+        params,
+    )
+    .await
+    {
+        Ok(status) => Json(TaskStatusItem::from(status)).into_response(),
+        Err(StoreError::Conflict) => {
+            HttpError::Conflict("Status name already exists in this project").into_response()
+        }
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to update status");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// PUT /api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses/positions
+pub async fn reorder_project_statuses(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<ReorderStatusesRequest>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    if caller_role != "owner" && caller_role != "admin" {
+        return HttpError::Forbidden.into_response();
+    }
+
+    match projects_store::reorder_project_statuses(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        &payload.status_ids,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to reorder statuses");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// DELETE /api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses/{status_id}
+pub async fn delete_project_status(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, status_id)): Path<(Uuid, Uuid, Uuid)>,
+    Query(query): Query<DeleteStatusQuery>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    if caller_role != "owner" && caller_role != "admin" {
+        return HttpError::Forbidden.into_response();
+    }
+
+    match projects_store::delete_project_status(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        status_id,
+        query.remap_to,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::Conflict) => HttpError::Conflict(
+            "Cannot delete status: it may be the last remaining status, or active tasks require a valid remap_to target",
+        )
+        .into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to delete status");
             HttpError::Internal.into_response()
         }
     }

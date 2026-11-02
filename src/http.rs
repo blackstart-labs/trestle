@@ -10,7 +10,7 @@ use axum::{
     http::{HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use serde::Serialize;
 use sqlx::PgPool;
@@ -155,6 +155,20 @@ pub fn router(pool: PgPool, timeout: Duration, config: Config) -> Router {
             get(projects::get_task)
                 .patch(projects::update_task)
                 .delete(projects::delete_task),
+        )
+        // Custom Statuses API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses",
+            get(projects::list_project_statuses).post(projects::create_project_status),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses/positions",
+            put(projects::reorder_project_statuses),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/statuses/{status_id}",
+            axum::routing::patch(projects::update_project_status)
+                .delete(projects::delete_project_status),
         )
         // Labels API
         .route(

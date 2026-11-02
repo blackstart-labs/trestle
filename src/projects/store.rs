@@ -77,6 +77,9 @@ pub struct Task {
     pub title: String,
     pub description: String,
     pub status: String,
+    pub status_id: Option<Uuid>,
+    pub status_name: Option<String>,
+    pub status_color: Option<String>,
     pub priority: String,
     pub due_date: Option<Date>,
     pub created_by: Option<Uuid>,
@@ -113,6 +116,7 @@ pub struct CreateTaskParams {
     pub priority: String,
     pub due_date: Option<Date>,
     pub parent_id: Option<Uuid>,
+    pub status_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -120,6 +124,7 @@ pub struct UpdateTaskParams {
     pub title: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub status_id: Option<Uuid>,
     pub priority: Option<String>,
     pub due_date: Option<Option<Date>>,
 }
@@ -175,6 +180,23 @@ pub async fn create_project(
         }),
     )
     .await?;
+
+    // Seed 5 default statuses with stable categories
+    sqlx::query(
+        "INSERT INTO task_statuses (id, workspace_id, project_id, name, category, color, position, created_at, updated_at)
+         VALUES
+            (gen_random_uuid(), $1, $2, 'Backlog', 'backlog', '#4c544c', 0, $3, $3),
+            (gen_random_uuid(), $1, $2, 'To Do', 'unstarted', '#1e4d79', 1, $3, $3),
+            (gen_random_uuid(), $1, $2, 'In Progress', 'started', '#775300', 2, $3, $3),
+            (gen_random_uuid(), $1, $2, 'Done', 'completed', '#26633b', 3, $3, $3),
+            (gen_random_uuid(), $1, $2, 'Cancelled', 'cancelled', '#9f302b', 4, $3, $3)",
+    )
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?;
 
     tx.commit().await.map_err(StoreError::Internal)?;
 
@@ -393,10 +415,38 @@ pub async fn create_task(
     let task_id = Uuid::new_v4();
     let now = OffsetDateTime::now_utc();
 
+    // Resolve status_id and canonical status category
+    let status_row = if let Some(sid) = params.status_id {
+        sqlx::query_as::<_, (Uuid, String, String, String)>(
+            "SELECT id, name, category, color FROM task_statuses WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
+        )
+        .bind(sid)
+        .bind(project_id)
+        .bind(workspace_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StoreError::Internal)?
+    } else {
+        sqlx::query_as::<_, (Uuid, String, String, String)>(
+            "SELECT id, name, category, color FROM task_statuses WHERE project_id = $1 AND workspace_id = $2 AND (category = $3 OR name = $3) ORDER BY position ASC LIMIT 1",
+        )
+        .bind(project_id)
+        .bind(workspace_id)
+        .bind(&params.status)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StoreError::Internal)?
+    };
+
+    let (status_id, status_name, status_category, status_color) = match status_row {
+        Some(s) => (Some(s.0), Some(s.1), s.2, Some(s.3)),
+        None => (None, None, params.status.clone(), None),
+    };
+
     sqlx::query(
         "INSERT INTO tasks
-            (id, workspace_id, project_id, task_number, title, description, status, priority, due_date, created_by, parent_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+            (id, workspace_id, project_id, task_number, title, description, status, priority, due_date, created_by, parent_id, status_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)",
     )
     .bind(task_id)
     .bind(workspace_id)
@@ -404,11 +454,12 @@ pub async fn create_task(
     .bind(task_number)
     .bind(&params.title)
     .bind(&params.description)
-    .bind(&params.status)
+    .bind(&status_category)
     .bind(&params.priority)
     .bind(params.due_date)
     .bind(actor_id)
     .bind(params.parent_id)
+    .bind(status_id)
     .bind(now)
     .execute(&mut *tx)
     .await
@@ -426,6 +477,7 @@ pub async fn create_task(
             "task_id": task_id,
             "human_key": human_key,
             "parent_id": params.parent_id,
+            "status_id": status_id,
         }),
     )
     .await?;
@@ -439,7 +491,8 @@ pub async fn create_task(
         &serde_json::json!({
             "human_key": human_key,
             "title": params.title,
-            "status": params.status,
+            "status": status_category,
+            "status_id": status_id,
             "priority": params.priority,
         }),
     )
@@ -472,7 +525,10 @@ pub async fn create_task(
         human_key,
         title: params.title,
         description: params.description,
-        status: params.status,
+        status: status_category,
+        status_id,
+        status_name,
+        status_color,
         priority: params.priority,
         due_date: params.due_date,
         created_by: actor_id,
@@ -559,6 +615,7 @@ async fn fetch_assignees_for_tasks(
 #[derive(Debug, Clone, Default)]
 pub struct ListTasksParams<'a> {
     pub status_filter: Option<&'a str>,
+    pub status_id: Option<Uuid>,
     pub label_filter: Option<Uuid>,
     pub assignee_filter: Option<Uuid>,
     pub limit: i64,
@@ -583,16 +640,18 @@ pub async fn list_tasks(
         "SELECT COUNT(*) FROM tasks t
          WHERE t.project_id = $1 AND t.workspace_id = $2
            AND ($3::TEXT IS NULL OR t.status = $3)
-           AND ($4::UUID IS NULL OR EXISTS (
-               SELECT 1 FROM task_label_assignments tla WHERE tla.task_id = t.id AND tla.label_id = $4
-           ))
+           AND ($4::UUID IS NULL OR t.status_id = $4)
            AND ($5::UUID IS NULL OR EXISTS (
-               SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $5
+               SELECT 1 FROM task_label_assignments tla WHERE tla.task_id = t.id AND tla.label_id = $5
+           ))
+           AND ($6::UUID IS NULL OR EXISTS (
+               SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $6
            ))",
     )
     .bind(project_id)
     .bind(workspace_id)
     .bind(params.status_filter)
+    .bind(params.status_id)
     .bind(params.label_filter)
     .bind(params.assignee_filter)
     .fetch_one(pool)
@@ -613,26 +672,34 @@ pub async fn list_tasks(
             Option<Date>,
             Option<Uuid>,
             Option<Uuid>,
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
             OffsetDateTime,
             OffsetDateTime,
         ),
     >(
-        "SELECT t.id, t.workspace_id, t.project_id, t.task_number, t.title, t.description, t.status, t.priority, t.due_date, t.created_by, t.parent_id, t.created_at, t.updated_at
+        "SELECT t.id, t.workspace_id, t.project_id, t.task_number, t.title, t.description,
+                t.status, t.priority, t.due_date, t.created_by, t.parent_id,
+                t.status_id, ts.name, ts.color, t.created_at, t.updated_at
          FROM tasks t
+         LEFT JOIN task_statuses ts ON ts.id = t.status_id
          WHERE t.project_id = $1 AND t.workspace_id = $2
            AND ($3::TEXT IS NULL OR t.status = $3)
-           AND ($4::UUID IS NULL OR EXISTS (
-               SELECT 1 FROM task_label_assignments tla WHERE tla.task_id = t.id AND tla.label_id = $4
-           ))
+           AND ($4::UUID IS NULL OR t.status_id = $4)
            AND ($5::UUID IS NULL OR EXISTS (
-               SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $5
+               SELECT 1 FROM task_label_assignments tla WHERE tla.task_id = t.id AND tla.label_id = $5
+           ))
+           AND ($6::UUID IS NULL OR EXISTS (
+               SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $6
            ))
          ORDER BY t.task_number DESC
-         LIMIT $6 OFFSET $7",
+         LIMIT $7 OFFSET $8",
     )
     .bind(project_id)
     .bind(workspace_id)
     .bind(params.status_filter)
+    .bind(params.status_id)
     .bind(params.label_filter)
     .bind(params.assignee_filter)
     .bind(bounded_limit)
@@ -665,10 +732,13 @@ pub async fn list_tasks(
                 due_date: r.8,
                 created_by: r.9,
                 parent_id: r.10,
+                status_id: r.11,
+                status_name: r.12,
+                status_color: r.13,
                 labels,
                 assignees,
-                created_at: r.11,
-                updated_at: r.12,
+                created_at: r.14,
+                updated_at: r.15,
             }
         })
         .collect();
@@ -681,34 +751,40 @@ pub async fn list_tasks(
     })
 }
 
+#[derive(sqlx::FromRow)]
+struct GetTaskRow {
+    id: Uuid,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    project_key: String,
+    task_number: i64,
+    title: String,
+    description: String,
+    status: String,
+    priority: String,
+    due_date: Option<Date>,
+    created_by: Option<Uuid>,
+    parent_id: Option<Uuid>,
+    status_id: Option<Uuid>,
+    status_name: Option<String>,
+    status_color: Option<String>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
 pub async fn get_task(
     pool: &PgPool,
     workspace_id: Uuid,
     project_id: Uuid,
     task_id: Uuid,
 ) -> Result<Option<Task>, StoreError> {
-    let row = sqlx::query_as::<
-        _,
-        (
-            Uuid,
-            Uuid,
-            Uuid,
-            String,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            Option<Date>,
-            Option<Uuid>,
-            Option<Uuid>,
-            OffsetDateTime,
-            OffsetDateTime,
-        ),
-    >(
-        "SELECT t.id, t.workspace_id, t.project_id, p.key, t.task_number, t.title, t.description, t.status, t.priority, t.due_date, t.created_by, t.parent_id, t.created_at, t.updated_at
+    let row = sqlx::query_as::<_, GetTaskRow>(
+        "SELECT t.id, t.workspace_id, t.project_id, p.key AS project_key, t.task_number, t.title, t.description,
+                t.status, t.priority, t.due_date, t.created_by, t.parent_id,
+                t.status_id, ts.name AS status_name, ts.color AS status_color, t.created_at, t.updated_at
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
+         LEFT JOIN task_statuses ts ON ts.id = t.status_id
          WHERE t.id = $1 AND t.project_id = $2 AND t.workspace_id = $3",
     )
     .bind(task_id)
@@ -720,29 +796,32 @@ pub async fn get_task(
 
     match row {
         Some(r) => {
-            let human_key = format!("{}-{}", r.3, r.4);
-            let mut labels_map = fetch_labels_for_tasks(pool, &[r.0]).await?;
-            let mut assignees_map = fetch_assignees_for_tasks(pool, &[r.0]).await?;
-            let labels = labels_map.remove(&r.0).unwrap_or_default();
-            let assignees = assignees_map.remove(&r.0).unwrap_or_default();
+            let human_key = format!("{}-{}", r.project_key, r.task_number);
+            let mut labels_map = fetch_labels_for_tasks(pool, &[r.id]).await?;
+            let mut assignees_map = fetch_assignees_for_tasks(pool, &[r.id]).await?;
+            let labels = labels_map.remove(&r.id).unwrap_or_default();
+            let assignees = assignees_map.remove(&r.id).unwrap_or_default();
             Ok(Some(Task {
-                id: r.0,
-                workspace_id: r.1,
-                project_id: r.2,
-                project_key: r.3,
-                task_number: r.4,
+                id: r.id,
+                workspace_id: r.workspace_id,
+                project_id: r.project_id,
+                project_key: r.project_key,
+                task_number: r.task_number,
                 human_key,
-                title: r.5,
-                description: r.6,
-                status: r.7,
-                priority: r.8,
-                due_date: r.9,
-                created_by: r.10,
-                parent_id: r.11,
+                title: r.title,
+                description: r.description,
+                status: r.status,
+                priority: r.priority,
+                due_date: r.due_date,
+                created_by: r.created_by,
+                parent_id: r.parent_id,
+                status_id: r.status_id,
+                status_name: r.status_name,
+                status_color: r.status_color,
                 labels,
                 assignees,
-                created_at: r.12,
-                updated_at: r.13,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
             }))
         }
         None => Ok(None),
@@ -761,20 +840,58 @@ pub async fn update_task(
     let has_due_date = params.due_date.is_some();
     let due_date_val = params.due_date.flatten();
 
+    // Check if status or status_id is updated
+    let (target_status_id, target_category) = if let Some(sid) = params.status_id {
+        let status_row = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, category FROM task_statuses WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
+        )
+        .bind(sid)
+        .bind(project_id)
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(StoreError::Internal)?
+        .ok_or(StoreError::NotFound)?;
+        (Some(status_row.0), Some(status_row.1))
+    } else if let Some(ref st) = params.status {
+        let status_row = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, category FROM task_statuses WHERE project_id = $1 AND workspace_id = $2 AND (category = $3 OR name = $3) ORDER BY position ASC LIMIT 1",
+        )
+        .bind(project_id)
+        .bind(workspace_id)
+        .bind(st)
+        .fetch_optional(pool)
+        .await
+        .map_err(StoreError::Internal)?;
+        match status_row {
+            Some(s) => (Some(s.0), Some(s.1)),
+            None => (None, Some(st.clone())),
+        }
+    } else {
+        (None, None)
+    };
+
+    let has_status = target_category.is_some();
+    let has_status_id = target_status_id.is_some();
+
     let res = sqlx::query(
         "UPDATE tasks
          SET updated_at = $1,
               title = COALESCE($2, title),
               description = COALESCE($3, description),
-              status = COALESCE($4, status),
-              priority = COALESCE($5, priority),
-              due_date = CASE WHEN $6 THEN $7 ELSE due_date END
-         WHERE id = $8 AND project_id = $9 AND workspace_id = $10",
+              status = CASE WHEN $4 THEN $5 ELSE status END,
+              status_id = CASE WHEN $6 THEN $7 ELSE status_id END,
+              priority = COALESCE($8, priority),
+              due_date = CASE WHEN $9 THEN $10 ELSE due_date END
+         WHERE id = $11 AND project_id = $12 AND workspace_id = $13",
     )
     .bind(now)
     .bind(&params.title)
     .bind(&params.description)
-    .bind(&params.status)
+    .bind(has_status)
+    .bind(&target_category)
+    .bind(has_status_id)
+    .bind(target_status_id)
     .bind(&params.priority)
     .bind(has_due_date)
     .bind(due_date_val)
@@ -801,14 +918,17 @@ pub async fn update_task(
     )
     .await?;
 
-    if let Some(ref new_status) = params.status {
+    if let Some(ref new_status) = target_category {
         let _ = record_task_activity(
             pool,
             workspace_id,
             task_id,
             actor_id,
             "task.status_changed",
-            &serde_json::json!({ "status": new_status }),
+            &serde_json::json!({
+                "status": new_status,
+                "status_id": target_status_id,
+            }),
         )
         .await;
     }
@@ -1223,14 +1343,20 @@ pub async fn list_subtasks(
             Option<Date>,
             Option<Uuid>,
             Option<Uuid>,
+            Option<Uuid>,
+            Option<String>,
+            Option<String>,
             OffsetDateTime,
             OffsetDateTime,
         ),
     >(
-        "SELECT id, workspace_id, project_id, task_number, title, description, status, priority, due_date, created_by, parent_id, created_at, updated_at
-         FROM tasks
-         WHERE parent_id = $1 AND project_id = $2 AND workspace_id = $3
-         ORDER BY task_number ASC",
+        "SELECT t.id, t.workspace_id, t.project_id, t.task_number, t.title, t.description,
+                t.status, t.priority, t.due_date, t.created_by, t.parent_id,
+                t.status_id, ts.name, ts.color, t.created_at, t.updated_at
+         FROM tasks t
+         LEFT JOIN task_statuses ts ON ts.id = t.status_id
+         WHERE t.parent_id = $1 AND t.project_id = $2 AND t.workspace_id = $3
+         ORDER BY t.task_number ASC",
     )
     .bind(parent_id)
     .bind(project_id)
@@ -1263,10 +1389,13 @@ pub async fn list_subtasks(
                 due_date: r.8,
                 created_by: r.9,
                 parent_id: r.10,
+                status_id: r.11,
+                status_name: r.12,
+                status_color: r.13,
                 labels,
                 assignees,
-                created_at: r.11,
-                updated_at: r.12,
+                created_at: r.14,
+                updated_at: r.15,
             }
         })
         .collect();
@@ -1534,4 +1663,414 @@ pub async fn list_task_activities(
             created_at: r.7,
         })
         .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Task Statuses (M05a)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskStatus {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub category: String,
+    pub color: String,
+    pub position: i32,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateStatusParams {
+    pub name: String,
+    pub category: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateStatusParams {
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+pub async fn list_project_statuses(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    project_id: Uuid,
+) -> Result<Vec<TaskStatus>, StoreError> {
+    let _ = get_project(pool, workspace_id, project_id)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            String,
+            String,
+            String,
+            i32,
+            OffsetDateTime,
+            OffsetDateTime,
+        ),
+    >(
+        "SELECT id, workspace_id, project_id, name, category, color, position, created_at, updated_at
+         FROM task_statuses
+         WHERE workspace_id = $1 AND project_id = $2
+         ORDER BY position ASC, created_at ASC",
+    )
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+    .map_err(StoreError::Internal)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| TaskStatus {
+            id: r.0,
+            workspace_id: r.1,
+            project_id: r.2,
+            name: r.3,
+            category: r.4,
+            color: r.5,
+            position: r.6,
+            created_at: r.7,
+            updated_at: r.8,
+        })
+        .collect())
+}
+
+pub async fn create_project_status(
+    pool: &PgPool,
+    actor_id: Option<Uuid>,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    params: CreateStatusParams,
+) -> Result<TaskStatus, StoreError> {
+    let _ = get_project(pool, workspace_id, project_id)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+
+    let trimmed_name = params.name.trim();
+    if trimmed_name.is_empty() || trimmed_name.len() > 50 {
+        return Err(StoreError::Conflict);
+    }
+
+    let valid_categories = ["backlog", "unstarted", "started", "completed", "cancelled"];
+    if !valid_categories.contains(&params.category.as_str()) {
+        return Err(StoreError::Conflict);
+    }
+
+    let color = params.color.unwrap_or_else(|| "#315b3b".to_string());
+    let id = Uuid::new_v4();
+    let now = OffsetDateTime::now_utc();
+
+    let mut tx = pool.begin().await.map_err(StoreError::Internal)?;
+
+    let max_pos: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(position) FROM task_statuses WHERE workspace_id = $1 AND project_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?;
+
+    let next_pos = max_pos.map_or(0, |p| p + 1);
+
+    sqlx::query(
+        "INSERT INTO task_statuses (id, workspace_id, project_id, name, category, color, position, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(trimmed_name)
+    .bind(&params.category)
+    .bind(&color)
+    .bind(next_pos)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+
+    crate::identity::store::record_audit_event_tx(
+        &mut tx,
+        actor_id,
+        "status.created",
+        &serde_json::json!({
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+            "status_id": id,
+            "name": trimmed_name,
+            "category": params.category,
+        }),
+    )
+    .await?;
+
+    tx.commit().await.map_err(StoreError::Internal)?;
+
+    Ok(TaskStatus {
+        id,
+        workspace_id,
+        project_id,
+        name: trimmed_name.to_string(),
+        category: params.category,
+        color,
+        position: next_pos,
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+pub async fn update_project_status(
+    pool: &PgPool,
+    actor_id: Option<Uuid>,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    status_id: Uuid,
+    params: UpdateStatusParams,
+) -> Result<TaskStatus, StoreError> {
+    let now = OffsetDateTime::now_utc();
+    let mut tx = pool.begin().await.map_err(StoreError::Internal)?;
+
+    let current = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            String,
+            String,
+            String,
+            i32,
+            OffsetDateTime,
+            OffsetDateTime,
+        ),
+    >(
+        "SELECT id, workspace_id, project_id, name, category, color, position, created_at, updated_at
+         FROM task_statuses
+         WHERE id = $1 AND workspace_id = $2 AND project_id = $3",
+    )
+    .bind(status_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?
+    .ok_or(StoreError::NotFound)?;
+
+    let name = params
+        .name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(current.3);
+
+    let color = params
+        .color
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .unwrap_or(current.5);
+
+    sqlx::query(
+        "UPDATE task_statuses
+         SET name = $1, color = $2, updated_at = $3
+         WHERE id = $4 AND workspace_id = $5 AND project_id = $6",
+    )
+    .bind(&name)
+    .bind(&color)
+    .bind(now)
+    .bind(status_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_sqlx)?;
+
+    crate::identity::store::record_audit_event_tx(
+        &mut tx,
+        actor_id,
+        "status.updated",
+        &serde_json::json!({
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+            "status_id": status_id,
+            "name": name,
+            "color": color,
+        }),
+    )
+    .await?;
+
+    tx.commit().await.map_err(StoreError::Internal)?;
+
+    Ok(TaskStatus {
+        id: status_id,
+        workspace_id,
+        project_id,
+        name,
+        category: current.4,
+        color,
+        position: current.6,
+        created_at: current.7,
+        updated_at: now,
+    })
+}
+
+pub async fn reorder_project_statuses(
+    pool: &PgPool,
+    actor_id: Option<Uuid>,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    status_ids: &[Uuid],
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await.map_err(StoreError::Internal)?;
+
+    for (pos, sid) in status_ids.iter().enumerate() {
+        let res = sqlx::query(
+            "UPDATE task_statuses
+             SET position = $1, updated_at = now()
+             WHERE id = $2 AND workspace_id = $3 AND project_id = $4",
+        )
+        .bind(pos as i32)
+        .bind(sid)
+        .bind(workspace_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(StoreError::Internal)?;
+
+        if res.rows_affected() == 0 {
+            return Err(StoreError::NotFound);
+        }
+    }
+
+    crate::identity::store::record_audit_event_tx(
+        &mut tx,
+        actor_id,
+        "status.reordered",
+        &serde_json::json!({
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+            "status_ids": status_ids,
+        }),
+    )
+    .await?;
+
+    tx.commit().await.map_err(StoreError::Internal)?;
+    Ok(())
+}
+
+pub async fn delete_project_status(
+    pool: &PgPool,
+    actor_id: Option<Uuid>,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    status_id: Uuid,
+    remap_to: Option<Uuid>,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await.map_err(StoreError::Internal)?;
+
+    // 1. Verify status exists
+    let status_to_delete = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM task_statuses WHERE id = $1 AND workspace_id = $2 AND project_id = $3",
+    )
+    .bind(status_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?
+    .ok_or(StoreError::NotFound)?;
+
+    // 2. Total statuses check (cannot delete if it's the only one left)
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM task_statuses WHERE workspace_id = $1 AND project_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?;
+
+    if count <= 1 {
+        return Err(StoreError::Conflict);
+    }
+
+    // 3. Check active tasks
+    let task_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE status_id = $1 AND workspace_id = $2 AND project_id = $3",
+    )
+    .bind(status_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?;
+
+    if task_count > 0 {
+        let dest_id = remap_to.ok_or(StoreError::Conflict)?;
+        if dest_id == status_id {
+            return Err(StoreError::Conflict);
+        }
+
+        // Verify remap_to exists in same project
+        let dest = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, category FROM task_statuses WHERE id = $1 AND workspace_id = $2 AND project_id = $3",
+        )
+        .bind(dest_id)
+        .bind(workspace_id)
+        .bind(project_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StoreError::Internal)?
+        .ok_or(StoreError::NotFound)?;
+
+        // Reassign all tasks
+        sqlx::query(
+            "UPDATE tasks
+             SET status_id = $1, status = $2, updated_at = now()
+             WHERE status_id = $3 AND workspace_id = $4 AND project_id = $5",
+        )
+        .bind(dest.0)
+        .bind(&dest.1)
+        .bind(status_id)
+        .bind(workspace_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(StoreError::Internal)?;
+    }
+
+    // 4. Delete the status
+    sqlx::query(
+        "DELETE FROM task_statuses WHERE id = $1 AND workspace_id = $2 AND project_id = $3",
+    )
+    .bind(status_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(StoreError::Internal)?;
+
+    crate::identity::store::record_audit_event_tx(
+        &mut tx,
+        actor_id,
+        "status.deleted",
+        &serde_json::json!({
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+            "status_id": status_id,
+            "name": status_to_delete.1,
+            "remap_to": remap_to,
+        }),
+    )
+    .await?;
+
+    tx.commit().await.map_err(StoreError::Internal)?;
+    Ok(())
 }

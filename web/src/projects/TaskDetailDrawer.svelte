@@ -6,6 +6,7 @@
   import Icon from "../ui/Icon.svelte";
   import type { Task } from "./TasksView.svelte";
   import type { Project } from "./ProjectsView.svelte";
+  import type { TaskStatus } from "./StatusManagerModal.svelte";
 
   export interface Label {
     id: string;
@@ -60,6 +61,7 @@
     task,
     workspace,
     project,
+    statuses = [],
     currentUserId,
     onclose,
     ontaskupdated,
@@ -67,6 +69,7 @@
     task: Task;
     workspace: { id: string; name: string; slug: string; role: string };
     project: Project;
+    statuses?: TaskStatus[];
     currentUserId?: string;
     onclose: () => void;
     ontaskupdated?: (task: Task) => void;
@@ -82,6 +85,8 @@
   // svelte-ignore state_referenced_locally
   let editStatus = $state(task.status);
   // svelte-ignore state_referenced_locally
+  let editStatusId = $state(task.status_id || "");
+  // svelte-ignore state_referenced_locally
   let editPriority = $state(task.priority);
   // svelte-ignore state_referenced_locally
   let editDueDate = $state(task.due_date || "");
@@ -93,6 +98,7 @@
       editTitle = task.title;
       editDescription = task.description || "";
       editStatus = task.status;
+      editStatusId = task.status_id || "";
       editPriority = task.priority;
       editDueDate = task.due_date || "";
     }
@@ -272,6 +278,7 @@
         editTitle = updated.title;
         editDescription = updated.description || "";
         editStatus = updated.status;
+        editStatusId = updated.status_id || "";
         editPriority = updated.priority;
         editDueDate = updated.due_date || "";
         ontaskupdated?.(updated);
@@ -297,10 +304,15 @@
       const payload: Record<string, unknown> = {
         title: trimmedTitle,
         description: editDescription.trim(),
-        status: editStatus,
         priority: editPriority,
         due_date: editDueDate.trim() ? editDueDate.trim() : null,
       };
+
+      if (editStatusId && statuses.some((s) => s.id === editStatusId)) {
+        payload.status_id = editStatusId;
+      } else {
+        payload.status = editStatus;
+      }
 
       const res = await fetch(
         `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}`,
@@ -698,6 +710,18 @@
       <div class="header-left">
         <span class="human-key">{currentTask.human_key}</span>
         <span class="project-title">{project.name}</span>
+        <span
+          class="header-status-badge"
+          style="border-color: {currentTask.status_color || 'var(--border)'};"
+        >
+          <span
+            class="status-dot"
+            style="background-color: {currentTask.status_color ||
+              'var(--accent)'};"
+            aria-hidden="true"
+          ></span>
+          {currentTask.status_name || currentTask.status}
+        </span>
       </div>
       <button
         type="button"
@@ -913,12 +937,23 @@
           <select
             id="detail-status"
             class="meta-select"
-            bind:value={editStatus}
-            onchange={handleSaveDetails}
+            bind:value={editStatusId}
+            onchange={(e) => {
+              editStatusId = (e.target as HTMLSelectElement).value;
+              const matched = statuses.find((s) => s.id === editStatusId);
+              if (matched) editStatus = matched.category;
+              void handleSaveDetails(e);
+            }}
           >
-            {#each statusCategories as s (s.value)}
-              <option value={s.value}>{s.label}</option>
-            {/each}
+            {#if statuses && statuses.length > 0}
+              {#each statuses as s (s.id)}
+                <option value={s.id}>{s.name} ({s.category})</option>
+              {/each}
+            {:else}
+              {#each statusCategories as s (s.value)}
+                <option value={s.value}>{s.label}</option>
+              {/each}
+            {/if}
           </select>
         </div>
 
@@ -1253,6 +1288,26 @@
     font-size: var(--text-small);
     color: var(--text-muted);
     font-weight: 600;
+  }
+
+  .header-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--badge-radius);
+    background: var(--surface);
+    border: var(--border-width) solid var(--border);
+    color: var(--text);
+  }
+
+  .status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .close-btn {

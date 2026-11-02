@@ -15,7 +15,7 @@ Status reviewed 2026-10-15. This file owns work ordering; the
 | M03b | 3 | Invitations and any self-service recovery via approved delivery channels | M03a, separate channel/recovery specification | Deferred; no SMTP or public enrollment in M03a |
 | M04a | 4 | Authorized projects, canonical tasks and paginated list end to end | M03a, project/task specs | Verified; authorized projects, canonical tasks with atomic human keys (<KEY>-<NUM>), status filters, bounded pagination, concealed 404 cross-tenant boundaries, and Svelte Projects/Tasks UI views implemented |
 | M04b | 4 | Labels/assignees/comments/history/subtasks and filtering | M04a | Verified; database migrations, label CRUD, task assignees, subtask hierarchy, threaded comments, task activity audit stream, multi-dimensional filtering, TaskDetailDrawer Svelte component with accessible tokens/icons, and unit/integration test suites |
-| M05a | 5 | Custom status administration and consistent transitions | M04a, category/remap rules | Not started |
+| M05a | 5 | Custom status administration and consistent transitions | M04a, category/remap rules | Verified; task_statuses schema, canonical category mapping (backlog, unstarted, started, completed, cancelled), atomic deletion with remap_to reassignments, position reordering, and Svelte StatusManagerModal with category pills & swatch controls |
 | M05b | 5 | Accessible board ordering, table editing, saved views | M05a, ordering/concurrency ADR | Not started |
 | M05c | 5 | Milestones/progress, then cycles and roadmap | M04b, planning formulas | Not started |
 | M06a | 6 | Retry-safe timers/manual entries and reconcilable timesheets | M04a, time rules and concurrency tests | Not started |
@@ -45,4 +45,4 @@ security limits, commits, unresolved work and the next concrete increment.
 
 ## Next concrete milestone
 
-M05a: Custom status administration and consistent transitions.
+M05b: Accessible board ordering, table editing, saved views.

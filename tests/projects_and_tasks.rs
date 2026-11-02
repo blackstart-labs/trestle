@@ -716,6 +716,7 @@ async fn concurrent_task_counter_allocation(pool: PgPool) {
                     priority: "none".to_string(),
                     due_date: None,
                     parent_id: None,
+                    status_id: None,
                 },
             )
             .await
