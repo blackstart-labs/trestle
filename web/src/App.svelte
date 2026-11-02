@@ -6,6 +6,7 @@
   import WorkspaceChooser, {
     type Workspace,
   } from "./auth/WorkspaceChooser.svelte";
+  import WorkspaceMembers from "./auth/WorkspaceMembers.svelte";
   import Button from "./ui/Button.svelte";
 
   let user = $state<User | null>(null);
@@ -164,6 +165,14 @@
             Slug: /{selectedWorkspace.slug} · Role: {selectedWorkspace.role}
           </p>
         </section>
+        <WorkspaceMembers
+          workspace={selectedWorkspace}
+          currentUserId={user.id}
+          onleave={() => {
+            selectedWorkspace = null;
+            void checkSession();
+          }}
+        />
       {/if}
     {:else}
       <section aria-labelledby="overview">

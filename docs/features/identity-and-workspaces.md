@@ -1,10 +1,12 @@
 # Identity and workspaces
 
-Status: **Implemented and verified in M03a.1**. Linked requirements: PR-01,
+Status: **Implemented and verified in M03a.1 and M03a.2**. Linked requirements: PR-01,
 PR-07, PR-08; UC-02; NFR-SEC and NFR-DATA. The maintainer approved the
 [initial identity policy](../security/identity-policy.md) on 2026-10-15.
-One-time bootstrap, Argon2id credentials, session/CSRF token contracts,
-operator CLI, rate-limiting, and Svelte sign-in/workspace chooser implemented.
+One-time bootstrap, operator user provisioning and recovery CLI (`adduser`, `resetpassword`,
+`disableuser`, `enableuser`), Argon2id credentials, session/CSRF token contracts, rate-limiting,
+multi-user workspace memberships, owner transfer with reauthentication, last-owner preservation
+under concurrency, and Svelte sign-in/workspace chooser/members view implemented.
 
 ## 1. Purpose
 

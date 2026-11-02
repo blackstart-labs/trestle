@@ -26,7 +26,11 @@ async fn run() -> Result<(), String> {
         [] => run_server().await,
         [arg] if arg == "migrate" => run_migrate().await,
         [arg] if arg == "bootstrap" => run_bootstrap().await,
-        _ => Err("usage: trestle [migrate | bootstrap]".into()),
+        [arg] if arg == "adduser" => run_adduser().await,
+        [arg] if arg == "resetpassword" => run_resetpassword().await,
+        [arg] if arg == "disableuser" => run_disableuser().await,
+        [arg] if arg == "enableuser" => run_enableuser().await,
+        _ => Err("usage: trestle [migrate | bootstrap | adduser | resetpassword | disableuser | enableuser]".into()),
     }
 }
 
@@ -202,6 +206,199 @@ async fn run_bootstrap() -> Result<(), String> {
     eprintln!("  Workspace: {workspace_name} (slug: {workspace_slug})");
     eprintln!();
     eprintln!("Sign in at the application URL with your username and password.");
+    Ok(())
+}
+
+async fn run_adduser() -> Result<(), String> {
+    let config = Config::from_env().map_err(|error| error.to_string())?;
+    let pool = database::pool(&config);
+
+    let username_env = std::env::var("TRESTLE_ADDUSER_USERNAME").ok();
+    let password_env = std::env::var("TRESTLE_ADDUSER_PASSWORD").ok();
+    let display_name_env = std::env::var("TRESTLE_ADDUSER_DISPLAY_NAME").ok();
+
+    let (username_str, password, display_name) = match (username_env, password_env) {
+        (Some(u), Some(p)) => {
+            let dn = display_name_env.unwrap_or_else(|| u.clone());
+            (u, p, dn)
+        }
+        _ => {
+            eprintln!("Trestle operator user provisioning:");
+            eprintln!();
+            let username = prompt_plain("Username (3-64 characters, letters/digits/._-): ")?;
+            let display_name = prompt_plain("Display name: ")?;
+            let password = prompt_hidden("Password (at least 8 characters): ")?;
+            let password2 = prompt_hidden("Confirm password: ")?;
+            if password != password2 {
+                pool.close().await;
+                return Err("Passwords do not match.".into());
+            }
+            (username, password, display_name)
+        }
+    };
+
+    let username = trestle::identity::Username::parse(&username_str)
+        .map_err(|e| format!("Invalid username: {e}"))?;
+
+    if password.len() < 8 {
+        pool.close().await;
+        return Err("Password must be at least 8 characters.".into());
+    }
+
+    if display_name.trim().is_empty() || display_name.len() > 120 {
+        pool.close().await;
+        return Err("Display name must be 1-120 characters.".into());
+    }
+
+    let hasher = trestle::identity::Hasher::new(
+        config.argon2_m_cost,
+        config.argon2_t_cost,
+        config.argon2_parallelism,
+    )
+    .map_err(|e| format!("argon2 configuration error: {e}"))?;
+
+    let password_hash = tokio::task::spawn_blocking(move || hasher.hash(password.as_bytes()))
+        .await
+        .map_err(|_| "password hashing task failed")?
+        .map_err(|e| format!("password error: {e}"))?;
+
+    let user = trestle::identity::store::create_user(
+        &pool,
+        username.as_str(),
+        &password_hash,
+        display_name.trim(),
+    )
+    .await
+    .map_err(|e| match e {
+        trestle::identity::store::StoreError::Conflict => "User already exists.".into(),
+        e => format!("database error: {e}"),
+    })?;
+
+    pool.close().await;
+
+    eprintln!();
+    eprintln!("User provisioned successfully.");
+    eprintln!("  Username:     {}", user.username);
+    eprintln!("  Display name: {}", user.display_name);
+    eprintln!("(Note: Workspace membership must be granted separately.)");
+    Ok(())
+}
+
+async fn run_resetpassword() -> Result<(), String> {
+    let config = Config::from_env().map_err(|error| error.to_string())?;
+    let pool = database::pool(&config);
+
+    let username_env = std::env::var("TRESTLE_RESET_USERNAME").ok();
+    let password_env = std::env::var("TRESTLE_RESET_PASSWORD").ok();
+
+    let (username_str, password) = match (username_env, password_env) {
+        (Some(u), Some(p)) => (u, p),
+        _ => {
+            eprintln!("Trestle operator password reset & session revocation:");
+            eprintln!();
+            let username = prompt_plain("Username to reset: ")?;
+            let password = prompt_hidden("New password (at least 8 characters): ")?;
+            let password2 = prompt_hidden("Confirm new password: ")?;
+            if password != password2 {
+                pool.close().await;
+                return Err("Passwords do not match.".into());
+            }
+            (username, password)
+        }
+    };
+
+    let username = trestle::identity::Username::parse(&username_str)
+        .map_err(|e| format!("Invalid username: {e}"))?;
+
+    if password.len() < 8 {
+        pool.close().await;
+        return Err("Password must be at least 8 characters.".into());
+    }
+
+    let hasher = trestle::identity::Hasher::new(
+        config.argon2_m_cost,
+        config.argon2_t_cost,
+        config.argon2_parallelism,
+    )
+    .map_err(|e| format!("argon2 configuration error: {e}"))?;
+
+    let password_hash = tokio::task::spawn_blocking(move || hasher.hash(password.as_bytes()))
+        .await
+        .map_err(|_| "password hashing task failed")?
+        .map_err(|e| format!("password error: {e}"))?;
+
+    let user =
+        trestle::identity::store::reset_user_password(&pool, username.as_str(), &password_hash)
+            .await
+            .map_err(|e| match e {
+                trestle::identity::store::StoreError::NotFound => "User not found.".into(),
+                e => format!("database error: {e}"),
+            })?;
+
+    pool.close().await;
+
+    eprintln!();
+    eprintln!("Password reset successfully for user '{}'.", user.username);
+    eprintln!("All existing active sessions for this user have been revoked.");
+    Ok(())
+}
+
+async fn run_disableuser() -> Result<(), String> {
+    let config = Config::from_env().map_err(|error| error.to_string())?;
+    let pool = database::pool(&config);
+
+    let username_env = std::env::var("TRESTLE_DISABLE_USERNAME").ok();
+    let username_str = match username_env {
+        Some(u) => u,
+        None => prompt_plain("Username to disable: ")?,
+    };
+
+    let username = trestle::identity::Username::parse(&username_str)
+        .map_err(|e| format!("Invalid username: {e}"))?;
+
+    let user = trestle::identity::store::set_user_disabled(&pool, username.as_str(), true)
+        .await
+        .map_err(|e| match e {
+            trestle::identity::store::StoreError::NotFound => "User not found.".into(),
+            trestle::identity::store::StoreError::Conflict => {
+                "Cannot disable user: this user is the sole active owner of one or more workspaces."
+                    .into()
+            }
+            e => format!("database error: {e}"),
+        })?;
+
+    pool.close().await;
+
+    eprintln!();
+    eprintln!("User '{}' has been disabled.", user.username);
+    eprintln!("All existing active sessions have been revoked.");
+    Ok(())
+}
+
+async fn run_enableuser() -> Result<(), String> {
+    let config = Config::from_env().map_err(|error| error.to_string())?;
+    let pool = database::pool(&config);
+
+    let username_env = std::env::var("TRESTLE_ENABLE_USERNAME").ok();
+    let username_str = match username_env {
+        Some(u) => u,
+        None => prompt_plain("Username to enable: ")?,
+    };
+
+    let username = trestle::identity::Username::parse(&username_str)
+        .map_err(|e| format!("Invalid username: {e}"))?;
+
+    let user = trestle::identity::store::set_user_disabled(&pool, username.as_str(), false)
+        .await
+        .map_err(|e| match e {
+            trestle::identity::store::StoreError::NotFound => "User not found.".into(),
+            e => format!("database error: {e}"),
+        })?;
+
+    pool.close().await;
+
+    eprintln!();
+    eprintln!("User '{}' has been enabled.", user.username);
     Ok(())
 }
 
