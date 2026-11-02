@@ -11,9 +11,9 @@ Status reviewed 2026-10-15. This file owns work ordering; the
 | M02 | 2 | Semantic tokens, accessible responsive shell, reusable forms/feedback | M01b, design acceptance criteria | Implemented scoped shell; see application-shell specification and verification |
 | M03a | 3 | Bootstrap/login/logout/revocation and workspace membership authorization | M01a, M02, identity specification | Security policy approved; implementation not started |
 | M03a.1 | 3 | One-time CLI bootstrap plus real browser login/current-user/logout and initial workspace access, with expiry/CSRF/login limits | M03a policy, executable contracts/hash measurements/test seams | Verified; one-time CLI bootstrap, Argon2id auth, session/CSRF tokens, login limits, and Svelte sign-in/workspace chooser implemented |
-| M03a.2 | 3 | Operator provisioning/recovery, membership lifecycle and owner transfer/revocation races across workspaces | M03a.1, scoped permission contracts | Not started; required before claiming complete identity/workspace isolation |
+| M03a.2 | 3 | Operator provisioning/recovery, membership lifecycle and owner transfer/revocation races across workspaces | M03a.1, scoped permission contracts | Verified; operator CLI (adduser, resetpassword, disableuser, enableuser), workspace membership lifecycle, last-owner preservation under concurrency, and owner transfer with reauthentication implemented |
 | M03b | 3 | Invitations and any self-service recovery via approved delivery channels | M03a, separate channel/recovery specification | Deferred; no SMTP or public enrollment in M03a |
-| M04a | 4 | Authorized projects, canonical tasks and paginated list end to end | M03a, project/task specs | Not started |
+| M04a | 4 | Authorized projects, canonical tasks and paginated list end to end | M03a, project/task specs | Verified; authorized projects, canonical tasks with atomic human keys (<KEY>-<NUM>), status filters, bounded pagination, concealed 404 cross-tenant boundaries, and Svelte Projects/Tasks UI views implemented |
 | M04b | 4 | Labels/assignees/comments/history/subtasks and filtering | M04a | Not started |
 | M05a | 5 | Custom status administration and consistent transitions | M04a, category/remap rules | Not started |
 | M05b | 5 | Accessible board ordering, table editing, saved views | M05a, ordering/concurrency ADR | Not started |
@@ -45,5 +45,4 @@ security limits, commits, unresolved work and the next concrete increment.
 
 ## Next concrete milestone
 
-M03a.2: Operator provisioning/recovery (`trestle adduser`), multi-user workspace
-memberships, and owner transfer/revocation race-condition hardening across workspaces.
+M04b: Labels, assignees, comments, activity history, and subtasks.

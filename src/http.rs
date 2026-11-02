@@ -1,5 +1,6 @@
 pub mod me;
 pub mod middleware;
+pub mod projects;
 pub mod session;
 pub mod workspaces;
 
@@ -51,6 +52,9 @@ pub enum HttpError {
     MethodNotAllowed,
     Unavailable,
     Internal,
+    Forbidden,
+    Conflict(&'static str),
+    BadRequest(&'static str),
 }
 
 impl IntoResponse for HttpError {
@@ -72,6 +76,9 @@ impl IntoResponse for HttpError {
                 "internal_error",
                 "Internal server error",
             ),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", "Forbidden"),
+            Self::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg),
+            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg),
         };
         (
             status,
@@ -114,6 +121,41 @@ pub fn router(pool: PgPool, timeout: Duration, config: Config) -> Router {
         .route("/api/v1/session", delete(session_delete))
         .route("/api/v1/me", get(me::me))
         .route("/api/v1/workspaces", get(workspaces::list_workspaces))
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members",
+            get(workspaces::list_members).post(workspaces::add_member),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+            axum::routing::patch(workspaces::update_member_role).delete(workspaces::remove_member),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/transfer-ownership",
+            post(workspaces::transfer_ownership),
+        )
+        // Projects & Tasks API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects",
+            get(projects::list_projects).post(projects::create_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}",
+            get(projects::get_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/archive",
+            post(projects::archive_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks",
+            get(projects::list_tasks).post(projects::create_task),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}",
+            get(projects::get_task)
+                .patch(projects::update_task)
+                .delete(projects::delete_task),
+        )
         .fallback(|| async { HttpError::NotFound })
         .method_not_allowed_fallback(|| async { HttpError::MethodNotAllowed })
         .with_state(state.clone())
