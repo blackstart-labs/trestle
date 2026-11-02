@@ -71,6 +71,161 @@ pub struct CreateProjectRequest {
 }
 
 #[derive(Serialize)]
+pub struct LabelItem {
+    pub id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub color: String,
+    pub created_at: String,
+}
+
+impl From<crate::projects::Label> for LabelItem {
+    fn from(l: crate::projects::Label) -> Self {
+        Self {
+            id: l.id.to_string(),
+            workspace_id: l.workspace_id.to_string(),
+            project_id: l.project_id.to_string(),
+            name: l.name,
+            color: l.color,
+            created_at: l
+                .created_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| l.created_at.to_string()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct LabelListResponse {
+    pub labels: Vec<LabelItem>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateLabelRequest {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct AttachLabelRequest {
+    pub label_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct AssigneeItem {
+    pub task_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub assigned_by: Option<String>,
+    pub created_at: String,
+}
+
+impl From<crate::projects::TaskAssignee> for AssigneeItem {
+    fn from(a: crate::projects::TaskAssignee) -> Self {
+        Self {
+            task_id: a.task_id.to_string(),
+            user_id: a.user_id.to_string(),
+            username: a.username,
+            display_name: a.display_name,
+            avatar_url: a.avatar_url,
+            assigned_by: a.assigned_by.map(|u| u.to_string()),
+            created_at: a
+                .created_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| a.created_at.to_string()),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AssignUserRequest {
+    pub user_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct CommentItem {
+    pub id: String,
+    pub workspace_id: String,
+    pub task_id: String,
+    pub user_id: String,
+    pub author_name: String,
+    pub author_username: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<crate::projects::TaskComment> for CommentItem {
+    fn from(c: crate::projects::TaskComment) -> Self {
+        Self {
+            id: c.id.to_string(),
+            workspace_id: c.workspace_id.to_string(),
+            task_id: c.task_id.to_string(),
+            user_id: c.user_id.to_string(),
+            author_name: c.author_name,
+            author_username: c.author_username,
+            content: c.content,
+            created_at: c
+                .created_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| c.created_at.to_string()),
+            updated_at: c
+                .updated_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| c.updated_at.to_string()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct CommentListResponse {
+    pub comments: Vec<CommentItem>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateCommentRequest {
+    pub content: String,
+}
+
+#[derive(Serialize)]
+pub struct ActivityItem {
+    pub id: String,
+    pub workspace_id: String,
+    pub task_id: String,
+    pub actor_id: Option<String>,
+    pub actor_name: Option<String>,
+    pub action: String,
+    pub details: serde_json::Value,
+    pub created_at: String,
+}
+
+impl From<crate::projects::TaskActivity> for ActivityItem {
+    fn from(a: crate::projects::TaskActivity) -> Self {
+        Self {
+            id: a.id.to_string(),
+            workspace_id: a.workspace_id.to_string(),
+            task_id: a.task_id.to_string(),
+            actor_id: a.actor_id.map(|u| u.to_string()),
+            actor_name: a.actor_name,
+            action: a.action,
+            details: a.details,
+            created_at: a
+                .created_at
+                .format(&Rfc3339)
+                .unwrap_or_else(|_| a.created_at.to_string()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct ActivityListResponse {
+    pub activities: Vec<ActivityItem>,
+}
+
+#[derive(Serialize)]
 pub struct TaskItem {
     pub id: String,
     pub workspace_id: String,
@@ -84,6 +239,9 @@ pub struct TaskItem {
     pub priority: String,
     pub due_date: Option<String>,
     pub created_by: Option<String>,
+    pub parent_id: Option<String>,
+    pub labels: Vec<LabelItem>,
+    pub assignees: Vec<AssigneeItem>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -103,6 +261,9 @@ impl From<Task> for TaskItem {
             priority: t.priority,
             due_date: t.due_date.map(|d| d.to_string()),
             created_by: t.created_by.map(|u| u.to_string()),
+            parent_id: t.parent_id.map(|u| u.to_string()),
+            labels: t.labels.into_iter().map(LabelItem::from).collect(),
+            assignees: t.assignees.into_iter().map(AssigneeItem::from).collect(),
             created_at: t
                 .created_at
                 .format(&Rfc3339)
@@ -126,6 +287,8 @@ pub struct PaginatedTasksResponse {
 #[derive(Deserialize, Default)]
 pub struct TaskListQuery {
     pub status: Option<String>,
+    pub label_id: Option<Uuid>,
+    pub assignee_id: Option<Uuid>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -137,6 +300,7 @@ pub struct CreateTaskRequest {
     pub status: Option<String>,
     pub priority: Option<String>,
     pub due_date: Option<String>,
+    pub parent_id: Option<Uuid>,
 }
 
 fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -206,6 +370,14 @@ fn validate_status(status: &str) -> bool {
 
 fn validate_priority(priority: &str) -> bool {
     matches!(priority, "none" | "low" | "medium" | "high" | "urgent")
+}
+
+fn validate_hex_color(color: &str) -> bool {
+    let c = color.trim();
+    if c.len() != 7 || !c.starts_with('#') {
+        return false;
+    }
+    c[1..].chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn parse_due_date(s: &str) -> Result<Date, HttpError> {
@@ -382,16 +554,15 @@ pub async fn list_tasks(
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
 
-    match projects_store::list_tasks(
-        &state.pool,
-        workspace_id,
-        project_id,
-        query.status.as_deref(),
+    let params = projects_store::ListTasksParams {
+        status_filter: query.status.as_deref(),
+        label_filter: query.label_id,
+        assignee_filter: query.assignee_id,
         limit,
         offset,
-    )
-    .await
-    {
+    };
+
+    match projects_store::list_tasks(&state.pool, workspace_id, project_id, params).await {
         Ok(paginated) => Json(PaginatedTasksResponse {
             tasks: paginated.tasks.into_iter().map(TaskItem::from).collect(),
             total: paginated.total,
@@ -454,6 +625,7 @@ pub async fn create_task(
         status,
         priority,
         due_date,
+        parent_id: payload.parent_id,
     };
 
     match projects_store::create_task(
@@ -602,6 +774,455 @@ pub async fn delete_task(
         Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to delete task");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Label Handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/workspaces/{workspace_id}/projects/{project_id}/labels
+pub async fn list_labels(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id)): Path<(Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::list_labels(&state.pool, workspace_id, project_id).await {
+        Ok(labels) => Json(LabelListResponse {
+            labels: labels.into_iter().map(LabelItem::from).collect(),
+        })
+        .into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list labels");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/labels
+pub async fn create_label(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<CreateLabelRequest>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    let name = payload.name.trim();
+    if name.is_empty() || name.len() > 50 {
+        return HttpError::BadRequest("Label name must be between 1 and 50 characters")
+            .into_response();
+    }
+
+    let color = payload.color.unwrap_or_else(|| "#315b3b".to_string());
+    if !validate_hex_color(&color) {
+        return HttpError::BadRequest(
+            "Label color must be a valid 6-digit hex code (e.g. #315b3b)",
+        )
+        .into_response();
+    }
+
+    match projects_store::create_label(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        name.to_string(),
+        color,
+    )
+    .await
+    {
+        Ok(label) => (StatusCode::CREATED, Json(LabelItem::from(label))).into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(StoreError::Conflict) => {
+            HttpError::Conflict("A label with this name already exists in this project")
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create label");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// DELETE /api/v1/workspaces/{workspace_id}/projects/{project_id}/labels/{label_id}
+pub async fn delete_label(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, label_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    if caller_role != "owner" && caller_role != "admin" {
+        return HttpError::Forbidden.into_response();
+    }
+
+    match projects_store::delete_label(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        label_id,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to delete label");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/labels
+pub async fn attach_label(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<AttachLabelRequest>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::attach_label(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        task_id,
+        payload.label_id,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to attach label");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// DELETE /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/labels/{label_id}
+pub async fn detach_label(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id, label_id)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::detach_label(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        task_id,
+        label_id,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to detach label");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Assignee Handlers
+// ---------------------------------------------------------------------------
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/assignees
+pub async fn assign_user(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<AssignUserRequest>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::assign_user(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        task_id,
+        payload.user_id,
+    )
+    .await
+    {
+        Ok(assignee) => (StatusCode::CREATED, Json(AssigneeItem::from(assignee))).into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to assign user");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// DELETE /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/assignees/{user_id}
+pub async fn unassign_user(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id, user_id)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::unassign_user(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        task_id,
+        user_id,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to unassign user");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Subtask Handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/subtasks
+pub async fn list_subtasks(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::list_subtasks(&state.pool, workspace_id, project_id, task_id).await {
+        Ok(subtasks) => {
+            Json(subtasks.into_iter().map(TaskItem::from).collect::<Vec<_>>()).into_response()
+        }
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list subtasks");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/subtasks
+pub async fn create_subtask(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<CreateTaskRequest>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    let title = payload.title.trim();
+    if title.is_empty() || title.len() > 255 {
+        return HttpError::BadRequest("Subtask title must be between 1 and 255 characters")
+            .into_response();
+    }
+
+    let status = payload.status.unwrap_or_else(|| "unstarted".to_string());
+    if !validate_status(&status) {
+        return HttpError::BadRequest("Invalid subtask status").into_response();
+    }
+
+    let priority = payload.priority.unwrap_or_else(|| "none".to_string());
+    if !validate_priority(&priority) {
+        return HttpError::BadRequest("Invalid subtask priority").into_response();
+    }
+
+    let description = payload.description.unwrap_or_default();
+    if description.len() > 10000 {
+        return HttpError::BadRequest("Subtask description cannot exceed 10000 characters")
+            .into_response();
+    }
+
+    let due_date = match payload.due_date {
+        Some(s) if !s.trim().is_empty() => match parse_due_date(&s) {
+            Ok(d) => Some(d),
+            Err(err) => return err.into_response(),
+        },
+        _ => None,
+    };
+
+    let params = CreateTaskParams {
+        title: title.to_string(),
+        description,
+        status,
+        priority,
+        due_date,
+        parent_id: Some(task_id),
+    };
+
+    match projects_store::create_task(
+        &state.pool,
+        Some(session.user.id),
+        workspace_id,
+        project_id,
+        params,
+    )
+    .await
+    {
+        Ok(task) => (StatusCode::CREATED, Json(TaskItem::from(task))).into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create subtask");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Comment Handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/comments
+pub async fn list_comments(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::list_comments(&state.pool, workspace_id, project_id, task_id).await {
+        Ok(comments) => Json(CommentListResponse {
+            comments: comments.into_iter().map(CommentItem::from).collect(),
+        })
+        .into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list comments");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// POST /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/comments
+pub async fn create_comment(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<CreateCommentRequest>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    let content = payload.content.trim();
+    if content.is_empty() || content.len() > 5000 {
+        return HttpError::BadRequest("Comment content must be between 1 and 5000 characters")
+            .into_response();
+    }
+
+    match projects_store::create_comment(
+        &state.pool,
+        session.user.id,
+        workspace_id,
+        project_id,
+        task_id,
+        content.to_string(),
+    )
+    .await
+    {
+        Ok(comment) => (StatusCode::CREATED, Json(CommentItem::from(comment))).into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create comment");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+/// DELETE /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/comments/{comment_id}
+pub async fn delete_comment(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id, comment_id)): Path<(Uuid, Uuid, Uuid, Uuid)>,
+) -> Response {
+    let caller_role = match check_membership(&state, workspace_id, session.user.id).await {
+        Ok(role) => role,
+        Err(err) => return err.into_response(),
+    };
+
+    let is_admin_or_owner = caller_role == "owner" || caller_role == "admin";
+
+    match projects_store::delete_comment(
+        &state.pool,
+        session.user.id,
+        workspace_id,
+        project_id,
+        task_id,
+        comment_id,
+        is_admin_or_owner,
+    )
+    .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(StoreError::Forbidden) => HttpError::Forbidden.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to delete comment");
+            HttpError::Internal.into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Activity Handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/activity
+pub async fn list_task_activity(
+    State(state): State<AppState>,
+    session: AuthenticatedSession,
+    Path((workspace_id, project_id, task_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Response {
+    if let Err(err) = check_membership(&state, workspace_id, session.user.id).await {
+        return err.into_response();
+    }
+
+    match projects_store::list_task_activities(&state.pool, workspace_id, project_id, task_id).await
+    {
+        Ok(activities) => Json(ActivityListResponse {
+            activities: activities.into_iter().map(ActivityItem::from).collect(),
+        })
+        .into_response(),
+        Err(StoreError::NotFound) => HttpError::NotFound.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list task activities");
             HttpError::Internal.into_response()
         }
     }

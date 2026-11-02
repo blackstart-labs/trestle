@@ -156,6 +156,51 @@ pub fn router(pool: PgPool, timeout: Duration, config: Config) -> Router {
                 .patch(projects::update_task)
                 .delete(projects::delete_task),
         )
+        // Labels API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/labels",
+            get(projects::list_labels).post(projects::create_label),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/labels/{label_id}",
+            delete(projects::delete_label),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/labels",
+            post(projects::attach_label),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/labels/{label_id}",
+            delete(projects::detach_label),
+        )
+        // Assignees API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/assignees",
+            post(projects::assign_user),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/assignees/{user_id}",
+            delete(projects::unassign_user),
+        )
+        // Subtasks API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/subtasks",
+            get(projects::list_subtasks).post(projects::create_subtask),
+        )
+        // Comments API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/comments",
+            get(projects::list_comments).post(projects::create_comment),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/comments/{comment_id}",
+            delete(projects::delete_comment),
+        )
+        // Activity Stream API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}/activity",
+            get(projects::list_task_activity),
+        )
         .fallback(|| async { HttpError::NotFound })
         .method_not_allowed_fallback(|| async { HttpError::MethodNotAllowed })
         .with_state(state.clone())

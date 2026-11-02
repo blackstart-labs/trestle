@@ -155,3 +155,101 @@ test("allows creating a new task", async () => {
     expect(screen.getByText(/task CORE-3 created/i)).toBeTruthy();
   });
 });
+
+test("clicking a task opens the task detail drawer", async () => {
+  const tasks = [
+    {
+      id: "task-10",
+      workspace_id: "ws-1",
+      project_id: "proj-1",
+      project_key: "CORE",
+      task_number: 10,
+      human_key: "CORE-10",
+      title: "Interactive detail test task",
+      description: "Detailed description for drawer",
+      status: "started",
+      priority: "high",
+      due_date: "2026-11-25",
+      created_by: "user-1",
+      labels: [],
+      assignees: [],
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-01T00:00:00Z",
+    },
+  ];
+
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/labels")) {
+      return Promise.resolve(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/members")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ members: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/tasks?")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ tasks, total: 1, limit: 20, offset: 0 }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(TasksView, {
+    workspace: {
+      id: "ws-1",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+    project: mockProject,
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("Interactive detail test task")).toBeTruthy();
+    expect(screen.getByText("CORE-10")).toBeTruthy();
+  });
+
+  // Clicking on task row opens drawer
+  const taskRow = screen.getByText("Interactive detail test task");
+  await fireEvent.click(taskRow);
+
+  await waitFor(() => {
+    // Drawer panel is open with dialog role and human key in header
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(
+      screen.getByDisplayValue("Interactive detail test task"),
+    ).toBeTruthy();
+    expect(
+      screen.getByDisplayValue("Detailed description for drawer"),
+    ).toBeTruthy();
+  });
+
+  // Close drawer with Close button
+  const closeBtn = screen.getByRole("button", { name: /close task details/i });
+  await fireEvent.click(closeBtn);
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

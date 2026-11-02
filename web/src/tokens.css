@@ -35,9 +35,13 @@
   --border-width: 1px;
   --focus-width: 3px;
   --focus-offset: 3px;
-  --layer-skip: 10;
   --content-width: 52rem;
   --nav-width: 14rem;
+  --drawer-width: min(44rem, 100vw);
+  --drawer-scrim: light-dark(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.75));
+  --badge-radius: 9999px;
+  --avatar-size: 1.75rem;
+  --timeline-line: light-dark(#d0d5ce, #374239);
 }
 
 :root[data-theme="dark"] {
