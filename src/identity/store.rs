@@ -1040,7 +1040,7 @@ pub async fn record_audit_event(
 }
 
 /// Record a security audit event within an existing transaction.
-async fn record_audit_event_tx(
+pub async fn record_audit_event_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     actor_id: Option<Uuid>,
     event_type: &str,

@@ -7,10 +7,14 @@
     type Workspace,
   } from "./auth/WorkspaceChooser.svelte";
   import WorkspaceMembers from "./auth/WorkspaceMembers.svelte";
+  import ProjectsView, { type Project } from "./projects/ProjectsView.svelte";
+  import TasksView from "./projects/TasksView.svelte";
   import Button from "./ui/Button.svelte";
 
   let user = $state<User | null>(null);
   let selectedWorkspace = $state<Workspace | null>(null);
+  let selectedProject = $state<Project | null>(null);
+  let workspaceTab = $state<"projects" | "members">("projects");
   let checkingAuth = $state(true);
   let activeTab = $state<
     "overview" | "workspaces" | "signin" | "appearance" | "instance-status"
@@ -75,6 +79,8 @@
 
   function handleWorkspaceSelect(ws: Workspace) {
     selectedWorkspace = ws;
+    selectedProject = null;
+    workspaceTab = "projects";
   }
 
   onMount(() => {
@@ -159,20 +165,67 @@
       <WorkspaceChooser onselect={handleWorkspaceSelect} />
       {#if selectedWorkspace}
         <section class="active-workspace-card" aria-label="Selected workspace">
-          <p class="eyebrow">Active selection</p>
-          <h3>{selectedWorkspace.name}</h3>
-          <p class="note">
-            Slug: /{selectedWorkspace.slug} · Role: {selectedWorkspace.role}
-          </p>
+          <div class="workspace-header-layout">
+            <div>
+              <p class="eyebrow">Active workspace</p>
+              <h3>{selectedWorkspace.name}</h3>
+              <p class="note">
+                Slug: /{selectedWorkspace.slug} · Role: {selectedWorkspace.role}
+              </p>
+            </div>
+            <div
+              class="workspace-subnav"
+              role="tablist"
+              aria-label="Workspace views"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workspaceTab === "projects"}
+                class="subnav-btn"
+                class:active={workspaceTab === "projects"}
+                onclick={() => (workspaceTab = "projects")}
+              >
+                Projects & Tasks
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workspaceTab === "members"}
+                class="subnav-btn"
+                class:active={workspaceTab === "members"}
+                onclick={() => (workspaceTab = "members")}
+              >
+                Members
+              </button>
+            </div>
+          </div>
         </section>
-        <WorkspaceMembers
-          workspace={selectedWorkspace}
-          currentUserId={user.id}
-          onleave={() => {
-            selectedWorkspace = null;
-            void checkSession();
-          }}
-        />
+
+        {#if workspaceTab === "projects"}
+          {#if selectedProject}
+            <TasksView
+              workspace={selectedWorkspace}
+              project={selectedProject}
+              onback={() => (selectedProject = null)}
+            />
+          {:else}
+            <ProjectsView
+              workspace={selectedWorkspace}
+              onselectproject={(proj) => (selectedProject = proj)}
+            />
+          {/if}
+        {:else if workspaceTab === "members"}
+          <WorkspaceMembers
+            workspace={selectedWorkspace}
+            currentUserId={user.id}
+            onleave={() => {
+              selectedWorkspace = null;
+              selectedProject = null;
+              void checkSession();
+            }}
+          />
+        {/if}
       {/if}
     {:else}
       <section aria-labelledby="overview">
@@ -248,5 +301,31 @@
     background: var(--surface-raised);
     border: var(--border-width) solid var(--accent);
     border-radius: var(--radius);
+  }
+  .workspace-header-layout {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .workspace-subnav {
+    display: flex;
+    gap: var(--space-2);
+  }
+  .subnav-btn {
+    background: var(--surface);
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-small);
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .subnav-btn.active {
+    background: var(--button-bg);
+    color: var(--button-text);
+    border-color: var(--button-bg);
   }
 </style>

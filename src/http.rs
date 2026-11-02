@@ -1,5 +1,6 @@
 pub mod me;
 pub mod middleware;
+pub mod projects;
 pub mod session;
 pub mod workspaces;
 
@@ -131,6 +132,29 @@ pub fn router(pool: PgPool, timeout: Duration, config: Config) -> Router {
         .route(
             "/api/v1/workspaces/{workspace_id}/transfer-ownership",
             post(workspaces::transfer_ownership),
+        )
+        // Projects & Tasks API
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects",
+            get(projects::list_projects).post(projects::create_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}",
+            get(projects::get_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/archive",
+            post(projects::archive_project),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks",
+            get(projects::list_tasks).post(projects::create_task),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks/{task_id}",
+            get(projects::get_task)
+                .patch(projects::update_task)
+                .delete(projects::delete_task),
         )
         .fallback(|| async { HttpError::NotFound })
         .method_not_allowed_fallback(|| async { HttpError::MethodNotAllowed })
