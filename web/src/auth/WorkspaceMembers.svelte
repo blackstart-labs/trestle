@@ -445,13 +445,14 @@
   .table-wrapper {
     overflow-x: auto;
     margin-bottom: var(--space-6);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    border: var(--border-width) solid var(--border);
   }
   .members-table {
     width: 100%;
     border-collapse: collapse;
     background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
   }
   .members-table th,
   .members-table td {
@@ -459,45 +460,58 @@
     text-align: left;
     border-bottom: var(--border-width) solid var(--border);
   }
+  .members-table tr:last-child td {
+    border-bottom: none;
+  }
   .members-table th {
     background: var(--surface);
-    font-size: var(--text-small);
-    font-weight: 650;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
   }
   .member-info {
     display: flex;
     flex-direction: column;
+    gap: 0.125rem;
   }
   .member-name {
-    font-weight: 600;
+    font-weight: 650;
+    color: var(--text);
   }
   .member-handle {
-    font-size: var(--text-small);
-    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
     font-family: var(--font-mono);
   }
   .role-badge {
     display: inline-block;
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--text-small);
-    border-radius: var(--radius);
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+    border-radius: var(--radius-full);
     text-transform: capitalize;
     font-weight: 600;
   }
   .role-owner {
-    background: var(--selected);
+    background: rgba(79, 70, 229, 0.1);
     color: var(--accent);
     border: var(--border-width) solid var(--accent);
   }
   .role-admin {
-    background: var(--surface);
+    background: rgba(14, 165, 233, 0.1);
+    color: var(--focus);
     border: var(--border-width) solid var(--border);
   }
   .role-member {
+    background: var(--surface);
     color: var(--text-secondary);
+    border: var(--border-width) solid var(--border);
   }
   .role-guest {
+    background: var(--surface);
     color: var(--text-muted);
+    border: var(--border-width) solid var(--border);
   }
   .remove-btn {
     color: var(--danger);
@@ -505,7 +519,12 @@
     border: var(--border-width) solid var(--danger);
     padding: var(--space-1) var(--space-3);
     font-size: var(--text-small);
+    border-radius: var(--radius);
     cursor: pointer;
+    min-height: 2.75rem;
+  }
+  .remove-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
   }
   .transfer-btn {
     background: transparent;
@@ -514,13 +533,19 @@
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-small);
     font-weight: 600;
+    border-radius: var(--radius);
     cursor: pointer;
+    min-height: 2.75rem;
+  }
+  .transfer-btn:hover {
+    background: var(--selected);
   }
   .add-member-card {
     background: var(--surface-raised);
-    padding: var(--space-4);
+    padding: var(--space-6);
     border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
     margin-top: var(--space-6);
   }
   .add-member-form {
@@ -531,11 +556,9 @@
   }
   .modal-backdrop {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background: var(--drawer-scrim);
+    backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -546,10 +569,10 @@
     background: var(--surface-raised);
     padding: var(--space-6);
     border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     max-width: 32rem;
     width: 100%;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-modal);
   }
   .modal-actions {
     display: flex;
@@ -561,6 +584,8 @@
     background: transparent;
     border: var(--border-width) solid var(--border);
     padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius);
     cursor: pointer;
+    min-height: 2.75rem;
   }
 </style>

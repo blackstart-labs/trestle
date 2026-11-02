@@ -1,47 +1,73 @@
 :root {
   color-scheme: light;
-  --surface: light-dark(#f7f7f4, #191d1b);
-  --surface-raised: light-dark(#ffffff, #242b26);
-  --surface-nav: light-dark(#edeee8, #202621);
-  --text: light-dark(#242824, #eff2e9);
-  --text-secondary: light-dark(#4c544c, #bdc8bd);
-  --text-muted: light-dark(#5c645c, #a5b3a5);
-  --border: light-dark(#777f77, #869586);
-  --accent: light-dark(#315b3b, #b3d5b7);
-  --selected: light-dark(#dce9de, #354538);
-  --focus: light-dark(#315b3b, #c2e2a6);
-  --success: light-dark(#26633b, #a7dcb6);
-  --warning: light-dark(#775300, #ebce8b);
-  --danger: light-dark(#9f302b, #ffb8b0);
-  --button-bg: light-dark(#242824, #dbe8d5);
-  --button-text: light-dark(#ffffff, #1c291e);
-  --font-body: system-ui, sans-serif;
-  --font-mono: ui-monospace, monospace;
+  --surface: light-dark(#f8fafc, #090b0e);
+  --surface-raised: light-dark(#ffffff, #12161f);
+  --surface-nav: light-dark(#f1f5f9, #0d1017);
+  --selected: light-dark(#e2e8f0, #1e2638);
+  --text: light-dark(#0f172a, #f8fafc);
+  --text-secondary: light-dark(#334155, #cbd5e1);
+  --text-muted: light-dark(#475569, #94a3b8);
+  --border: light-dark(#64748b, #717988);
+  --accent: light-dark(#3730a3, #93c5fd);
+  --focus: light-dark(#3730a3, #93c5fd);
+  --success: light-dark(#166534, #4ade80);
+  --warning: light-dark(#854d0e, #fbbf24);
+  --danger: light-dark(#991b1b, #f87171);
+  --button-bg: light-dark(#0f172a, #f8fafc);
+  --button-text: light-dark(#ffffff, #090b0e);
+
+  --font-body:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 0.75rem;
   --text-small: 0.875rem;
   --text-body: 1rem;
   --text-lead: 1.25rem;
-  --text-title: clamp(2rem, 5vw, 3rem);
-  --leading: 1.6;
-  --leading-heading: 1.2;
+  --text-title: clamp(1.75rem, 4vw, 2.5rem);
+  --leading: 1.5;
+  --leading-heading: 1.25;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
+  --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+  --space-10: 2.5rem;
   --space-12: 3rem;
+
   --control-height: 2.75rem;
-  --radius: 0.1875rem;
+  --radius: 0.5rem;
+  --radius-sm: 0.375rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
   --border-width: 1px;
   --focus-width: 3px;
-  --focus-offset: 3px;
-  --content-width: 52rem;
-  --nav-width: 14rem;
+  --focus-offset: 2px;
+  --content-width: 100%;
+  --nav-width: 16rem;
   --drawer-width: min(44rem, 100vw);
-  --drawer-scrim: light-dark(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.75));
+  --drawer-scrim: light-dark(rgba(15, 23, 42, 0.45), rgba(0, 0, 0, 0.75));
   --badge-radius: 9999px;
-  --avatar-size: 1.75rem;
-  --timeline-line: light-dark(#d0d5ce, #374239);
+  --avatar-size: 2rem;
+  --timeline-line: light-dark(#cbd5e1, #1e2638);
+
+  /* Modern rich lighting & elevations */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-card: light-dark(
+    0 1px 3px 0 rgba(15, 23, 42, 0.06),
+    0 4px 16px -2px rgba(0, 0, 0, 0.45)
+  );
+  --shadow-modal: light-dark(
+    0 20px 40px -15px rgba(15, 23, 42, 0.15),
+    0 25px 50px -12px rgba(0, 0, 0, 0.6)
+  );
+  --glass-card: light-dark(rgba(255, 255, 255, 0.9), rgba(18, 22, 31, 0.85));
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root[data-theme="dark"] {

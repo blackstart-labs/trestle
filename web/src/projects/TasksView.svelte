@@ -973,20 +973,20 @@
   .task-row {
     background: var(--surface-raised);
     border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: center;
-    gap: var(--space-3);
-    transition:
-      border-color 120ms ease,
-      box-shadow 120ms ease;
+    gap: var(--space-4);
+    box-shadow: var(--shadow-card);
+    transition: all var(--transition-fast);
   }
 
   .task-row:hover {
     border-color: var(--accent);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-modal);
   }
 
   .task-leading {
@@ -996,14 +996,15 @@
 
   .key-btn {
     font-family: var(--font-mono);
-    font-size: var(--text-small);
+    font-size: 0.8125rem;
     font-weight: 700;
     color: var(--accent);
     background: var(--surface);
     border: var(--border-width) solid var(--border);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius);
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    letter-spacing: 0.025em;
   }
 
   .key-btn:hover {

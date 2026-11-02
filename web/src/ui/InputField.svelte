@@ -37,3 +37,31 @@
     aria-describedby={hint ? `${id}-hint` : undefined}
   />
 </div>
+
+<style>
+  input {
+    width: 100%;
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+    border: var(--border-width) solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    transition:
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+  }
+
+  input:focus {
+    outline: var(--focus-width) solid var(--focus);
+    outline-offset: var(--focus-offset);
+    border-color: var(--accent);
+  }
+
+  input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+</style>
