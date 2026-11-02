@@ -395,7 +395,8 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--drawer-scrim);
+    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -405,11 +406,11 @@
   .modal-card {
     background: var(--surface-raised);
     border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     padding: var(--space-6);
     max-width: 32rem;
     width: 100%;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-modal);
   }
   .create-form {
     display: grid;
@@ -428,62 +429,77 @@
     margin-top: var(--space-4);
   }
   .empty-state {
-    padding: var(--space-8);
+    padding: var(--space-12) var(--space-6);
     text-align: center;
     background: var(--surface-raised);
     border: var(--border-width) dashed var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     display: grid;
     gap: var(--space-3);
     justify-items: center;
   }
   .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
     gap: var(--space-4);
     margin-top: var(--space-4);
   }
   .project-card {
     background: var(--surface-raised);
     border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
     display: flex;
     flex-direction: column;
+    box-shadow: var(--shadow-card);
+    transition: all var(--transition-fast);
+  }
+  .project-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-modal);
   }
   .project-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-2);
+    margin-bottom: var(--space-3);
   }
   .project-key {
     font-family: var(--font-mono);
     font-weight: 700;
-    font-size: var(--text-small);
+    font-size: 0.75rem;
     color: var(--accent);
     background: var(--selected);
-    padding: 2px 6px;
-    border-radius: var(--radius);
+    border: var(--border-width) solid var(--border);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
     letter-spacing: 0.05em;
   }
   .project-counter {
-    font-size: var(--text-small);
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--text-secondary);
+    background: var(--surface);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-full);
   }
   .project-name {
     margin: 0 0 var(--space-1) 0;
-    font-size: var(--text-lead);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
   }
   .project-slug {
     font-family: var(--font-mono);
-    font-size: var(--text-small);
-    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
     margin: 0 0 var(--space-2) 0;
   }
   .project-desc {
-    font-size: var(--text-small);
+    font-size: 0.875rem;
     color: var(--text-secondary);
+    line-height: 1.5;
     margin: 0 0 var(--space-4) 0;
     flex: 1;
   }
@@ -493,17 +509,22 @@
     align-items: center;
     margin-top: auto;
     padding-top: var(--space-3);
-    border-top: var(--border-width) solid var(--surface-nav);
+    border-top: var(--border-width) solid var(--selected);
+    gap: var(--space-2);
   }
   .archive-btn {
     background: transparent;
     border: none;
     color: var(--text-muted);
     font-size: var(--text-small);
+    font-weight: 600;
     cursor: pointer;
     padding: var(--space-1) var(--space-2);
+    min-height: 2.75rem;
+    border-radius: var(--radius);
   }
   .archive-btn:hover {
     color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
   }
 </style>
