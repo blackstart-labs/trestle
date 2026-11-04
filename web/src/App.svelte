@@ -178,7 +178,7 @@
     await tick();
     const target = document.getElementById(id);
     target?.focus({ preventScroll: true });
-    target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    target?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
 
   function route(hash: string) {

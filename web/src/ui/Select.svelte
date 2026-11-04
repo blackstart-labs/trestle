@@ -95,7 +95,7 @@
     await tick();
     list
       ?.querySelector<HTMLElement>(`[data-index="${active}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+      ?.scrollIntoView?.({ block: "nearest" });
   }
 
   function onTriggerKey(e: KeyboardEvent) {
