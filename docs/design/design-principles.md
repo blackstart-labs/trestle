@@ -1,35 +1,29 @@
 # Design system direction
 
-Status: M02 implements the responsive public shell, semantic light/dark tokens,
-native select/button and feedback primitives. [Tokens](design-tokens.md) and
-[component contracts](components.md) describe that subset. Product views, dialogs,
-tables, editors and a complete accessibility audit remain future work.
+Status: implemented across the shell, auth, projects, tasks (list and board),
+task drawer, status manager and members views. [Tokens](design-tokens.md) and
+[component contracts](components.md) describe the system.
 
 ## Identity and hierarchy
 
-Trestle is a calm, precise workbench for planned work, measured work and knowledge.
-Use readable typography, aligned data, restrained borders and clear selected/
-focus states. Prefer one purposeful workspace over repeated rounded cards,
-gradients, decorative charts, glass effects or fake metrics. No logo asset or
-font license is claimed to exist.
+Trestle is a calm, precise workbench that feels premium after dark. Layered
+near-black surfaces tinted toward one brand hue, a single soft ambient light
+over the work area, and an edge light on resting panels carry the atmosphere.
+Hierarchy comes from type weight, a quiet sidebar and tone steps between
+surfaces, not from colour on chrome. Colour is reserved for state, data and the
+one primary action.
 
-Start with system UI fonts for privacy, local rendering, language fallback and
-zero font-download cost; use a system monospace face for task keys/code. Check
-actual glyph coverage and numerals with target languages before adopting a
-custom self-hosted font and its license. Keep body text readable at 200% zoom.
+The product's own mark is a trestle: one deck carried by braced legs. The same
+idea appears as the overview linework (four piers, one continuous deck) and as
+the progress rail, where one bar spans every status category of a project.
 
-## Token contract for M02
+Do not add sparkline KPIs, invented metrics, AI or assistant surfaces, or
+"coming soon" controls for capabilities that do not exist. Planned modules may
+be named only as planned, as the overview's piers are.
 
-Define semantic surface/background/elevated, text/secondary/muted, border,
-accent/selected/focus, and success/warning/danger tokens. A status color conveys
-classification, not authorization or the only indication of meaning. Add spacing,
-type scale/line height, control size, radius and layering tokens rather than
-scattered literals. Set exact values with contrast/visual review in M02.
-
-Light/dark themes use the same semantics, respect system preference and allow a
-persisted override. Density changes row spacing, not minimum touch targets or
-text contrast. A theme/token document becomes authoritative when implemented;
-do not infer WCAG conformance from choosing a palette.
+Mona Sans is self-hosted (OFL-1.1) with Latin, Latin Extended and
+Vietnamese subsets; check glyph coverage before claiming other scripts.
+Body text stays readable at 200% zoom.
 
 ## Shared interaction contracts
 
@@ -59,11 +53,11 @@ keyboard and screen-reader journeys, reduced motion, and minimum target spacing/
 size requirements. Prefer 44px touch hit areas while retaining efficient desktop
 density. Automated checks supplement, not replace, manual interaction review.
 
-High-frequency task/table actions should normally have no motion. Where motion
-clarifies an occasional state change, prefer brief transform/opacity changes,
-with ease-out for entering/exiting UI and ease-in-out for repositioning. Never
-delay durable feedback or make dragging the only control. Reduced-motion mode
-removes nonessential movement. No decorative animation library is justified.
+High-frequency task and table actions have no motion beyond colour feedback.
+Occasional state changes (dialogs, drawers, palette, rail resizing) use brief
+transform/opacity with an exponential ease-out; the overview deck draws once.
+Never delay durable feedback or make dragging the only control. Reduced motion
+removes all travel and keeps the content.
 
 ## Public versus private pages
 

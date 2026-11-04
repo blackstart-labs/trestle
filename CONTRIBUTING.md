@@ -1,7 +1,9 @@
 # Contributing
 
 Read [README.md](README.md), [architecture](docs/architecture.md), and the
-[threat model](docs/threat-model.md) first. Check the current branch and working
+[threat model](docs/threat-model.md) first. Any frontend change, whether by hand
+or with an AI agent, must follow [AGENTS.md](AGENTS.md) (the design-system
+contract) and pass `npm run lint:design`. Check the current branch and working
 tree; preserve other contributors' uncommitted work.
 
 - Keep changes small and specific. Describe expected behavior and acceptance

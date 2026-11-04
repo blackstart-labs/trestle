@@ -9,7 +9,12 @@ inventory. Generate and review that inventory before publishing a release.
 The frontend build uses Vite's bundled-dependency license inventory, embedded
 and served at `/assets/third-party-licenses.txt`. The initial bundle includes
 Svelte 5.57.2 and esm-env 1.2.2 under MIT, with their full upstream notices.
-Build/test tooling is not shipped in the runtime image. Review this generated
+The interface typeface is Mona Sans by GitHub, shipped as WOFF2 files from
+`@fontsource-variable/mona-sans` under the SIL Open Font License 1.1; the
+license text is in that package's `LICENSE` file and must accompany
+redistributed font files. Interface icons are authored inline SVG paths that
+follow the Feather/Lucide drawing conventions (MIT/ISC); no icon package is
+bundled. Build/test tooling is not shipped in the runtime image. Review this generated
 inventory on frontend dependency changes; it does not replace the Rust release
 notice review described above.
 

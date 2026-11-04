@@ -51,12 +51,12 @@ test("loads and displays active projects", async () => {
     expect(screen.getByText("Core Platform")).toBeTruthy();
     expect(screen.getByText("/core-platform")).toBeTruthy();
     expect(screen.getByText("CORE")).toBeTruthy();
-    expect(screen.getByText("5 tasks")).toBeTruthy();
+    expect(screen.getByText("5 tasks created")).toBeTruthy();
 
     expect(screen.getByText("Web Application")).toBeTruthy();
     expect(screen.getByText("/web-app")).toBeTruthy();
     expect(screen.getByText("WEB")).toBeTruthy();
-    expect(screen.getByText("12 tasks")).toBeTruthy();
+    expect(screen.getByText("12 tasks created")).toBeTruthy();
   });
 });
 

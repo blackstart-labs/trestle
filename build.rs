@@ -38,6 +38,7 @@ fn main() {
             Some("js") => "text/javascript; charset=utf-8",
             Some("css") => "text/css; charset=utf-8",
             Some("txt") => "text/plain; charset=utf-8",
+            Some("woff2") => "font/woff2",
             _ => panic!("Unsupported asset type; review before shipping"),
         };
         generated.push_str(&format!(

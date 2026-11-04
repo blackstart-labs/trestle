@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import Button from "../ui/Button.svelte";
   import Feedback from "../ui/Feedback.svelte";
+  import Icon from "../ui/Icon.svelte";
+  import { identityHue, initials } from "../lib/identity";
 
   export interface Workspace {
     id: string;
@@ -12,9 +14,31 @@
 
   let {
     onselect,
+    autoselect = false,
   }: {
     onselect?: (workspace: Workspace) => void;
+    /** Open the remembered (or only) workspace without asking. */
+    autoselect?: boolean;
   } = $props();
+
+  const LAST_KEY = "trestle.workspace";
+
+  function remembered(): string | null {
+    try {
+      return localStorage.getItem(LAST_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function choose(ws: Workspace) {
+    try {
+      localStorage.setItem(LAST_KEY, ws.id);
+    } catch {
+      // Remembering is a convenience only.
+    }
+    onselect?.(ws);
+  }
 
   let workspaces = $state<Workspace[]>([]);
   let loading = $state(true);
@@ -32,6 +56,15 @@
       if (response.status === 200) {
         const data = await response.json();
         workspaces = data.workspaces || [];
+        if (autoselect) {
+          const last = workspaces.find((w) => w.id === remembered());
+          const only = workspaces.length === 1 ? workspaces[0] : undefined;
+          const target = last ?? only;
+          if (target) {
+            choose(target);
+            return;
+          }
+        }
       } else if (response.status === 401) {
         errorMessage = "Your session has expired. Please sign in again.";
       } else {
@@ -49,58 +82,63 @@
   });
 </script>
 
-<section aria-labelledby="workspaces-heading" class="workspaces-container">
-  <div class="workspaces-header">
-    <p class="eyebrow">Workspaces</p>
-    <h2 id="workspaces-heading" tabindex="-1">Choose a workspace</h2>
-    <p class="lead">
-      Select an active workspace to access your projects, tasks, and teams.
-    </p>
+<section aria-labelledby="workspaces-heading" class="workspaces">
+  <div class="page-head">
+    <div>
+      <h2 id="workspaces-heading" tabindex="-1">Choose a workspace</h2>
+      <p>Each workspace keeps its own members, projects and tasks.</p>
+    </div>
   </div>
 
   {#if loading}
-    <div class="feedback-wrapper">
-      <Feedback tone="neutral" announcement="status">
-        Loading your workspaces…
-      </Feedback>
+    <div class="ws-grid" aria-hidden="true">
+      {#each [0, 1, 2] as i (i)}
+        <div class="ws-card skeleton"></div>
+      {/each}
     </div>
+    <Feedback tone="neutral" announcement="status">
+      Loading your workspaces…
+    </Feedback>
   {:else if errorMessage}
-    <div class="feedback-wrapper">
+    <div class="stack">
       <Feedback tone="danger" announcement="alert">
         {errorMessage}
       </Feedback>
-      <div class="retry-action">
+      <div>
         <Button onclick={loadWorkspaces}>
           {#snippet children()}Try again{/snippet}
         </Button>
       </div>
     </div>
   {:else if workspaces.length === 0}
-    <div class="feedback-wrapper">
+    <div class="empty">
+      <span class="empty-mark"><Icon name="layers" size={22} /></span>
+      <h3>No workspaces yet</h3>
       <Feedback tone="warning">
         You are not currently a member of any workspaces. Contact your
         administrator to be added to a workspace.
       </Feedback>
     </div>
   {:else}
-    <ul class="workspace-grid" role="list">
+    <ul class="ws-grid" role="list">
       {#each workspaces as ws (ws.id)}
-        <li class="workspace-card">
-          <div class="card-lead">
-            <div class="ws-avatar" aria-hidden="true">
-              {ws.name.slice(0, 1).toUpperCase()}
-            </div>
-            <div class="workspace-info">
-              <span class="workspace-name">{ws.name}</span>
-              <span class="workspace-slug">/{ws.slug}</span>
-            </div>
-          </div>
-          <div class="workspace-actions">
-            <span class="role-badge" data-role={ws.role}>{ws.role}</span>
-            <Button onclick={() => onselect?.(ws)}>
-              {#snippet children()}Open{/snippet}
-            </Button>
-          </div>
+        <li>
+          <button type="button" class="ws-card" onclick={() => choose(ws)}>
+            <span
+              class="avatar avatar-lg ws-tile"
+              style:--avatar-hue={identityHue(ws.id)}
+              aria-hidden="true">{initials(ws.name)}</span
+            >
+            <span class="ws-info">
+              <span class="ws-name">{ws.name}</span>
+              <span class="ws-slug">/{ws.slug}</span>
+            </span>
+            <span class="pill role-pill" data-role={ws.role}>{ws.role}</span>
+            <span class="ws-open">
+              Open
+              <Icon name="arrow-right" size={16} />
+            </span>
+          </button>
         </li>
       {/each}
     </ul>
@@ -108,124 +146,118 @@
 </section>
 
 <style>
-  .workspaces-container {
-    max-width: 48rem;
-    margin: 0 auto;
-    padding: var(--space-4) 0;
-  }
-
-  .workspaces-header {
-    margin-bottom: var(--space-6);
-  }
-
-  .feedback-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .retry-action {
-    margin-top: var(--space-2);
-  }
-
-  .workspace-grid {
+  .ws-grid {
     list-style: none;
+    margin: 0 0 var(--space-4);
     padding: 0;
-    margin: 0;
     display: grid;
-    gap: var(--space-3);
-  }
-
-  .workspace-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4) var(--space-5);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    transition: all var(--transition-fast);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
     gap: var(--space-4);
   }
 
-  .workspace-card:hover {
+  .ws-card {
+    background:
+      var(--card-fill) padding-box,
+      var(--card-edge) border-box;
+    border: var(--border-width) solid transparent;
+    justify-content: stretch;
+    width: 100%;
+    min-height: 8.5rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr auto;
+    align-items: start;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    text-align: left;
+    white-space: normal;
+    font-weight: 400;
+  }
+
+  .ws-card {
+    transition:
+      transform var(--duration-slow) var(--ease-spring),
+      box-shadow var(--duration) var(--ease-out);
+  }
+
+  .ws-card:hover:not(:disabled) {
+    transform: translateY(-3px);
+    background: var(--surface-raised);
     border-color: var(--accent);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-card);
+    box-shadow:
+      var(--shadow-card),
+      0 16px 40px -24px var(--accent-glow);
   }
 
-  .card-lead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-width: 0;
+  .ws-card.skeleton {
+    background: var(--surface-sunken);
+    box-shadow: none;
+    animation: pulse 1.4s var(--ease-in-out) infinite alternate;
   }
 
-  .ws-avatar {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: var(--radius-md);
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-    color: #ffffff;
-    font-weight: 700;
-    font-size: 1.125rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 4px 10px -2px rgba(79, 70, 229, 0.3);
+  @keyframes pulse {
+    to {
+      opacity: 0.5;
+    }
   }
 
-  .workspace-info {
-    display: flex;
-    flex-direction: column;
+  .ws-tile {
+    border-radius: var(--radius);
+    grid-row: span 2;
+  }
+
+  .ws-info {
+    display: grid;
     gap: 0.125rem;
     min-width: 0;
   }
 
-  .workspace-name {
-    font-weight: 700;
-    font-size: 1.125rem;
+  .ws-name {
+    font-size: var(--text-section);
+    font-weight: 620;
     color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    letter-spacing: -0.012em;
   }
 
-  .workspace-slug {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
+  .ws-slug {
+    font-size: var(--text-small);
     color: var(--text-muted);
   }
 
-  .workspace-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-shrink: 0;
+  .role-pill {
+    text-transform: capitalize;
   }
 
-  .role-badge {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-full);
-    background: var(--selected);
-    color: var(--text-secondary);
-    border: var(--border-width) solid var(--border);
-  }
-
-  .role-badge[data-role="owner"] {
-    background: rgba(79, 70, 229, 0.1);
+  .role-pill[data-role="owner"] {
+    background: var(--accent-soft);
     color: var(--accent);
-    border-color: var(--accent);
   }
 
-  .role-badge[data-role="admin"] {
-    background: rgba(14, 165, 233, 0.1);
-    color: var(--focus);
+  .ws-open {
+    grid-column: 1 / -1;
+    align-self: end;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: var(--border-width) solid var(--line);
+    font-size: var(--text-small);
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .ws-card:hover .ws-open :global(.svg-icon) {
+    transform: translateX(3px);
+  }
+
+  .ws-open :global(.svg-icon) {
+    transition: transform var(--transition-fast);
+  }
+
+  .empty :global(.feedback) {
+    max-width: 30rem;
+    text-align: left;
   }
 </style>

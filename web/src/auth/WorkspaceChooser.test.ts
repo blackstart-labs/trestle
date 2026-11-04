@@ -92,3 +92,19 @@ test("displays error and allows retry when fetch fails", async () => {
     expect(screen.getByText("Recovered")).toBeTruthy();
   });
 });
+
+test("on arrival, the only workspace opens without a click", async () => {
+  const only = { id: "ws-9", name: "Solo", slug: "solo", role: "owner" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ workspaces: [only] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ),
+  );
+  const onselect = vi.fn();
+  render(WorkspaceChooser, { onselect, autoselect: true });
+  await waitFor(() => expect(onselect).toHaveBeenCalledWith(only));
+});

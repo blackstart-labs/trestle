@@ -3,6 +3,11 @@
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
   import Feedback from "../ui/Feedback.svelte";
+  import Icon from "../ui/Icon.svelte";
+  import Modal from "../ui/Modal.svelte";
+  import Toast from "../ui/Toast.svelte";
+  import Select from "../ui/Select.svelte";
+  import { identityHue, initials } from "../lib/identity";
 
   export interface Member {
     user_id: string;
@@ -37,6 +42,34 @@
   let transferPassword = $state("");
   let transferring = $state(false);
   let transferError = $state<string | null>(null);
+
+  const canAdd = $derived(
+    workspace.role === "owner" || workspace.role === "admin",
+  );
+
+  const roleOptions = [
+    {
+      value: "admin",
+      label: "Admin",
+      description: "Manages projects, workflows and members.",
+    },
+    {
+      value: "member",
+      label: "Member",
+      description: "Works on projects and their tasks.",
+    },
+    {
+      value: "guest",
+      label: "Guest",
+      description: "Sees only what is explicitly shared.",
+    },
+  ];
+
+  const roleHelp: Record<"admin" | "member" | "guest", string> = {
+    admin: "Manages projects, workflows and members.",
+    member: "Works on projects and their tasks.",
+    guest: "Sees only what is explicitly shared.",
+  };
 
   function getCsrfToken(): string | null {
     if (typeof document === "undefined") return null;
@@ -244,348 +277,407 @@
   });
 </script>
 
-<section class="members-section" aria-labelledby="members-heading">
-  <div class="header-row">
+<section class="members" aria-labelledby="members-heading">
+  <div class="page-head">
     <div>
-      <h2 id="members-heading">Members of {workspace.name}</h2>
-      <p class="note">Manage workspace access, roles and ownership.</p>
+      <h2 id="members-heading" tabindex="-1">Members of {workspace.name}</h2>
+      <p>Manage workspace access, roles and ownership.</p>
     </div>
     {#if workspace.role === "owner" && members.length > 1}
-      <button
-        type="button"
-        class="transfer-btn"
-        onclick={() => (showTransferModal = true)}
-      >
-        Transfer ownership
-      </button>
+      <div class="page-actions">
+        <button type="button" onclick={() => (showTransferModal = true)}>
+          <Icon name="user" size={16} />
+          Transfer ownership
+        </button>
+      </div>
     {/if}
   </div>
 
-  {#if errorMessage}
-    <Feedback tone="danger">{errorMessage}</Feedback>
-  {/if}
-  {#if successMessage}
-    <Feedback tone="success">{successMessage}</Feedback>
-  {/if}
+  <div class="stack messages">
+    {#if errorMessage}
+      <Feedback tone="danger">{errorMessage}</Feedback>
+    {/if}
+  </div>
 
-  {#if loading}
-    <p class="note">Loading members...</p>
-  {:else}
-    <div class="table-wrapper">
-      <table class="members-table" aria-label="Workspace members">
-        <thead>
-          <tr>
-            <th scope="col">Member</th>
-            <th scope="col">Role</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each members as member (member.user_id)}
+  <Toast message={successMessage} onclear={() => (successMessage = null)} />
+
+  <div class="members-layout" class:with-form={canAdd}>
+    <div class="panel table-panel">
+      <div class="panel-head">
+        <h3 class="panel-title">People</h3>
+        {#if !loading}
+          <span class="note num"
+            >{members.length}
+            {members.length === 1 ? "member" : "members"}</span
+          >
+        {/if}
+      </div>
+
+      {#if loading}
+        <p class="note loading-note">Loading members…</p>
+      {:else}
+        <table class="members-table" aria-label="Workspace members">
+          <thead>
             <tr>
-              <td>
-                <div class="member-info">
-                  <span class="member-name">{member.display_name}</span>
-                  <span class="member-handle">@{member.username}</span>
-                </div>
-              </td>
-              <td>
-                {#if (workspace.role === "owner" && member.role !== "owner") || (workspace.role === "admin" && member.role !== "owner")}
-                  <select
-                    aria-label="Change role for @{member.username}"
-                    value={member.role}
-                    onchange={(e) =>
-                      handleRoleChange(member, e.currentTarget.value)}
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                    <option value="guest">Guest</option>
-                  </select>
-                {:else}
-                  <span class="role-badge role-{member.role}"
-                    >{member.role}</span
-                  >
-                {/if}
-              </td>
-              <td>
-                {#if member.user_id === currentUserId}
-                  {#if member.role !== "owner"}
+              <th scope="col">Member</th>
+              <th scope="col">Role</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each members as member (member.user_id)}
+              <tr>
+                <td>
+                  <div class="member-info">
+                    <span
+                      class="avatar"
+                      style:--avatar-hue={identityHue(member.user_id)}
+                      aria-hidden="true">{initials(member.display_name)}</span
+                    >
+                    <span class="member-text">
+                      <span class="member-name">
+                        <span>{member.display_name}</span>
+                        {#if member.user_id === currentUserId}
+                          <span class="you">You</span>
+                        {/if}
+                      </span>
+                      <span class="member-handle">@{member.username}</span>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  {#if (workspace.role === "owner" && member.role !== "owner") || (workspace.role === "admin" && member.role !== "owner")}
+                    <span class="role-select">
+                      <Select
+                        variant="chip"
+                        label="Change role for @{member.username}"
+                        value={member.role}
+                        options={roleOptions}
+                        onchange={(v) => handleRoleChange(member, v)}
+                      />
+                    </span>
+                  {:else}
+                    <span class="pill role-badge" data-role={member.role}
+                      >{member.role}</span
+                    >
+                  {/if}
+                </td>
+                <td class="actions-cell">
+                  {#if member.user_id === currentUserId}
+                    {#if member.role !== "owner"}
+                      <button
+                        type="button"
+                        class="btn-danger-quiet"
+                        onclick={() => handleRemoveMember(member)}
+                      >
+                        Leave
+                      </button>
+                    {:else}
+                      <span class="note">Sole owner</span>
+                    {/if}
+                  {:else if workspace.role === "owner" || (workspace.role === "admin" && member.role !== "owner")}
                     <button
                       type="button"
-                      class="remove-btn"
+                      class="btn-danger-quiet"
                       onclick={() => handleRemoveMember(member)}
                     >
-                      Leave
+                      Remove
                     </button>
-                  {:else}
-                    <span class="note">Sole owner</span>
                   {/if}
-                {:else if workspace.role === "owner" || (workspace.role === "admin" && member.role !== "owner")}
-                  <button
-                    type="button"
-                    class="remove-btn"
-                    onclick={() => handleRemoveMember(member)}
-                  >
-                    Remove
-                  </button>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
     </div>
-  {/if}
 
-  {#if workspace.role === "owner" || workspace.role === "admin"}
-    <div class="add-member-card">
-      <h3>Add a member</h3>
-      <p class="note">Add an existing user account to this workspace.</p>
-      <form onsubmit={handleAddMember} class="add-member-form">
-        <InputField
-          id="add-username"
-          label="Username"
-          hint="User must already be provisioned on this instance."
-          bind:value={addUsername}
-          required
-        />
-        <div class="field">
-          <label for="add-role">Role</label>
-          <select id="add-role" bind:value={addRole}>
-            <option value="admin">Admin</option>
-            <option value="member">Member</option>
-            <option value="guest">Guest</option>
-          </select>
-        </div>
-        <Button type="submit" disabled={adding || !addUsername.trim()}>
-          {adding ? "Adding..." : "Add to workspace"}
-        </Button>
-      </form>
-    </div>
-  {/if}
-
-  {#if showTransferModal}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="transfer-title"
-    >
-      <div class="modal-card">
-        <h3 id="transfer-title">Transfer workspace ownership</h3>
-        <p class="note">
-          Transfer ownership of <strong>{workspace.name}</strong> to another
-          member. You will be assigned the <strong>Admin</strong> role. This requires
-          fresh password confirmation.
-        </p>
-
-        {#if transferError}
-          <Feedback tone="danger">{transferError}</Feedback>
-        {/if}
-
-        <form onsubmit={handleTransferOwnership}>
-          <div class="field">
-            <label for="transfer-target">New owner</label>
-            <select id="transfer-target" bind:value={transferTargetId} required>
-              <option value="" disabled selected>Select a member</option>
-              {#each members.filter((m) => m.user_id !== currentUserId) as member (member.user_id)}
-                <option value={member.user_id}>
-                  {member.display_name} (@{member.username}) - {member.role}
-                </option>
-              {/each}
-            </select>
-          </div>
-
+    {#if canAdd}
+      <div class="panel panel-pad add-member">
+        <h3>Add a member</h3>
+        <p class="note">Add an existing user account to this workspace.</p>
+        <form onsubmit={handleAddMember} class="form-grid">
           <InputField
-            id="transfer-password"
-            label="Your password confirmation"
-            type="password"
-            hint="Re-authenticate to confirm ownership transfer."
-            bind:value={transferPassword}
+            id="add-username"
+            label="Username"
+            hint="User must already be provisioned on this instance."
+            bind:value={addUsername}
             required
           />
-
-          <div class="modal-actions">
-            <button
-              type="button"
-              class="cancel-btn"
-              onclick={() => {
-                showTransferModal = false;
-                transferPassword = "";
-                transferError = null;
-              }}
-            >
-              Cancel
-            </button>
-            <Button
-              type="submit"
-              disabled={transferring || !transferTargetId || !transferPassword}
-            >
-              {transferring ? "Transferring..." : "Confirm transfer"}
-            </Button>
+          <div class="field">
+            <label for="add-role">Role</label>
+            <Select
+              id="add-role"
+              value={addRole}
+              options={roleOptions}
+              onchange={(v) => (addRole = v as typeof addRole)}
+            />
+            <p class="note">{roleHelp[addRole]}</p>
           </div>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={adding || !addUsername.trim()}
+          >
+            {adding ? "Adding…" : "Add to workspace"}
+          </Button>
         </form>
       </div>
-    </div>
+    {/if}
+  </div>
+
+  {#if showTransferModal}
+    <Modal
+      title="Transfer workspace ownership"
+      onclose={() => {
+        if (transferring) return;
+        showTransferModal = false;
+        transferPassword = "";
+        transferError = null;
+      }}
+    >
+      <p class="note transfer-note">
+        Transfer ownership of <strong>{workspace.name}</strong> to another
+        member. You will be assigned the <strong>Admin</strong> role. This requires
+        fresh password confirmation.
+      </p>
+
+      {#if transferError}
+        <Feedback tone="danger">{transferError}</Feedback>
+      {/if}
+
+      <form onsubmit={handleTransferOwnership} class="form-grid">
+        <div class="field">
+          <label for="transfer-target">New owner</label>
+          <Select
+            id="transfer-target"
+            value={transferTargetId}
+            placeholder="Select a member"
+            options={members
+              .filter((m) => m.user_id !== currentUserId)
+              .map((m) => ({
+                value: m.user_id,
+                label: m.display_name,
+                hint: `@${m.username} · ${m.role}`,
+              }))}
+            onchange={(v) => (transferTargetId = v)}
+          />
+        </div>
+
+        <InputField
+          id="transfer-password"
+          label="Your password confirmation"
+          type="password"
+          hint="Re-authenticate to confirm ownership transfer."
+          bind:value={transferPassword}
+          required
+        />
+
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="btn-quiet"
+            onclick={() => {
+              showTransferModal = false;
+              transferPassword = "";
+              transferError = null;
+            }}
+          >
+            Cancel
+          </button>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={transferring || !transferTargetId || !transferPassword}
+          >
+            {transferring ? "Transferring…" : "Confirm transfer"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   {/if}
 </section>
 
 <style>
-  .members-section {
-    margin-top: var(--space-6);
-  }
-  .header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-4);
+  .messages {
     margin-bottom: var(--space-4);
   }
-  .table-wrapper {
-    overflow-x: auto;
-    margin-bottom: var(--space-6);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    border: var(--border-width) solid var(--border);
+
+  .messages:empty {
+    display: none;
   }
+
+  .members-layout {
+    display: grid;
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .members-layout.with-form {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  }
+
+  .table-panel {
+    overflow: hidden;
+  }
+
+  .loading-note {
+    padding: var(--space-5);
+  }
+
   .members-table {
     width: 100%;
     border-collapse: collapse;
-    background: var(--surface-raised);
   }
-  .members-table th,
-  .members-table td {
-    padding: var(--space-3) var(--space-4);
-    text-align: left;
-    border-bottom: var(--border-width) solid var(--border);
-  }
-  .members-table tr:last-child td {
-    border-bottom: none;
-  }
+
   .members-table th {
-    background: var(--surface);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    padding: var(--space-2) var(--space-5);
+    text-align: left;
+    font-size: var(--text-xs);
+    font-weight: 600;
     color: var(--text-muted);
+    background: var(--surface-sunken);
+    border-bottom: var(--border-width) solid var(--line);
   }
+
+  .members-table td {
+    padding: var(--space-3) var(--space-5);
+    border-bottom: var(--border-width) solid var(--line);
+    vertical-align: middle;
+  }
+
+  .members-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .members-table tbody tr {
+    transition: background-color var(--transition-fast);
+  }
+
+  .members-table tbody tr:hover {
+    background: var(--hover);
+  }
+
   .member-info {
     display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
   }
+
+  .member-text {
+    display: grid;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
   .member-name {
-    font-weight: 650;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 580;
     color: var(--text);
   }
+
+  .you {
+    padding: 0.0625rem 0.4rem;
+    border-radius: var(--radius-xs);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.6875rem;
+    font-weight: 650;
+  }
+
   .member-handle {
-    font-size: 0.8125rem;
+    font-size: var(--text-small);
     color: var(--text-muted);
-    font-family: var(--font-mono);
   }
+
+  .role-select {
+    display: block;
+    width: 8.5rem;
+  }
+
   .role-badge {
-    display: inline-block;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.75rem;
-    border-radius: var(--radius-full);
     text-transform: capitalize;
-    font-weight: 600;
   }
-  .role-owner {
-    background: rgba(79, 70, 229, 0.1);
+
+  .role-badge[data-role="owner"] {
+    background: var(--accent-soft);
     color: var(--accent);
-    border: var(--border-width) solid var(--accent);
   }
-  .role-admin {
-    background: rgba(14, 165, 233, 0.1);
-    color: var(--focus);
-    border: var(--border-width) solid var(--border);
+
+  .actions-cell {
+    text-align: right;
+    white-space: nowrap;
   }
-  .role-member {
-    background: var(--surface);
-    color: var(--text-secondary);
-    border: var(--border-width) solid var(--border);
-  }
-  .role-guest {
-    background: var(--surface);
-    color: var(--text-muted);
-    border: var(--border-width) solid var(--border);
-  }
-  .remove-btn {
-    color: var(--danger);
-    background: transparent;
-    border: var(--border-width) solid var(--danger);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--text-small);
-    border-radius: var(--radius);
-    cursor: pointer;
-    min-height: 2.75rem;
-  }
-  .remove-btn:hover {
-    background: rgba(239, 68, 68, 0.1);
-  }
-  .transfer-btn {
-    background: transparent;
-    border: var(--border-width) solid var(--accent);
-    color: var(--accent);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-small);
-    font-weight: 600;
-    border-radius: var(--radius);
-    cursor: pointer;
-    min-height: 2.75rem;
-  }
-  .transfer-btn:hover {
-    background: var(--selected);
-  }
-  .add-member-card {
-    background: var(--surface-raised);
-    padding: var(--space-6);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-    margin-top: var(--space-6);
-  }
-  .add-member-form {
+
+  .add-member {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
+    position: sticky;
+    top: calc(var(--topbar-height) + var(--space-4));
+  }
+
+  .add-member h3 {
+    font-size: var(--text-section);
+  }
+
+  .add-member form {
     margin-top: var(--space-3);
-    max-width: 28rem;
   }
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--drawer-scrim);
-    backdrop-filter: blur(8px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
-    padding: var(--space-4);
+
+  .transfer-note {
+    font-size: var(--text-small);
+    color: var(--text-secondary);
   }
-  .modal-card {
-    background: var(--surface-raised);
-    padding: var(--space-6);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius-lg);
-    max-width: 32rem;
-    width: 100%;
-    box-shadow: var(--shadow-modal);
+
+  @media (max-width: 64rem) {
+    .members-layout.with-form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .add-member {
+      position: static;
+    }
   }
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-  }
-  .cancel-btn {
-    background: transparent;
-    border: var(--border-width) solid var(--border);
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius);
-    cursor: pointer;
-    min-height: 2.75rem;
+
+  /* Phone: each member becomes a two-line card row. */
+  @media (max-width: 40rem) {
+    .members-table thead {
+      display: none;
+    }
+
+    .members-table,
+    .members-table tbody,
+    .members-table tr,
+    .members-table td {
+      display: block;
+    }
+
+    .members-table tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-2) var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: var(--border-width) solid var(--line);
+    }
+
+    .members-table tr:last-child {
+      border-bottom: 0;
+    }
+
+    .members-table td {
+      padding: 0;
+      border: 0;
+    }
+
+    .members-table td:first-child {
+      grid-column: 1 / -1;
+    }
+
+    .actions-cell {
+      align-self: center;
+    }
   }
 </style>

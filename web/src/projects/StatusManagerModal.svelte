@@ -1,7 +1,10 @@
 <script lang="ts">
-  import Button from "../ui/Button.svelte";
+  import { onMount } from "svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
+  import Select from "../ui/Select.svelte";
+  import { dialogIn, dialogOut, fadeIn, sheet } from "../lib/motion";
+  import { flip } from "svelte/animate";
 
   export interface TaskStatus {
     id: string;
@@ -28,6 +31,8 @@
     onclose: () => void;
     onstatusesupdated?: (statuses: TaskStatus[]) => void;
   } = $props();
+
+  let dialogElement = $state<HTMLElement | null>(null);
 
   let localStatuses = $state<TaskStatus[]>([]);
   let loading = $state(false);
@@ -360,34 +365,52 @@
     const found = categoryOptions.find((c) => c.value === cat);
     return found ? found.label : cat;
   }
+
+  onMount(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    dialogElement?.focus();
+    return () => {
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  });
 </script>
 
 <div
-  class="modal-backdrop"
+  class="scrim"
   role="presentation"
+  in:fadeIn|global={{ duration: 200 }}
+  out:fadeIn|global={{ duration: 160 }}
   onclick={(e) => {
     if (e.target === e.currentTarget) onclose();
   }}
 >
   <div
-    class="modal-content"
+    class="dialog dialog-wide status-dialog"
     role="dialog"
     aria-modal="true"
     aria-labelledby="status-manager-title"
+    tabindex="-1"
+    bind:this={dialogElement}
+    in:dialogIn|global
+    out:dialogOut|global
+    onkeydown={(e) => {
+      if (e.key === "Escape" && !statusToDelete) {
+        e.stopPropagation();
+        onclose();
+      }
+    }}
   >
-    <div class="modal-header">
+    <div class="dialog-head">
       <div>
-        <h2 id="status-manager-title" class="modal-title">
-          Workflow statuses & transitions
-        </h2>
-        <p class="modal-subtitle">
+        <h2 id="status-manager-title">Workflow statuses & transitions</h2>
+        <p>
           Configure custom project statuses while preserving canonical category
           completion semantics for {project.name}.
         </p>
       </div>
       <button
         type="button"
-        class="icon-button close-btn"
+        class="btn-quiet btn-icon"
         onclick={onclose}
         aria-label="Close status manager"
       >
@@ -395,53 +418,46 @@
       </button>
     </div>
 
-    {#if error}
-      <div class="message-banner">
+    <div class="dialog-body">
+      {#if error}
         <Feedback tone="danger">{error}</Feedback>
-      </div>
-    {/if}
+      {/if}
 
-    {#if success}
-      <div class="message-banner">
+      {#if success}
         <Feedback tone="success">{success}</Feedback>
-      </div>
-    {/if}
+      {/if}
 
-    <!-- Statuses List -->
-    <div class="status-list-section">
       <div class="section-toolbar">
-        <span class="count-label"
+        <span class="count-label num"
           >{localStatuses.length}
           {localStatuses.length === 1 ? "status" : "statuses"} configured</span
         >
         {#if canManage && !showCreateForm}
           <button
             type="button"
-            class="btn btn-secondary"
             onclick={() => {
               showCreateForm = true;
               error = null;
               success = null;
             }}
           >
-            <Icon name="plus" size={14} class="btn-icon" />
+            <Icon name="plus" size={16} />
             Add custom status
           </button>
         {/if}
       </div>
 
-      <!-- Add New Status Drawer / Form -->
       {#if showCreateForm}
         <form
-          class="create-status-card"
+          class="create-card"
           onsubmit={handleCreateStatus}
           aria-label="Add custom status form"
         >
-          <div class="card-header">
-            <span class="card-title">New project status</span>
+          <div class="create-head">
+            <span class="create-title">New project status</span>
             <button
               type="button"
-              class="icon-button"
+              class="btn-quiet btn-icon"
               onclick={() => {
                 showCreateForm = false;
                 createError = null;
@@ -456,41 +472,40 @@
             <Feedback tone="danger">{createError}</Feedback>
           {/if}
 
-          <div class="form-grid">
-            <div class="form-group">
-              <label for="new-status-name" class="field-label"
-                >Status name</label
-              >
+          <div class="form-row">
+            <div class="field">
+              <label for="new-status-name">Status name</label>
               <input
                 id="new-status-name"
                 type="text"
-                class="text-input"
                 bind:value={newName}
-                placeholder="e.g. In Review, QA Verification, Blocked"
+                placeholder="e.g. In Review, QA, Blocked"
                 maxlength="50"
                 required
               />
             </div>
 
-            <div class="form-group">
-              <label for="new-status-category" class="field-label"
-                >Canonical category</label
-              >
-              <select
+            <div class="field">
+              <label for="new-status-category">Canonical category</label>
+              <Select
                 id="new-status-category"
-                class="select-input"
-                bind:value={newCategory}
-              >
-                {#each categoryOptions as opt}
-                  <option value={opt.value}
-                    >{opt.label} — {opt.description}</option
-                  >
-                {/each}
-              </select>
+                value={newCategory}
+                options={categoryOptions.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                  description: o.description,
+                  color: `var(--cat-${o.value})`,
+                }))}
+                onchange={(v) => (newCategory = v as TaskStatus["category"])}
+              />
+              <p class="note">
+                {categoryOptions.find((c) => c.value === newCategory)
+                  ?.description}
+              </p>
             </div>
           </div>
 
-          <div class="color-picker-group">
+          <div class="field">
             <span class="field-label">Status color</span>
             <div class="preset-palette">
               {#each presetColors as p}
@@ -498,28 +513,28 @@
                   type="button"
                   class="color-chip"
                   class:selected={newColor === p.value}
-                  style="background-color: {p.value};"
+                  style:--chip-color={p.value}
                   onclick={() => (newColor = p.value)}
                   title={p.label}
                   aria-label={p.label}
+                  aria-pressed={newColor === p.value}
                 ></button>
               {/each}
-              <div class="custom-color-wrap">
+              <label class="custom-color">
                 <input
                   type="color"
                   bind:value={newColor}
-                  class="native-color-picker"
                   aria-label="Choose custom status color"
                 />
                 <span class="hex-text">{newColor}</span>
-              </div>
+              </label>
             </div>
           </div>
 
-          <div class="form-actions">
+          <div class="dialog-actions">
             <button
               type="button"
-              class="btn btn-secondary"
+              class="btn-quiet"
               onclick={() => {
                 showCreateForm = false;
                 createError = null;
@@ -527,53 +542,44 @@
             >
               Cancel
             </button>
-            <button type="submit" class="btn btn-primary" disabled={creating}>
+            <button type="submit" class="btn-primary" disabled={creating}>
               {creating ? "Saving…" : "Save status"}
             </button>
           </div>
         </form>
       {/if}
 
-      <!-- Status Items Table / List -->
-      <div class="statuses-container" role="list">
+      <div class="status-list" role="list">
         {#each localStatuses as st, idx (st.id)}
           <div
             class="status-row"
             class:is-editing={editingStatusId === st.id}
             role="listitem"
+            animate:flip={{ duration: 320, easing: sheet }}
           >
             {#if editingStatusId === st.id}
-              <!-- Inline edit row -->
-              <div class="inline-edit-form">
-                <div class="edit-inputs">
+              <div class="inline-edit">
+                <input
+                  type="text"
+                  bind:value={editName}
+                  maxlength="50"
+                  aria-label="Edit status name"
+                />
+                <label class="custom-color">
                   <input
-                    type="text"
-                    class="text-input edit-name-input"
-                    bind:value={editName}
-                    maxlength="50"
-                    aria-label="Edit status name"
+                    type="color"
+                    bind:value={editColor}
+                    aria-label="Edit status color"
                   />
-                  <div class="color-swatch-picker">
-                    <input
-                      type="color"
-                      bind:value={editColor}
-                      class="native-color-picker"
-                      aria-label="Edit status color"
-                    />
-                    <span class="hex-text">{editColor}</span>
-                  </div>
-                </div>
+                  <span class="hex-text">{editColor}</span>
+                </label>
                 <div class="edit-actions">
-                  <button
-                    type="button"
-                    class="btn btn-secondary"
-                    onclick={cancelEdit}
-                  >
+                  <button type="button" class="btn-quiet" onclick={cancelEdit}>
                     Cancel
                   </button>
                   <button
                     type="button"
-                    class="btn btn-primary"
+                    class="btn-primary"
                     disabled={savingEdit}
                     onclick={() => handleSaveEdit(st.id)}
                   >
@@ -582,62 +588,60 @@
                 </div>
               </div>
             {:else}
-              <!-- Normal row display -->
               <div class="row-lead">
                 <span
-                  class="status-color-indicator"
-                  style="background-color: {st.color};"
+                  class="swatch"
+                  style:--chip-color={st.color}
                   aria-hidden="true"
                 ></span>
                 <span class="status-name">{st.name}</span>
-                <span class="category-pill category-{st.category}">
+                <span
+                  class="pill category-pill"
+                  style:--cat-color="var(--cat-{st.category})"
+                >
+                  <span class="dot" aria-hidden="true"></span>
                   {getCategoryLabel(st.category)}
                 </span>
               </div>
 
               {#if canManage}
                 <div class="row-controls">
-                  <!-- Reorder buttons -->
-                  <div class="reorder-group" role="group" aria-label="Reorder">
+                  <div class="reorder" role="group" aria-label="Reorder">
                     <button
                       type="button"
-                      class="icon-button reorder-btn"
+                      class="btn-quiet btn-icon"
                       disabled={idx === 0}
                       onclick={() => handleMove(idx, "up")}
                       aria-label="Move {st.name} up"
                     >
-                      <Icon name="arrow-up" size={14} />
+                      <Icon name="arrow-up" size={16} />
                     </button>
                     <button
                       type="button"
-                      class="icon-button reorder-btn"
+                      class="btn-quiet btn-icon"
                       disabled={idx === localStatuses.length - 1}
                       onclick={() => handleMove(idx, "down")}
                       aria-label="Move {st.name} down"
                     >
-                      <Icon name="arrow-down" size={14} />
+                      <Icon name="arrow-down" size={16} />
                     </button>
                   </div>
-
-                  <!-- Edit button -->
                   <button
                     type="button"
-                    class="icon-button edit-btn"
+                    class="btn-quiet btn-icon"
                     onclick={() => startEdit(st)}
                     aria-label="Edit {st.name}"
                   >
-                    <Icon name="pencil" size={14} />
+                    <Icon name="pencil" size={16} />
                   </button>
-
-                  <!-- Delete button -->
                   <button
                     type="button"
-                    class="icon-button delete-btn"
+                    class="btn-quiet btn-icon delete-btn"
                     disabled={localStatuses.length <= 1}
                     onclick={() => promptDelete(st)}
                     aria-label="Delete {st.name}"
                   >
-                    <Icon name="trash" size={14} />
+                    <Icon name="trash" size={16} />
                   </button>
                 </div>
               {/if}
@@ -645,580 +649,305 @@
           </div>
         {/each}
       </div>
-    </div>
 
-    <!-- Safe Deletion and Remapping Dialog -->
-    {#if statusToDelete}
-      <div
-        class="delete-confirm-overlay"
-        role="presentation"
-        onclick={(e) => {
-          if (e.target === e.currentTarget) cancelDelete();
-        }}
-      >
-        <div
-          class="delete-confirm-box"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-dialog-title"
-        >
-          <div class="confirm-header">
-            <span class="warning-icon-badge">
-              <Icon name="alert-triangle" size={20} />
-            </span>
-            <div>
-              <h3 id="delete-dialog-title" class="confirm-title">
-                Delete "{statusToDelete.name}" status
-              </h3>
-              <p class="confirm-desc">
-                Tasks currently assigned to this status must be safely remapped
-                so they are never left in an orphaned state.
-              </p>
-            </div>
-          </div>
-
-          {#if deleteError}
-            <Feedback tone="danger">{deleteError}</Feedback>
-          {/if}
-
-          <div class="remap-select-group">
-            <label for="remap-target-select" class="field-label">
-              Reassign active tasks to:
-            </label>
-            <select
-              id="remap-target-select"
-              class="select-input"
-              bind:value={remapTargetId}
-            >
-              {#each localStatuses.filter((s) => s.id !== statusToDelete?.id) as target}
-                <option value={target.id}>
-                  {target.name} ({getCategoryLabel(target.category)})
-                </option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="confirm-actions">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              disabled={deleting}
-              onclick={cancelDelete}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              class="btn btn-danger"
-              disabled={deleting}
-              onclick={handleConfirmDelete}
-            >
-              {deleting ? "Reassigning…" : "Reassign & Delete"}
-            </button>
-          </div>
-        </div>
+      <div class="dialog-actions">
+        <button type="button" onclick={onclose}>Done</button>
       </div>
-    {/if}
-
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick={onclose}>
-        Done
-      </button>
     </div>
   </div>
 </div>
 
+{#if statusToDelete}
+  <div
+    class="scrim confirm-scrim"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) cancelDelete();
+    }}
+  >
+    <div
+      class="dialog confirm-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+      tabindex="-1"
+      onkeydown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          cancelDelete();
+        }
+      }}
+    >
+      <div class="dialog-head">
+        <div class="confirm-head">
+          <span class="warning-badge" aria-hidden="true">
+            <Icon name="alert-triangle" size={20} />
+          </span>
+          <div>
+            <h3 id="delete-dialog-title">
+              Delete "{statusToDelete.name}" status
+            </h3>
+            <p>
+              Tasks currently assigned to this status must be safely remapped so
+              they are never left in an orphaned state.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-body">
+        {#if deleteError}
+          <Feedback tone="danger">{deleteError}</Feedback>
+        {/if}
+
+        <div class="field">
+          <label for="remap-target-select">Reassign active tasks to:</label>
+          <Select
+            id="remap-target-select"
+            value={remapTargetId}
+            options={localStatuses
+              .filter((s) => s.id !== statusToDelete?.id)
+              .map((t) => ({
+                value: t.id,
+                label: t.name,
+                hint: getCategoryLabel(t.category),
+                color: t.color,
+              }))}
+            onchange={(v) => (remapTargetId = v)}
+          />
+        </div>
+
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="btn-quiet"
+            disabled={deleting}
+            onclick={cancelDelete}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-danger"
+            disabled={deleting}
+            onclick={handleConfirmDelete}
+          >
+            {deleting ? "Reassigning…" : "Reassign & Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--drawer-scrim, rgba(0, 0, 0, 0.5));
-    backdrop-filter: blur(2px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: var(--space-4);
-  }
-
-  .modal-content {
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    width: 100%;
-    max-width: 42rem;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .modal-header {
-    padding: var(--space-4) var(--space-6);
-    border-bottom: var(--border-width) solid var(--border);
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-  }
-
-  .modal-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0 0 var(--space-1) 0;
-  }
-
-  .modal-subtitle {
-    font-size: var(--text-small);
-    color: var(--text-muted);
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .message-banner {
-    padding: var(--space-2) var(--space-6);
-  }
-
-  .status-list-section {
-    padding: var(--space-4) var(--space-6);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+  .status-dialog:focus,
+  .confirm-dialog:focus {
+    outline: none;
   }
 
   .section-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
+    gap: var(--space-3);
+    flex-wrap: wrap;
   }
 
   .count-label {
     font-size: var(--text-small);
-    color: var(--text-secondary);
-    font-weight: 500;
+    font-weight: 560;
+    color: var(--text-muted);
   }
 
-  :global(.btn-icon) {
-    margin-right: var(--space-1);
-    vertical-align: middle;
-  }
-
-  /* Buttons */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.375rem 0.75rem;
-    font-size: var(--text-small);
-    font-weight: 600;
-    border-radius: var(--radius);
+  .create-card {
+    background:
+      var(--inset-fill) padding-box,
+      var(--inset-edge) border-box;
     border: var(--border-width) solid transparent;
-    cursor: pointer;
-    font-family: inherit;
-    transition:
-      background-color 0.15s ease,
-      border-color 0.15s ease,
-      color 0.15s ease;
-  }
-
-  .btn:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: 1px;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--button-bg);
-    color: var(--button-text);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .btn-secondary {
-    background: var(--surface);
-    border-color: var(--border);
-    color: var(--text);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--surface-nav);
-  }
-
-  .btn-danger {
-    background: var(--danger);
-    color: #ffffff;
-  }
-
-  .btn-danger:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  /* Create form */
-  .create-status-card {
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
+    display: grid;
+    gap: var(--space-4);
     padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+    border-radius: var(--radius-lg);
   }
 
-  .card-header {
+  .create-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
 
-  .card-title {
-    font-size: var(--text-small);
-    font-weight: 600;
+  .create-title {
+    font-weight: 620;
     color: var(--text);
-  }
-
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-3);
-  }
-
-  @media (max-width: 600px) {
-    .form-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field-label {
-    font-size: var(--text-small);
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .text-input,
-  .select-input {
-    width: 100%;
-    height: 2.25rem;
-    padding: 0 var(--space-2);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-family: inherit;
-    font-size: var(--text-small);
-  }
-
-  .text-input:focus,
-  .select-input:focus {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: 1px;
-  }
-
-  .color-picker-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
   }
 
   .preset-palette {
     display: flex;
-    align-items: center;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
   }
 
   .color-chip {
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: var(--badge-radius);
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition:
-      transform 0.15s ease,
-      border-color 0.15s ease;
+    width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
+    border-radius: 50%;
+    border: 3px solid var(--surface-sunken);
+    background: var(--chip-color);
+    box-shadow: 0 0 0 1px var(--line-strong);
   }
 
-  .color-chip:hover {
-    transform: scale(1.15);
+  .color-chip:hover:not(:disabled) {
+    background: var(--chip-color);
+    border-color: var(--surface-sunken);
   }
 
   .color-chip.selected {
-    border-color: var(--text);
-    box-shadow: 0 0 0 2px var(--surface-raised);
+    box-shadow: 0 0 0 2px var(--text);
   }
 
-  .custom-color-wrap {
-    display: flex;
+  .custom-color {
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
-    margin-left: var(--space-2);
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: 0 var(--space-3) 0 var(--space-1);
+    border-radius: var(--radius-full);
+    border: var(--border-width) solid var(--line-strong);
+    background: var(--surface-raised);
+    cursor: pointer;
   }
 
-  .native-color-picker {
-    width: 1.75rem;
-    height: 1.75rem;
-    border: none;
+  .custom-color input {
+    width: 2rem;
+    height: 2rem;
     padding: 0;
-    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    background: none;
     cursor: pointer;
-    border-radius: var(--radius);
   }
 
   .hex-text {
-    font-size: 0.75rem;
-    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
+    text-transform: uppercase;
   }
 
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    margin-top: var(--space-1);
-  }
-
-  /* Status List */
-  .statuses-container {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+  .status-list {
+    display: grid;
+    border: var(--border-width) solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
   }
 
   .status-row {
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-2) var(--space-3);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    transition: background 0.15s ease;
+    min-height: 3.5rem;
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+    border-bottom: var(--border-width) solid var(--line);
+    background: var(--surface-raised);
+    flex-wrap: wrap;
   }
 
-  .status-row:hover {
-    background: var(--surface-nav);
+  .status-row:last-child {
+    border-bottom: 0;
+  }
+
+  .status-row.is-editing {
+    background: var(--surface-sunken);
+    padding: var(--space-3) var(--space-4);
   }
 
   .row-lead {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    flex: 1;
+    gap: var(--space-3);
     min-width: 0;
+    flex-wrap: wrap;
   }
 
-  .status-color-indicator {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 50%;
+  .swatch {
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 0.25rem;
+    background: var(--chip-color);
     flex-shrink: 0;
   }
 
   .status-name {
-    font-weight: 500;
+    font-weight: 580;
     color: var(--text);
-    font-size: var(--text-small);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .category-pill {
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--badge-radius);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-secondary);
-    text-transform: capitalize;
+    color: var(--cat-color);
   }
 
-  .category-backlog {
-    border-color: #4c544c;
-    color: var(--text-secondary);
-  }
-
-  .category-unstarted {
-    border-color: #1e4d79;
-    color: #1e4d79;
-  }
-
-  .category-started {
-    border-color: #775300;
-    color: #775300;
-  }
-
-  .category-completed {
-    border-color: #26633b;
-    color: #26633b;
-  }
-
-  .category-cancelled {
-    border-color: #9f302b;
-    color: #9f302b;
-  }
-
-  .row-controls {
+  .row-controls,
+  .reorder {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-  }
-
-  .reorder-group {
-    display: flex;
     gap: 2px;
   }
 
-  .icon-button {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: var(--space-1);
-    border-radius: var(--radius);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition:
-      color 0.15s ease,
-      background 0.15s ease;
-  }
-
-  .icon-button:hover:not(:disabled) {
-    color: var(--text);
-    background: var(--selected);
-  }
-
-  .icon-button:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
+  .reorder {
+    padding-right: var(--space-1);
+    margin-right: var(--space-1);
+    border-right: var(--border-width) solid var(--line);
   }
 
   .delete-btn:hover:not(:disabled) {
     color: var(--danger);
+    background: var(--danger-soft);
   }
 
-  /* Inline edit */
-  .inline-edit-form {
+  .inline-edit {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
     width: 100%;
-    gap: var(--space-2);
   }
 
-  .edit-inputs {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex: 1;
-  }
-
-  .edit-name-input {
-    flex: 1;
-  }
-
-  .color-swatch-picker {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
+  .inline-edit > input {
+    flex: 1 1 12rem;
+    width: auto;
   }
 
   .edit-actions {
     display: flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-
-  /* Delete Confirm Modal Overlay */
-  .delete-confirm-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1100;
-    padding: var(--space-4);
-  }
-
-  .delete-confirm-box {
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    width: 100%;
-    max-width: 28rem;
-    padding: var(--space-4);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .confirm-header {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-  }
-
-  .warning-icon-badge {
-    color: var(--warning);
-    background: var(--surface);
-    padding: var(--space-2);
-    border-radius: 50%;
-    border: var(--border-width) solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .confirm-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0 0 var(--space-1) 0;
-  }
-
-  .confirm-desc {
-    font-size: var(--text-small);
-    color: var(--text-secondary);
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .remap-select-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .confirm-actions {
-    display: flex;
-    justify-content: flex-end;
     gap: var(--space-2);
-    margin-top: var(--space-2);
+    margin-left: auto;
   }
 
-  .modal-footer {
-    padding: var(--space-3) var(--space-6);
-    border-top: var(--border-width) solid var(--border);
+  .confirm-scrim {
+    z-index: calc(var(--layer-overlay) + 10);
+  }
+
+  .confirm-head {
     display: flex;
-    justify-content: flex-end;
-    background: var(--surface);
+    gap: var(--space-4);
+  }
+
+  .confirm-head h3 {
+    font-size: 1.125rem;
+  }
+
+  .warning-badge {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius);
+    background: var(--danger-soft);
+    color: var(--danger);
+    flex-shrink: 0;
   }
 </style>
