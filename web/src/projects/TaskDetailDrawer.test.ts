@@ -369,3 +369,43 @@ test("closes drawer on Escape key press", async () => {
   await fireEvent.keyDown(window, { key: "Escape" });
   expect(onclose).toHaveBeenCalled();
 });
+
+test("unsaved title edits are flagged and guarded before closing", async () => {
+  setupFetchMock();
+  const onclose = vi.fn();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  render(TaskDetailDrawer, {
+    task: mockTask,
+    workspace: mockWorkspace,
+    project: mockProject,
+    currentUserId: "user-alice",
+    onclose,
+  });
+
+  expect(screen.getByText("All changes saved")).toBeTruthy();
+  await fireEvent.input(screen.getByLabelText("Title"), {
+    target: { value: "Implement pooled connections" },
+  });
+  expect(screen.getByText("Unsaved changes")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Save details" })).toHaveProperty(
+    "disabled",
+    false,
+  );
+
+  // Declining the prompt keeps the drawer, and the edit, open.
+  await fireEvent.click(
+    screen.getByRole("button", { name: /close task details/i }),
+  );
+  expect(confirm).toHaveBeenCalled();
+  expect(onclose).not.toHaveBeenCalled();
+
+  // Discard restores the saved title without a prompt.
+  await fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+  expect(screen.queryByText("Unsaved changes")).toBeNull();
+  await fireEvent.click(
+    screen.getByRole("button", { name: /close task details/i }),
+  );
+  expect(onclose).toHaveBeenCalledTimes(1);
+  confirm.mockRestore();
+});

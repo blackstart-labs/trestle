@@ -1,0 +1,21 @@
+---
+description: Trestle design system and frontend rules. Apply to every UI change.
+globs: web/src/**
+alwaysApply: true
+---
+
+Read and follow `AGENTS.md` at the repository root before editing `web/`.
+
+- Use the tokens in `web/src/tokens.css` and the classes in `web/src/app.css`.
+  Never use raw colours, raw z-index or raw easing.
+- Use the components in `web/src/ui/`: `Button`, `Select`, `DatePicker`,
+  `MultiPicker`, `Modal`, `Toast`, `Feedback` and `Icon`. Never use native
+  `<select>` or `type="date"`, and never add icon packages.
+- No `style="…"` attributes (CSP); use `style:` directives. No third-party assets.
+- Motion comes only from `web/src/lib/motion.ts`: critically damped, symmetric
+  exits, transform and opacity only.
+- Show only real data. Meet WCAG 2.2 AA. Build every state (loading, empty,
+  error, success).
+- Done means `npm run lint:design`, `check`, `test`, `format:check` and `build`
+  all pass, and you have looked at the screens in both themes at 390, 768 and
+  1440px.

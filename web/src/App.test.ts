@@ -2,9 +2,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App.svelte";
 
+// Theme cards are radios named by their visible label ("Dark …").
+const themeCard = (label: string) =>
+  screen.getByRole("radio", { name: new RegExp(`^${label}\\b`) });
+
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
+  // Appearance and instance status live on the Settings page.
+  window.location.hash = "#settings";
 });
 
 test("appearance applies and saves a local override through its labelled control", async () => {
@@ -13,9 +19,7 @@ test("appearance applies and saves a local override through its labelled control
     vi.fn().mockResolvedValue(new Response("", { status: 503 })),
   );
   render(App);
-  await fireEvent.change(screen.getByLabelText("Theme"), {
-    target: { value: "dark" },
-  });
+  await fireEvent.click(themeCard("Dark"));
   expect(document.documentElement.dataset.theme).toBe("dark");
   expect(localStorage.getItem("trestle.theme")).toBe("dark");
   expect(screen.getByText("Theme saved on this browser.")).toBeTruthy();
@@ -36,7 +40,8 @@ test.each([
   await waitFor(() =>
     expect(document.documentElement.dataset.theme).toBe(expected),
   );
-  expect(screen.getByLabelText("Theme")).toHaveProperty("value", expected);
+  const label = { system: "System", light: "Light", dark: "Dark" }[expected]!;
+  expect(themeCard(label)).toHaveProperty("checked", true);
   expect(document.body.textContent).not.toContain("untrusted value");
 });
 
@@ -70,18 +75,14 @@ test("failed preference writes apply temporarily and recover on another change",
     vi.fn().mockResolvedValue(new Response("", { status: 503 })),
   );
   render(App);
-  await fireEvent.change(screen.getByLabelText("Theme"), {
-    target: { value: "dark" },
-  });
+  await fireEvent.click(themeCard("Dark"));
   expect(document.documentElement.dataset.theme).toBe("dark");
   expect(screen.getByRole("alert").textContent).toMatch(
     /may not\s+survive a reload/,
   );
   expect(document.body.textContent).not.toContain("private quota details");
   write.mockRestore();
-  await fireEvent.change(screen.getByLabelText("Theme"), {
-    target: { value: "light" },
-  });
+  await fireEvent.click(themeCard("Light"));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(localStorage.getItem("trestle.theme")).toBe("light");
   expect(screen.getByText("Theme saved on this browser.")).toBeTruthy();
@@ -167,9 +168,10 @@ test.each([
     ),
   );
   expect(document.body.textContent).not.toContain("secret network details");
-  expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
-    false,
-  );
+  expect(
+    (screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(false);
 });
 
 test("a pending check prevents duplicates and is aborted after five seconds", async () => {
@@ -187,9 +189,10 @@ test("a pending check prevents duplicates and is aborted after five seconds", as
   );
   try {
     render(App);
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     await vi.advanceTimersByTimeAsync(5000);
     expect(signal?.aborted).toBe(true);
     expect(screen.getByRole("status").textContent).toContain(

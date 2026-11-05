@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
   import Feedback from "../ui/Feedback.svelte";
@@ -7,6 +7,13 @@
   import type { Task } from "./TasksView.svelte";
   import type { Project } from "./ProjectsView.svelte";
   import type { TaskStatus } from "./StatusManagerModal.svelte";
+  import { identityHue } from "../lib/identity";
+  import Toast from "../ui/Toast.svelte";
+  import Select, { type SelectOption } from "../ui/Select.svelte";
+  import DatePicker from "../ui/DatePicker.svelte";
+  import MultiPicker from "../ui/MultiPicker.svelte";
+  import { appear, drawerIn, drawerOut, fadeIn } from "../lib/motion";
+  import { relativeTime } from "../lib/identity";
 
   export interface Label {
     id: string;
@@ -65,6 +72,9 @@
     currentUserId,
     onclose,
     ontaskupdated,
+    ondelete,
+    siblings = [],
+    onnavigate,
   }: {
     task: Task;
     workspace: { id: string; name: string; slug: string; role: string };
@@ -73,6 +83,11 @@
     currentUserId?: string;
     onclose: () => void;
     ontaskupdated?: (task: Task) => void;
+    /** Present when the viewer may delete tasks. */
+    ondelete?: (task: Task) => void;
+    /** The list the task was opened from, for previous/next. */
+    siblings?: Task[];
+    onnavigate?: (task: Task) => void;
   } = $props();
 
   // Local task state
@@ -186,9 +201,42 @@
     return null;
   }
 
+  // Successes are transient toasts; problems stay inline until fixed.
+  let toastMessage = $state<string | null>(null);
+
   function showNotice(msg: string, tone: "success" | "danger" | "neutral") {
-    feedbackMessage = msg;
-    feedbackTone = tone;
+    if (tone === "success") {
+      toastMessage = msg;
+      feedbackMessage = null;
+    } else {
+      feedbackMessage = msg;
+      feedbackTone = tone;
+    }
+  }
+
+  // Title and description save explicitly; everything else saves on change.
+  const dirty = $derived(
+    editTitle.trim() !== currentTask.title ||
+      editDescription.trim() !== (currentTask.description || "").trim(),
+  );
+
+  function requestClose() {
+    if (
+      dirty &&
+      !confirm("Discard your unsaved changes to the title and description?")
+    ) {
+      return;
+    }
+    onclose();
+  }
+
+  async function copyKey() {
+    try {
+      await navigator.clipboard.writeText(currentTask.human_key);
+      showNotice(`Copied ${currentTask.human_key}.`, "success");
+    } catch {
+      showNotice("Could not copy to the clipboard.", "danger");
+    }
   }
 
   export async function loadSubtasks() {
@@ -288,8 +336,8 @@
     }
   }
 
-  async function handleSaveDetails(e: Event) {
-    e.preventDefault();
+  async function handleSaveDetails(e?: Event) {
+    e?.preventDefault();
     const trimmedTitle = editTitle.trim();
     if (!trimmedTitle) {
       showNotice("Task title is required.", "danger");
@@ -482,7 +530,8 @@
     }
   }
 
-  async function handleAttachLabel() {
+  async function handleAttachLabel(labelId: string) {
+    selectedLabelId = labelId;
     if (!selectedLabelId) return;
     const csrf = getCsrfToken();
     if (!csrf) return;
@@ -530,8 +579,12 @@
     }
   }
 
-  async function handleCreateAndAttachLabel(e: Event) {
-    e.preventDefault();
+  async function handleCreateAndAttachLabel(e?: Event, typed?: string) {
+    e?.preventDefault();
+    if (typed) {
+      newLabelName = typed;
+      newLabelColor = presetColors[projectLabels.length % presetColors.length];
+    }
     const name = newLabelName.trim();
     if (!name) return;
 
@@ -583,7 +636,8 @@
     }
   }
 
-  async function handleAssignUser() {
+  async function handleAssignUser(userId: string) {
+    selectedMemberId = userId;
     if (!selectedMemberId) return;
     const csrf = getCsrfToken();
     if (!csrf) return;
@@ -631,9 +685,92 @@
     }
   }
 
+  // Previous / next within the list the task was opened from.
+  const position = $derived(siblings.findIndex((t) => t.id === currentTask.id));
+  const prevTask = $derived(position > 0 ? siblings[position - 1] : null);
+  const nextTask = $derived(
+    position >= 0 && position < siblings.length - 1
+      ? siblings[position + 1]
+      : null,
+  );
+
+  function navigate(target: Task | null) {
+    if (!target || !onnavigate) return;
+    if (
+      dirty &&
+      !confirm("Discard your unsaved changes to the title and description?")
+    ) {
+      return;
+    }
+    onnavigate(target);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      onclose();
+    const overlay = document.querySelector(".scrim, .menu, .picker");
+    if (e.key === "Escape" && !overlay) {
+      requestClose();
+      return;
+    }
+    const el = e.target as HTMLElement | null;
+    const typing =
+      el &&
+      (el.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+    if (typing || overlay || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "k") navigate(prevTask);
+    else if (e.key === "j") navigate(nextTask);
+  }
+
+  // Comments, subtasks and history follow the task being shown.
+  $effect(() => {
+    void currentTask.id;
+    untrack(() => {
+      void loadSubtasks();
+      void loadComments();
+      void loadActivities();
+    });
+  });
+
+  const statusOptions = $derived<SelectOption[]>(
+    statuses.length > 0
+      ? statuses.map((s) => ({ value: s.id, label: s.name, color: s.color }))
+      : statusCategories.map((c) => ({
+          value: c.value,
+          label: c.label,
+          color: `var(--cat-${c.value})`,
+        })),
+  );
+
+  const priorityOptions: SelectOption[] = [
+    { value: "none", label: "No priority", color: "var(--line-strong)" },
+    { value: "low", label: "Low", color: "var(--success)" },
+    { value: "medium", label: "Medium", color: "var(--warning)" },
+    { value: "high", label: "High", color: "var(--danger)" },
+    {
+      value: "urgent",
+      label: "Urgent",
+      icon: "alert-triangle",
+      color: "var(--danger)",
+    },
+  ];
+
+  // Keep Tab inside the drawer while it is open.
+  function trapFocus(e: KeyboardEvent) {
+    if (e.key !== "Tab" || !drawerElement) return;
+    const items = [
+      ...drawerElement.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ];
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
     }
   }
 
@@ -676,26 +813,28 @@
   }
 
   onMount(() => {
-    void loadSubtasks();
-    void loadComments();
-    void loadActivities();
     void loadProjectLabels();
     void loadWorkspaceMembers();
 
-    // Trap focus inside drawer if possible
+    // Move focus into the drawer, and give it back to the opener on close.
+    const opener = document.activeElement as HTMLElement | null;
     drawerElement?.focus();
+    return () => {
+      if (opener && document.contains(opener)) opener.focus();
+    };
   });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- Backdrop -->
 <div
   class="drawer-backdrop"
   onclick={(e) => {
-    if (e.target === e.currentTarget) onclose();
+    if (e.target === e.currentTarget) requestClose();
   }}
   role="presentation"
+  in:fadeIn|global={{ duration: 300 }}
+  out:fadeIn|global={{ duration: 260 }}
 >
   <div
     class="drawer-panel"
@@ -704,33 +843,80 @@
     aria-modal="true"
     aria-labelledby="drawer-heading"
     tabindex="-1"
+    onkeydown={trapFocus}
+    in:drawerIn|global
+    out:drawerOut|global
   >
-    <!-- Top Bar -->
     <header class="drawer-header">
       <div class="header-left">
-        <span class="human-key">{currentTask.human_key}</span>
-        <span class="project-title">{project.name}</span>
-        <span
-          class="header-status-badge"
-          style="border-color: {currentTask.status_color || 'var(--border)'};"
-        >
-          <span
-            class="status-dot"
-            style="background-color: {currentTask.status_color ||
-              'var(--accent)'};"
-            aria-hidden="true"
-          ></span>
-          {currentTask.status_name || currentTask.status}
-        </span>
+        {#if onnavigate && siblings.length > 1}
+          <div class="stepper" role="group" aria-label="Task navigation">
+            <button
+              type="button"
+              class="btn-quiet btn-icon step-btn"
+              disabled={!prevTask}
+              onclick={() => navigate(prevTask)}
+              aria-label="Previous task"
+              title="Previous task (K)"
+            >
+              <Icon name="arrow-up" size={16} />
+            </button>
+            <button
+              type="button"
+              class="btn-quiet btn-icon step-btn"
+              disabled={!nextTask}
+              onclick={() => navigate(nextTask)}
+              aria-label="Next task"
+              title="Next task (J)"
+            >
+              <Icon name="arrow-down" size={16} />
+            </button>
+            <span class="step-count num" aria-hidden="true"
+              >{position + 1} / {siblings.length}</span
+            >
+          </div>
+        {/if}
+        <nav class="crumbs" aria-label="Task location">
+          <span class="project-title">{project.name}</span>
+          <Icon name="chevron-right" size={14} class="crumb-sep" />
+          <h2 id="drawer-heading" class="drawer-title">
+            <span class="key human-key">{currentTask.human_key}</span>
+            <span class="visually-hidden">: {currentTask.title}</span>
+          </h2>
+        </nav>
       </div>
-      <button
-        type="button"
-        class="close-btn"
-        onclick={onclose}
-        aria-label="Close task details"
-      >
-        <Icon name="close" size={18} />
-      </button>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="btn-quiet btn-icon"
+          onclick={copyKey}
+          aria-label="Copy task key {currentTask.human_key}"
+          title="Copy task key"
+        >
+          <Icon name="copy" size={17} />
+        </button>
+        {#if ondelete}
+          <button
+            type="button"
+            class="btn-quiet btn-icon header-delete"
+            onclick={() => ondelete?.(currentTask)}
+            aria-label="Delete task {currentTask.human_key}"
+            title="Delete task"
+          >
+            <Icon name="trash" size={17} />
+          </button>
+        {/if}
+        <span class="header-divider" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="btn-quiet btn-icon"
+          onclick={requestClose}
+          aria-label="Close task details"
+          title="Close (Esc)"
+        >
+          <Icon name="close" size={18} />
+        </button>
+      </div>
     </header>
 
     {#if feedbackMessage}
@@ -740,184 +926,220 @@
     {/if}
 
     <div class="drawer-body">
-      <!-- Left Column: Primary Content -->
       <div class="drawer-main">
-        <form onsubmit={handleSaveDetails} class="main-form">
-          <div class="field">
-            <label for="detail-title" class="field-label">Title</label>
-            <input
+        {#key currentTask.id}
+          <form onsubmit={handleSaveDetails} class="doc" in:appear>
+            <label for="detail-title" class="visually-hidden">Title</label>
+            <textarea
               id="detail-title"
               class="title-input"
               bind:value={editTitle}
               required
-            />
-          </div>
+              rows="1"
+              onkeydown={(e) => {
+                // A title is one line: Enter saves instead of breaking it.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                }
+              }}></textarea>
 
-          <div class="field">
-            <label for="detail-desc" class="field-label">Description</label>
+            <label for="detail-desc" class="visually-hidden">Description</label>
             <textarea
               id="detail-desc"
-              class="desc-textarea"
+              class="desc-input"
               bind:value={editDescription}
-              rows="4"
-              placeholder="Add details, acceptance criteria, or context…"
+              rows="3"
+              placeholder="Add a description: context, acceptance criteria, links…"
             ></textarea>
-          </div>
 
-          <div class="action-row">
-            <Button type="submit" disabled={savingDetails}>
-              {#snippet children()}{savingDetails
-                  ? "Saving…"
-                  : "Save details"}{/snippet}
-            </Button>
-          </div>
-        </form>
-
-        <!-- Subtasks Section -->
-        <section class="section-card" aria-labelledby="subtasks-heading">
-          <div class="section-header">
-            <div class="section-title-wrap">
-              <h3 id="subtasks-heading" class="section-heading">Subtasks</h3>
-              {#if subtasks.length > 0}
-                <span class="progress-pill">
-                  {completedSubtasks}/{subtasks.length} ({subtasksPercent}%)
+            <div class="save-row">
+              {#if dirty}
+                <div class="save-bar" in:appear>
+                  <span class="unsaved" aria-live="polite">Unsaved changes</span
+                  >
+                  <Button
+                    variant="quiet"
+                    onclick={() => {
+                      editTitle = currentTask.title;
+                      editDescription = currentTask.description || "";
+                    }}
+                  >
+                    {#snippet children()}Discard{/snippet}
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={savingDetails}
+                  >
+                    {#snippet children()}{savingDetails
+                        ? "Saving…"
+                        : "Save details"}{/snippet}
+                  </Button>
+                </div>
+              {:else}
+                <span class="saved-note" in:fadeIn>
+                  <Icon name="check" size={14} />
+                  All changes saved
                 </span>
               {/if}
             </div>
+          </form>
+        {/key}
+
+        <section class="block" aria-labelledby="subtasks-heading">
+          <div class="block-head">
+            <h3 id="subtasks-heading">Subtasks</h3>
+            {#if subtasks.length > 0}
+              <span class="count-pill num">
+                {completedSubtasks}/{subtasks.length} ({subtasksPercent}%)
+              </span>
+              <span
+                class="mini-progress"
+                role="progressbar"
+                aria-label="Subtasks completed"
+                aria-valuenow={subtasksPercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <span style:width="{subtasksPercent}%"></span>
+              </span>
+            {/if}
           </div>
 
-          {#if subtasks.length > 0}
-            <div
-              class="progress-bar-bg"
-              role="progressbar"
-              aria-valuenow={subtasksPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div
-                class="progress-bar-fill"
-                style="width: {subtasksPercent}%;"
-              ></div>
-            </div>
+          <div class="subtasks inset">
+            {#if subtasks.length > 0}
+              <ul class="subtask-list" role="list">
+                {#each subtasks as sub, i (sub.id)}
+                  <li
+                    class="subtask-row"
+                    class:completed={sub.status === "completed"}
+                    in:appear
+                  >
+                    <label class="check">
+                      <input
+                        type="checkbox"
+                        class="round-check"
+                        checked={sub.status === "completed"}
+                        onchange={() => handleToggleSubtaskStatus(sub)}
+                        aria-label="Mark {sub.human_key} as {sub.status ===
+                        'completed'
+                          ? 'unstarted'
+                          : 'completed'}"
+                      />
+                      <span class="key">{sub.human_key}</span>
+                    </label>
+                    <span class="subtask-title">{sub.title}</span>
+                    {#if sub.priority !== "none"}
+                      <span class="priority" data-priority={sub.priority}>
+                        {sub.priority}
+                      </span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {:else if !loadingSubtasks}
+              <p class="empty-note">
+                Break this task into smaller steps. Each subtask gets its own
+                key.
+              </p>
+            {/if}
 
-            <ul class="subtask-list" role="list">
-              {#each subtasks as sub (sub.id)}
-                <li
-                  class="subtask-row"
-                  class:completed={sub.status === "completed"}
+            {#if canManage}
+              <form onsubmit={handleCreateSubtask} class="add-row">
+                <Icon name="plus" size={16} class="add-icon" />
+                <input
+                  type="text"
+                  bind:value={newSubtaskTitle}
+                  placeholder="New subtask title…"
+                  aria-label="New subtask title"
+                />
+                <Button
+                  type="submit"
+                  variant="quiet"
+                  disabled={creatingSubtask || !newSubtaskTitle.trim()}
                 >
-                  <label class="checkbox-wrap">
-                    <input
-                      type="checkbox"
-                      checked={sub.status === "completed"}
-                      onchange={() => handleToggleSubtaskStatus(sub)}
-                      aria-label="Mark {sub.human_key} as {sub.status ===
-                      'completed'
-                        ? 'unstarted'
-                        : 'completed'}"
-                    />
-                    <span class="subtask-key">{sub.human_key}</span>
-                  </label>
-                  <span class="subtask-title">{sub.title}</span>
-                  {#if sub.priority !== "none"}
-                    <span class="priority-tag" data-priority={sub.priority}>
-                      {sub.priority}
-                    </span>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          {:else if !loadingSubtasks}
-            <p class="empty-note">
-              No subtasks yet. Break down this task into smaller steps below.
-            </p>
-          {/if}
-
-          {#if canManage}
-            <form onsubmit={handleCreateSubtask} class="add-subtask-form">
-              <input
-                type="text"
-                class="inline-input"
-                bind:value={newSubtaskTitle}
-                placeholder="New subtask title…"
-                aria-label="New subtask title"
-              />
-              <Button type="submit" disabled={creatingSubtask}>
-                {#snippet children()}{creatingSubtask
-                    ? "Adding…"
-                    : "Add subtask"}{/snippet}
-              </Button>
-            </form>
-          {/if}
+                  {#snippet children()}{creatingSubtask
+                      ? "Adding…"
+                      : "Add subtask"}{/snippet}
+                </Button>
+              </form>
+            {/if}
+          </div>
         </section>
 
-        <!-- Comments & Discussion Section -->
-        <section class="section-card" aria-labelledby="comments-heading">
-          <h3 id="comments-heading" class="section-heading">Discussion</h3>
+        <section class="block" aria-labelledby="comments-heading">
+          <div class="block-head">
+            <h3 id="comments-heading">Discussion</h3>
+            {#if comments.length > 0}
+              <span class="count-pill num">{comments.length}</span>
+            {/if}
+          </div>
 
-          <div class="comments-stream">
+          <div class="comments">
             {#if comments.length === 0 && !loadingComments}
               <p class="empty-note">
                 No comments yet. Start the conversation below.
               </p>
             {:else}
-              {#each comments as comment (comment.id)}
-                <div class="comment-card">
-                  <div class="comment-header">
-                    <div class="comment-author-badge">
-                      <span class="avatar-circle">
-                        {getInitials(comment.author_name)}
-                      </span>
+              {#each comments as comment, i (comment.id)}
+                <article class="comment" in:appear>
+                  <span
+                    class="avatar"
+                    style:--avatar-hue={identityHue(comment.user_id)}
+                    aria-hidden="true">{getInitials(comment.author_name)}</span
+                  >
+                  <div class="comment-main">
+                    <div class="comment-header">
                       <span class="author-name">{comment.author_name}</span>
                       <span class="author-handle"
                         >@{comment.author_username}</span
                       >
-                    </div>
-                    <div class="comment-meta">
                       <time
                         class="comment-time"
                         datetime={comment.created_at}
-                        title={comment.created_at}
+                        title={new Date(comment.created_at).toLocaleString()}
                       >
-                        {new Date(comment.created_at).toLocaleDateString(
-                          undefined,
-                          {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          },
-                        )}
+                        {relativeTime(comment.created_at)}
                       </time>
                       {#if canDeleteComment(comment)}
                         <button
                           type="button"
-                          class="delete-comment-btn"
+                          class="btn-quiet btn-icon comment-delete"
                           onclick={() => handleDeleteComment(comment.id)}
                           title="Delete comment"
                           aria-label="Delete comment by {comment.author_name}"
                         >
-                          <Icon name="trash" size={14} />
+                          <Icon name="trash" size={15} />
                         </button>
                       {/if}
                     </div>
+                    <p class="comment-body inset">{comment.content}</p>
                   </div>
-                  <p class="comment-body">{comment.content}</p>
-                </div>
+                </article>
               {/each}
             {/if}
           </div>
 
-          <form onsubmit={handlePostComment} class="post-comment-form">
+          <form onsubmit={handlePostComment} class="composer inset">
             <textarea
-              class="comment-textarea"
               bind:value={newCommentText}
-              rows="3"
+              rows="2"
               placeholder="Leave a comment, update, or question…"
-              aria-label="Write a comment"></textarea>
-            <div class="action-row">
+              aria-label="Write a comment"
+              onkeydown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                }
+              }}></textarea>
+            <div class="composer-actions">
+              <span class="note composer-hint">
+                <kbd>Ctrl</kbd> <kbd>Enter</kbd> to post
+              </span>
               <Button
                 type="submit"
+                variant="primary"
                 disabled={postingComment || !newCommentText.trim()}
               >
                 {#snippet children()}{postingComment
@@ -929,78 +1151,80 @@
         </section>
       </div>
 
-      <!-- Right Column: Metadata Sidebar -->
       <aside class="drawer-sidebar" aria-label="Task attributes">
-        <!-- Status & Priority -->
-        <div class="meta-group">
-          <label for="detail-status" class="meta-label">Status</label>
-          <select
-            id="detail-status"
-            class="meta-select"
-            bind:value={editStatusId}
-            onchange={(e) => {
-              editStatusId = (e.target as HTMLSelectElement).value;
-              const matched = statuses.find((s) => s.id === editStatusId);
-              if (matched) editStatus = matched.category;
-              void handleSaveDetails(e);
-            }}
-          >
-            {#if statuses && statuses.length > 0}
-              {#each statuses as s (s.id)}
-                <option value={s.id}>{s.name} ({s.category})</option>
-              {/each}
-            {:else}
-              {#each statusCategories as s (s.value)}
-                <option value={s.value}>{s.label}</option>
-              {/each}
-            {/if}
-          </select>
-        </div>
-
-        <div class="meta-group">
-          <label for="detail-priority" class="meta-label">Priority</label>
-          <select
-            id="detail-priority"
-            class="meta-select"
-            bind:value={editPriority}
-            onchange={handleSaveDetails}
-          >
-            {#each priorities as p (p.value)}
-              <option value={p.value}>{p.label}</option>
-            {/each}
-          </select>
-        </div>
-
-        <div class="meta-group">
-          <label for="detail-due-date" class="meta-label">Due Date</label>
-          <input
-            type="date"
-            id="detail-due-date"
-            class="meta-input"
-            bind:value={editDueDate}
-            onchange={handleSaveDetails}
-          />
-        </div>
-
-        <hr class="meta-divider" />
-
-        <!-- Assignees Section -->
-        <div class="meta-group" aria-labelledby="assignees-heading">
-          <div class="meta-header-row">
-            <span id="assignees-heading" class="meta-label">Assignees</span>
+        <h3 class="side-title">Properties</h3>
+        <dl class="props">
+          <div class="prop">
+            <dt><label for="detail-status">Status</label></dt>
+            <dd>
+              <Select
+                id="detail-status"
+                variant="chip"
+                value={statuses.length > 0 ? editStatusId : editStatus}
+                options={statusOptions}
+                onchange={(v) => {
+                  if (statuses.length > 0) {
+                    editStatusId = v;
+                    const matched = statuses.find((s) => s.id === v);
+                    if (matched) editStatus = matched.category;
+                  } else {
+                    editStatusId = "";
+                    editStatus = v as Task["status"];
+                  }
+                  void handleSaveDetails();
+                }}
+              />
+            </dd>
           </div>
 
-          {#if currentTask.assignees && currentTask.assignees.length > 0}
-            <div class="assignee-list">
-              {#each currentTask.assignees as a (a.user_id)}
-                <div class="assignee-chip">
-                  <span class="avatar-small">{getInitials(a.display_name)}</span
+          <div class="prop">
+            <dt><label for="detail-priority">Priority</label></dt>
+            <dd>
+              <Select
+                id="detail-priority"
+                variant="chip"
+                value={editPriority}
+                options={priorityOptions}
+                onchange={(v) => {
+                  editPriority = v as Task["priority"];
+                  void handleSaveDetails();
+                }}
+              />
+            </dd>
+          </div>
+
+          <div class="prop">
+            <dt><span id="due-label">Due date</span></dt>
+            <dd>
+              <DatePicker
+                id="detail-due-date"
+                variant="chip"
+                label="Due date"
+                placeholder="No due date"
+                value={editDueDate}
+                onchange={(v) => {
+                  editDueDate = v;
+                  void handleSaveDetails();
+                }}
+              />
+            </dd>
+          </div>
+
+          <div class="prop prop-stack" aria-labelledby="assignees-heading">
+            <dt><span id="assignees-heading">Assignees</span></dt>
+            <dd class="chips">
+              {#each currentTask.assignees ?? [] as a (a.user_id)}
+                <span class="person-chip" in:appear>
+                  <span
+                    class="avatar avatar-sm"
+                    style:--avatar-hue={identityHue(a.user_id)}
+                    aria-hidden="true">{getInitials(a.display_name)}</span
                   >
-                  <span class="assignee-name">{a.display_name}</span>
+                  <span class="person-name">{a.display_name}</span>
                   {#if canManage}
                     <button
                       type="button"
-                      class="chip-remove-btn"
+                      class="chip-remove"
                       onclick={() => handleUnassignUser(a.user_id)}
                       title="Remove {a.display_name}"
                       aria-label="Remove {a.display_name}"
@@ -1008,60 +1232,46 @@
                       <Icon name="close" size={12} />
                     </button>
                   {/if}
-                </div>
+                </span>
+              {:else}
+                <span class="meta-empty">Unassigned</span>
               {/each}
-            </div>
-          {:else}
-            <p class="meta-empty">Unassigned</p>
-          {/if}
-
-          {#if canManage && availableMembers.length > 0}
-            <div class="picker-row">
-              <select
-                class="meta-select"
-                bind:value={selectedMemberId}
-                aria-label="Assign a workspace member"
-              >
-                <option value="">Assign member…</option>
-                {#each availableMembers as m (m.user_id)}
-                  <option value={m.user_id}
-                    >{m.display_name} (@{m.username})</option
-                  >
-                {/each}
-              </select>
-              <Button
-                onclick={handleAssignUser}
-                disabled={!selectedMemberId}
-                type="button"
-              >
-                {#snippet children()}Assign{/snippet}
-              </Button>
-            </div>
-          {/if}
-        </div>
-
-        <hr class="meta-divider" />
-
-        <!-- Labels Section -->
-        <div class="meta-group" aria-labelledby="labels-heading">
-          <div class="meta-header-row">
-            <span id="labels-heading" class="meta-label">Labels</span>
+              {#if canManage}
+                <MultiPicker
+                  label="Assign a workspace member"
+                  searchLabel="Search members"
+                  emptyText="No members match"
+                  items={workspaceMembers.map((m) => ({
+                    value: m.user_id,
+                    label: m.display_name,
+                    sub: `@${m.username}`,
+                    hue: identityHue(m.user_id),
+                    initials: getInitials(m.display_name),
+                  }))}
+                  selected={(currentTask.assignees ?? []).map((a) => a.user_id)}
+                  ontoggle={(id, on) =>
+                    on ? handleAssignUser(id) : handleUnassignUser(id)}
+                />
+              {/if}
+            </dd>
           </div>
 
-          {#if currentTask.labels && currentTask.labels.length > 0}
-            <div class="label-badges">
-              {#each currentTask.labels as l (l.id)}
+          <div class="prop prop-stack" aria-labelledby="labels-heading">
+            <dt><span id="labels-heading">Labels</span></dt>
+            <dd class="chips">
+              {#each currentTask.labels ?? [] as l (l.id)}
                 <span
-                  class="label-badge"
-                  style="--badge-color: {l.color};"
+                  class="label-badge label-chip"
+                  style:--badge-color={l.color}
                   title="Label: {l.name}"
+                  in:appear
                 >
-                  <span class="badge-dot"></span>
-                  <span class="badge-text">{l.name}</span>
+                  <span class="dot" aria-hidden="true"></span>
+                  <span>{l.name}</span>
                   {#if canManage}
                     <button
                       type="button"
-                      class="chip-remove-btn"
+                      class="chip-remove"
                       onclick={() => handleDetachLabel(l.id)}
                       title="Detach {l.name}"
                       aria-label="Detach {l.name}"
@@ -1070,105 +1280,55 @@
                     </button>
                   {/if}
                 </span>
-              {/each}
-            </div>
-          {:else}
-            <p class="meta-empty">No labels attached</p>
-          {/if}
-
-          {#if canManage}
-            {#if availableLabels.length > 0}
-              <div class="picker-row">
-                <select
-                  class="meta-select"
-                  bind:value={selectedLabelId}
-                  aria-label="Select label to attach"
-                >
-                  <option value="">Attach label…</option>
-                  {#each availableLabels as pl (pl.id)}
-                    <option value={pl.id}>{pl.name}</option>
-                  {/each}
-                </select>
-                <Button
-                  onclick={handleAttachLabel}
-                  disabled={!selectedLabelId}
-                  type="button"
-                >
-                  {#snippet children()}Attach{/snippet}
-                </Button>
-              </div>
-            {/if}
-
-            <div class="create-label-action">
-              {#if !showCreateLabel}
-                <button
-                  type="button"
-                  class="text-link-btn"
-                  onclick={() => (showCreateLabel = true)}
-                >
-                  <Icon name="plus" size={14} /> New project label
-                </button>
               {:else}
-                <form
-                  onsubmit={handleCreateAndAttachLabel}
-                  class="mini-label-form"
-                >
-                  <input
-                    type="text"
-                    class="meta-input"
-                    bind:value={newLabelName}
-                    placeholder="Label name"
-                    required
-                    aria-label="New label name"
-                  />
-                  <div
-                    class="color-palette"
-                    role="radiogroup"
-                    aria-label="Color"
-                  >
-                    {#each presetColors as col (col)}
-                      <button
-                        type="button"
-                        class="color-dot"
-                        class:selected={newLabelColor === col}
-                        style="background-color: {col};"
-                        onclick={() => (newLabelColor = col)}
-                        aria-label="Color {col}"
-                      ></button>
-                    {/each}
-                  </div>
-                  <div class="mini-form-actions">
-                    <Button
-                      type="button"
-                      onclick={() => (showCreateLabel = false)}
-                      disabled={creatingLabel}
-                    >
-                      {#snippet children()}Cancel{/snippet}
-                    </Button>
-                    <Button type="submit" disabled={creatingLabel}>
-                      {#snippet children()}{creatingLabel
-                          ? "Saving…"
-                          : "Save"}{/snippet}
-                    </Button>
-                  </div>
-                </form>
+                <span class="meta-empty">No labels</span>
+              {/each}
+              {#if canManage}
+                <MultiPicker
+                  label="Add a label"
+                  searchLabel="Search or create a label"
+                  emptyText="Type to create a label"
+                  createLabel={(q) => `Create label “${q}”`}
+                  items={projectLabels.map((l) => ({
+                    value: l.id,
+                    label: l.name,
+                    color: l.color,
+                  }))}
+                  selected={(currentTask.labels ?? []).map((l) => l.id)}
+                  ontoggle={(id, on) =>
+                    on ? handleAttachLabel(id) : handleDetachLabel(id)}
+                  oncreate={(name) =>
+                    handleCreateAndAttachLabel(undefined, name)}
+                />
               {/if}
-            </div>
-          {/if}
-        </div>
+            </dd>
+          </div>
+        </dl>
 
-        <hr class="meta-divider" />
+        <dl class="meta">
+          <div>
+            <dt>Created</dt>
+            <dd title={new Date(currentTask.created_at).toLocaleString()}>
+              {relativeTime(currentTask.created_at)}
+            </dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd title={new Date(currentTask.updated_at).toLocaleString()}>
+              {relativeTime(currentTask.updated_at)}
+            </dd>
+          </div>
+        </dl>
 
-        <!-- Activity Timeline -->
-        <div class="meta-group" aria-labelledby="activity-heading">
-          <span id="activity-heading" class="meta-label">Activity History</span>
+        <div class="activity" aria-labelledby="activity-heading">
+          <h3 id="activity-heading" class="side-title">Activity</h3>
           {#if activities.length === 0 && !loadingActivities}
             <p class="meta-empty">No activity recorded</p>
           {:else}
             <ol class="timeline" role="list">
-              {#each activities as act (act.id)}
-                <li class="timeline-item">
-                  <div class="timeline-marker"></div>
+              {#each activities as act, i (act.id)}
+                <li class="timeline-item" in:appear>
+                  <span class="timeline-marker" aria-hidden="true"></span>
                   <div class="timeline-content">
                     <span class="timeline-action">
                       <strong>{act.actor_name || "System"}</strong>
@@ -1195,13 +1355,12 @@
                         {act.action}
                       {/if}
                     </span>
-                    <time class="timeline-date" datetime={act.created_at}>
-                      {new Date(act.created_at).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <time
+                      class="timeline-date"
+                      datetime={act.created_at}
+                      title={new Date(act.created_at).toLocaleString()}
+                    >
+                      {relativeTime(act.created_at)}
                     </time>
                   </div>
                 </li>
@@ -1214,715 +1373,744 @@
   </div>
 </div>
 
+<Toast message={toastMessage} onclear={() => (toastMessage = null)} />
+
 <style>
   .drawer-backdrop {
     position: fixed;
     inset: 0;
-    background-color: var(--drawer-scrim);
+    z-index: var(--layer-overlay);
     display: flex;
     justify-content: flex-end;
-    z-index: 100;
-    backdrop-filter: blur(2px);
-    animation: fadeIn 150ms ease-out;
+    background: var(--drawer-scrim);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
   }
 
   .drawer-panel {
-    background-color: var(--surface);
-    color: var(--text);
     width: var(--drawer-width);
     height: 100%;
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
+    background:
+      var(--card-fill) padding-box,
+      var(--card-edge) border-box;
+    border: var(--border-width) solid transparent;
+    border-right: 0;
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+    box-shadow: var(--shadow-modal);
     outline: none;
-    animation: slideIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
   }
 
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
-  }
-
+  /* ── Header ──────────────────────────────────────────────────── */
   .drawer-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: var(--space-4) var(--space-6);
-    border-bottom: var(--border-width) solid var(--border);
-    background-color: var(--surface-nav);
-    flex-shrink: 0;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: 3.75rem;
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+    padding-top: max(var(--space-2), env(safe-area-inset-top));
+    border-bottom: var(--border-width) solid var(--line);
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    min-width: 0;
   }
 
-  .human-key {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    color: var(--accent);
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius);
-    font-size: var(--text-small);
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: var(--space-3);
+    border-right: var(--border-width) solid var(--line);
+  }
+
+  .step-btn {
+    width: 2.25rem;
+    min-height: 2.25rem;
+  }
+
+  .step-count {
+    margin-left: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .crumbs :global(.crumb-sep) {
+    color: var(--text-muted);
+    opacity: 0.7;
   }
 
   .project-title {
     font-size: var(--text-small);
     color: var(--text-muted);
-    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .header-status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--badge-radius);
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
+  .drawer-title {
+    font-size: var(--text-small);
+  }
+
+  .human-key {
+    font-size: var(--text-small);
     color: var(--text);
   }
 
-  .status-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .close-btn {
-    background: transparent;
-    border: var(--border-width) solid transparent;
-    color: var(--text);
-    padding: var(--space-2);
-    border-radius: var(--radius);
-    cursor: pointer;
+  .header-actions {
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: background-color 120ms ease;
+    gap: 2px;
   }
 
-  .close-btn:hover {
-    background-color: var(--surface-raised);
-    border-color: var(--border);
+  .header-divider {
+    width: 1px;
+    height: 1.25rem;
+    margin: 0 var(--space-1);
+    background: var(--line-strong);
   }
 
-  .close-btn:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
+  .header-delete:hover:not(:disabled) {
+    color: var(--danger);
+    background: var(--danger-soft);
   }
 
   .drawer-feedback {
-    padding: var(--space-2) var(--space-6);
+    padding: var(--space-3) var(--space-6) 0;
   }
 
+  /* ── Body ────────────────────────────────────────────────────── */
   .drawer-body {
     flex: 1;
+    min-height: 0;
     display: grid;
-    grid-template-columns: 1fr 18rem;
-    overflow-y: auto;
-  }
-
-  @media (max-width: 768px) {
-    .drawer-body {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .drawer-main {
-    padding: var(--space-6);
-    border-right: var(--border-width) solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-6);
-  }
-
-  .main-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field-label {
-    font-size: var(--text-small);
-    font-weight: 650;
-    color: var(--text);
-  }
-
-  .title-input {
-    font-size: var(--text-lead);
-    font-weight: 700;
-    color: var(--text);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .title-input:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
-  }
-
-  .desc-textarea {
-    font-family: var(--font-body);
-    font-size: var(--text-body);
-    line-height: var(--leading);
-    color: var(--text);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-3);
-    resize: vertical;
-  }
-
-  .desc-textarea:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
-  }
-
-  .action-row {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  /* Section cards */
-  .section-card {
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .section-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .section-heading {
-    margin: 0;
-    font-size: var(--text-body);
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .progress-pill {
-    font-size: var(--text-small);
-    color: var(--text-muted);
-    font-weight: 600;
-  }
-
-  .progress-bar-bg {
-    width: 100%;
-    height: 6px;
-    background: var(--surface);
-    border-radius: 9999px;
+    grid-template-columns: minmax(0, 1fr) 19rem;
     overflow: hidden;
   }
 
-  .progress-bar-fill {
+  .drawer-main {
+    display: grid;
+    align-content: start;
+    gap: var(--space-8);
+    padding: var(--space-6) var(--space-8) var(--space-10);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* The task reads like a document, not a form. */
+  .doc {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .title-input,
+  .desc-input {
+    width: calc(100% + var(--space-6));
+    margin: 0 calc(var(--space-3) * -1);
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-width) solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    resize: none;
+    field-sizing: content;
+    transition:
+      background-color var(--transition-fast),
+      border-color var(--transition-fast);
+  }
+
+  .title-input {
+    min-height: 3rem;
+    font-size: 1.625rem;
+    font-weight: 520;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    color: var(--text);
+  }
+
+  .desc-input {
+    min-height: 5.5rem;
+    font-size: var(--text-body);
+    line-height: 1.65;
+    color: var(--text-secondary);
+  }
+
+  .title-input:hover:not(:focus),
+  .desc-input:hover:not(:focus) {
+    background: var(--hover);
+  }
+
+  .title-input:focus,
+  .desc-input:focus {
+    background: var(--surface-sunken);
+    border-color: var(--focus);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .save-row {
+    display: flex;
+    justify-content: flex-end;
+    min-height: var(--control-height);
+  }
+
+  .save-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+    border-radius: var(--radius);
+    background: var(--warning-soft);
+  }
+
+  .unsaved {
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-small);
+    font-weight: 560;
+    color: var(--warning);
+  }
+
+  .unsaved::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: breathe 1.6s var(--ease-in-out) infinite alternate;
+  }
+
+  @keyframes breathe {
+    to {
+      opacity: 0.35;
+    }
+  }
+
+  .saved-note {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .block {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .block-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .block-head h3 {
+    font-size: var(--text-ui);
+    font-weight: 560;
+  }
+
+  .count-pill {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--selected);
+  }
+
+  .mini-progress {
+    flex: 1;
+    max-width: 10rem;
+    height: 0.3rem;
+    margin-left: auto;
+    border-radius: var(--radius-full);
+    background: var(--surface-sunken);
+    overflow: hidden;
+  }
+
+  .mini-progress span {
+    display: block;
     height: 100%;
-    background: var(--accent);
-    transition: width 200ms ease;
+    border-radius: inherit;
+    background: var(--cat-completed);
+    transition: width var(--duration-slow) var(--ease-spring);
+  }
+
+  .subtasks {
+    overflow: hidden;
   }
 
   .subtask-list {
     list-style: none;
-    padding: 0;
     margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+    padding: 0;
   }
 
   .subtask-row {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+    gap: var(--space-3);
+    min-height: 2.75rem;
+    padding: 0 var(--space-3);
+    border-bottom: var(--border-width) solid var(--line);
   }
 
-  .subtask-row.completed {
-    opacity: 0.65;
-  }
-
-  .subtask-row.completed .subtask-title {
-    text-decoration: line-through;
-  }
-
-  .checkbox-wrap {
-    display: flex;
+  .check {
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--space-3);
+    min-height: 2.75rem;
     cursor: pointer;
   }
 
-  .subtask-key {
-    font-family: var(--font-mono);
-    font-size: var(--text-small);
-    font-weight: 650;
-    color: var(--text-muted);
+  /* A round, animated check that matches the product, not the browser. */
+  .round-check {
+    appearance: none;
+    -webkit-appearance: none;
+    display: grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color 200ms var(--ease-out),
+      border-color 200ms var(--ease-out),
+      transform 160ms var(--ease-out);
+  }
+
+  .round-check::after {
+    content: "";
+    width: 0.3rem;
+    height: 0.55rem;
+    margin-top: -2px;
+    border: solid var(--button-text);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    transition: transform 260ms var(--ease-bounce);
+  }
+
+  .round-check:checked {
+    background: var(--cat-completed);
+    border-color: var(--cat-completed);
+  }
+
+  .round-check:checked::after {
+    transform: rotate(45deg) scale(1);
+  }
+
+  .round-check:active {
+    transform: scale(0.88);
   }
 
   .subtask-title {
     flex: 1;
-    font-size: var(--text-body);
+    min-width: 0;
     color: var(--text);
+    transition: color var(--transition-fast);
   }
 
-  .priority-tag {
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--radius);
-    text-transform: capitalize;
+  .subtask-row.completed .subtask-title {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-color: var(--line-strong);
   }
 
-  .priority-tag[data-priority="urgent"],
-  .priority-tag[data-priority="high"] {
-    background-color: var(--danger);
-    color: var(--surface-raised);
-  }
-
-  .priority-tag[data-priority="medium"] {
-    background-color: var(--warning);
-    color: var(--text);
-  }
-
-  .priority-tag[data-priority="low"],
-  .priority-tag[data-priority="none"] {
-    background-color: var(--surface-nav);
-    color: var(--text-secondary);
-  }
-
-  .add-subtask-form {
+  .add-row {
     display: flex;
+    align-items: center;
     gap: var(--space-2);
-    margin-top: var(--space-2);
+    padding: 0 var(--space-1) 0 var(--space-3);
   }
 
-  .inline-input {
+  .add-row :global(.add-icon) {
+    color: var(--text-muted);
+  }
+
+  .add-row input {
     flex: 1;
-    background: var(--surface);
-    color: var(--text);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-body);
+    min-width: 0;
+    border-color: transparent;
+    background: transparent;
+    padding-left: var(--space-1);
   }
 
-  .inline-input:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
+  .add-row input:focus {
+    box-shadow: none;
+    border-color: transparent;
+    background: transparent;
   }
 
-  .empty-note {
+  .empty-note,
+  .meta-empty {
     font-size: var(--text-small);
     color: var(--text-muted);
-    font-style: italic;
-    margin: var(--space-2) 0;
   }
 
-  /* Comments */
-  .comments-stream {
+  .subtasks .empty-note {
+    padding: var(--space-4) var(--space-4) var(--space-2);
+  }
+
+  .comments {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .comment {
     display: flex;
-    flex-direction: column;
     gap: var(--space-3);
   }
 
-  .comment-card {
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-3);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+  .comment-main {
+    flex: 1;
+    min-width: 0;
   }
 
   .comment-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .comment-author-badge {
-    display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .avatar-circle {
-    width: var(--avatar-size);
-    height: var(--avatar-size);
-    border-radius: 9999px;
-    background: var(--selected);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 0.75rem;
-    border: var(--border-width) solid var(--border);
+    flex-wrap: wrap;
+    min-height: 2rem;
   }
 
   .author-name {
-    font-weight: 700;
+    font-weight: 600;
     font-size: var(--text-small);
     color: var(--text);
   }
 
-  .author-handle {
-    font-size: var(--text-small);
-    color: var(--text-muted);
-  }
-
-  .comment-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
+  .author-handle,
   .comment-time {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 
-  .delete-comment-btn {
-    background: transparent;
-    border: none;
+  .comment-delete {
+    margin-left: auto;
+    width: 2rem;
+    min-height: 2rem;
     color: var(--text-muted);
-    cursor: pointer;
-    padding: var(--space-1);
-    display: flex;
-    align-items: center;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
   }
 
-  .delete-comment-btn:hover {
+  .comment:hover .comment-delete,
+  .comment-delete:focus-visible {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .comment-delete {
+      opacity: 1;
+    }
+  }
+
+  .comment-delete:hover:not(:disabled) {
     color: var(--danger);
+    background: var(--danger-soft);
   }
 
   .comment-body {
-    margin: 0;
-    font-size: var(--text-body);
-    line-height: var(--leading);
+    margin-top: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border-radius: 0.25rem var(--radius) var(--radius) var(--radius);
     color: var(--text);
     white-space: pre-wrap;
   }
 
-  .post-comment-form {
-    display: flex;
-    flex-direction: column;
+  .composer {
+    display: grid;
     gap: var(--space-2);
-    margin-top: var(--space-2);
+    padding: var(--space-2);
+    transition: box-shadow var(--transition-fast);
   }
 
-  .comment-textarea {
-    font-family: var(--font-body);
-    font-size: var(--text-body);
-    color: var(--text);
-    background: var(--surface);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-2) var(--space-3);
-    resize: vertical;
+  .composer:focus-within {
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
-  .comment-textarea:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
-  }
-
-  /* Sidebar */
-  .drawer-sidebar {
-    padding: var(--space-6);
-    background-color: var(--surface-nav);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    overflow-y: auto;
-  }
-
-  .meta-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .meta-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .meta-label {
-    font-size: var(--text-small);
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .meta-select,
-  .meta-input {
-    background: var(--surface-raised);
-    color: var(--text);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-small);
-  }
-
-  .meta-select:focus-visible,
-  .meta-input:focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: var(--focus-offset);
-  }
-
-  .meta-divider {
+  .composer textarea {
+    min-height: 3.5rem;
     border: 0;
-    border-top: var(--border-width) solid var(--border);
-    margin: var(--space-1) 0;
+    background: transparent;
+    resize: none;
+    field-sizing: content;
+    max-height: 14rem;
   }
 
-  .meta-empty {
-    font-size: var(--text-small);
-    color: var(--text-muted);
-    font-style: italic;
-    margin: 0;
+  .composer textarea:focus {
+    box-shadow: none;
+    background: transparent;
   }
 
-  /* Assignees chips */
-  .assignee-list {
+  .composer-actions {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0 0 0 var(--space-2);
+  }
+
+  .composer-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  /* ── Properties ──────────────────────────────────────────────── */
+  .drawer-sidebar {
+    display: grid;
+    align-content: start;
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-5) var(--space-8);
+    border-left: var(--border-width) solid var(--line);
+    background: light-dark(
+      oklch(0.975 calc(var(--tint) * 0.8) var(--brand-hue) / 0.6),
+      oklch(0.1 0.01 var(--brand-hue) / 0.35)
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .side-title {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0;
+  }
+
+  .props,
+  .meta {
+    margin: 0;
+    display: grid;
     gap: var(--space-1);
   }
 
-  .assignee-chip {
+  .props {
+    margin-top: calc(var(--space-4) * -1);
+  }
+
+  .prop {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 2.5rem;
+  }
+
+  .prop-stack {
+    align-items: start;
+    padding-top: var(--space-1);
+  }
+
+  .prop-stack dt {
+    padding-top: 0.4rem;
+  }
+
+  .prop dt,
+  .meta dt {
+    font-size: var(--text-small);
+    color: var(--text-muted);
+  }
+
+  .prop dt label {
+    cursor: pointer;
+  }
+
+  .prop dd,
+  .meta dd {
+    margin: 0;
+    min-width: 0;
+  }
+
+  .chips {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .chips .meta-empty {
+    padding: 0 var(--space-1);
+  }
+
+  .person-chip {
+    display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius);
-  }
-
-  .avatar-small {
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 9999px;
-    background: var(--selected);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.625rem;
-    font-weight: 700;
-  }
-
-  .assignee-name {
-    flex: 1;
+    min-height: 2rem;
+    padding: 0 0.25rem;
+    border-radius: var(--radius-full);
+    background:
+      var(--inset-fill) padding-box,
+      var(--inset-edge) border-box;
+    border: var(--border-width) solid transparent;
     font-size: var(--text-small);
-    font-weight: 600;
+    color: var(--text);
   }
 
-  .chip-remove-btn {
+  .person-name {
+    padding-right: 0.125rem;
+  }
+
+  .label-chip {
+    min-height: 2rem;
+    padding-right: 0.25rem;
+  }
+
+  .chip-remove {
+    min-height: 1.5rem;
+    width: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
     background: transparent;
-    border: none;
+    box-shadow: none;
     color: var(--text-muted);
-    cursor: pointer;
-    padding: var(--space-1);
-    display: flex;
-    align-items: center;
   }
 
-  .chip-remove-btn:hover {
+  .chip-remove:hover:not(:disabled) {
+    background: var(--danger-soft);
     color: var(--danger);
   }
 
-  .picker-row {
+  .meta {
+    padding-top: var(--space-4);
+    border-top: var(--border-width) solid var(--line);
+  }
+
+  .meta div {
     display: flex;
-    gap: var(--space-2);
-    margin-top: var(--space-1);
+    justify-content: space-between;
+    gap: var(--space-3);
   }
 
-  .picker-row .meta-select {
-    flex: 1;
-  }
-
-  /* Labels */
-  .label-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-
-  .label-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-left: 3px solid var(--badge-color);
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--badge-radius);
+  .meta dd {
     font-size: var(--text-small);
-    font-weight: 600;
-    color: var(--text);
+    color: var(--text-secondary);
   }
 
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-    background-color: var(--badge-color);
+  .activity {
+    display: grid;
+    gap: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: var(--border-width) solid var(--line);
   }
 
-  .text-link-btn {
-    background: transparent;
-    border: none;
-    color: var(--accent);
-    font-size: var(--text-small);
-    font-weight: 650;
-    cursor: pointer;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-
-  .text-link-btn:hover {
-    text-decoration: underline;
-  }
-
-  .mini-label-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    padding: var(--space-2);
-    border-radius: var(--radius);
-  }
-
-  .color-palette {
-    display: flex;
-    gap: var(--space-1);
-  }
-
-  .color-dot {
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 9999px;
-    border: 2px solid transparent;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .color-dot.selected {
-    border-color: var(--text);
-    transform: scale(1.15);
-  }
-
-  .mini-form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
-
-  /* Timeline */
   .timeline {
     list-style: none;
-    padding: 0;
     margin: 0;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+    padding: 0;
+    display: grid;
   }
 
   .timeline-item {
     position: relative;
-    padding-left: var(--space-4);
     display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .timeline-marker {
-    position: absolute;
-    left: 0;
-    top: 0.375rem;
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-    background-color: var(--accent);
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
   }
 
   .timeline-item::before {
     content: "";
     position: absolute;
-    left: 2px;
-    top: 0.75rem;
-    bottom: -0.75rem;
-    width: 2px;
-    background-color: var(--timeline-line);
+    left: 4px;
+    top: 14px;
+    bottom: 0;
+    width: 1px;
+    background: var(--line-strong);
   }
 
   .timeline-item:last-child::before {
     display: none;
   }
 
+  .timeline-marker {
+    position: relative;
+    width: 9px;
+    height: 9px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: var(--surface-raised);
+    border: 2px solid var(--accent);
+    flex-shrink: 0;
+  }
+
+  .timeline-content {
+    display: grid;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+
   .timeline-action {
-    font-size: 0.8125rem;
-    color: var(--text);
-    line-height: 1.35;
+    font-size: var(--text-small);
+    color: var(--text-secondary);
+    line-height: 1.45;
   }
 
   .timeline-date {
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
+  }
+
+  @media (max-width: 52rem) {
+    .drawer-panel {
+      width: 100%;
+      border-radius: 0;
+      border-left: 0;
+    }
+
+    .drawer-body {
+      display: block;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .drawer-main {
+      overflow: visible;
+      padding: var(--space-5) var(--space-4) var(--space-6);
+    }
+
+    .drawer-sidebar {
+      overflow: visible;
+      border-left: 0;
+      border-top: var(--border-width) solid var(--line);
+      padding: var(--space-5) var(--space-4);
+      padding-bottom: max(var(--space-8), env(safe-area-inset-bottom));
+    }
+
+    .drawer-header {
+      padding-left: var(--space-3);
+    }
+
+    .step-count,
+    .project-title,
+    .crumbs :global(.crumb-sep),
+    .composer-hint {
+      display: none;
+    }
+
+    .title-input {
+      font-size: 1.3125rem;
+    }
   }
 </style>

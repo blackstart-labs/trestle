@@ -3,6 +3,10 @@
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
   import Feedback from "../ui/Feedback.svelte";
+  import Icon from "../ui/Icon.svelte";
+  import Modal from "../ui/Modal.svelte";
+  import Toast from "../ui/Toast.svelte";
+  import { identityHue, relativeTime } from "../lib/identity";
 
   export interface Project {
     id: string;
@@ -29,6 +33,43 @@
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
+  let query = $state("");
+
+  // Live progress per project, read with bounded limit=1 count queries.
+  let stats = $state<
+    Record<string, { total: number; done: number; cancelled: number }>
+  >({});
+
+  async function count(projectId: string, status?: string) {
+    const res = await fetch(
+      `/api/v1/workspaces/${workspace.id}/projects/${projectId}/tasks?limit=1&offset=0${status ? `&status=${status}` : ""}`,
+      { headers: { Accept: "application/json" }, cache: "no-store" },
+    );
+    if (!res.ok) throw new Error("count unavailable");
+    const data = await res.json();
+    if (typeof data.total !== "number") throw new Error("count unavailable");
+    return data.total as number;
+  }
+
+  async function loadStats(list: Project[]) {
+    const entries = await Promise.all(
+      list.slice(0, 24).map(async (p) => {
+        try {
+          const [total, done, cancelled] = await Promise.all([
+            count(p.id),
+            count(p.id, "completed"),
+            count(p.id, "cancelled"),
+          ]);
+          return [p.id, { total, done, cancelled }] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    stats = Object.fromEntries(
+      entries.filter((e): e is NonNullable<typeof e> => e !== null),
+    );
+  }
 
   // New project modal state
   let showCreate = $state(false);
@@ -44,6 +85,14 @@
   const canManageProjects = $derived(
     workspace.role === "owner" || workspace.role === "admin",
   );
+
+  const visibleProjects = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) =>
+      `${p.name} ${p.key} ${p.slug} ${p.description}`.toLowerCase().includes(q),
+    );
+  });
 
   function getCsrfToken(): string | null {
     if (typeof document === "undefined") return null;
@@ -81,6 +130,12 @@
     }
   });
 
+  function closeCreate() {
+    if (creating) return;
+    showCreate = false;
+    createError = null;
+  }
+
   export async function loadProjects() {
     loading = true;
     errorMessage = null;
@@ -92,6 +147,7 @@
       if (res.status === 200) {
         const data = await res.json();
         projects = data.projects || [];
+        void loadStats(projects);
       } else if (res.status === 404) {
         errorMessage = "Workspace not found or access denied.";
       } else {
@@ -181,7 +237,9 @@
 
   async function handleArchiveProject(project: Project) {
     if (
-      !confirm(`Are you sure you want to archive project "${project.name}"?`)
+      !confirm(
+        `Archive "${project.name}"? It will be removed from the projects list. Archived projects are kept, not deleted.`,
+      )
     ) {
       return;
     }
@@ -220,311 +278,521 @@
   });
 </script>
 
-<section class="projects-section" aria-labelledby="projects-heading">
-  <div class="header-row">
+<section class="projects" aria-labelledby="projects-heading">
+  <div class="page-head">
     <div>
       <h2 id="projects-heading" tabindex="-1">Projects</h2>
-      <p class="section-lead">
-        Organize work into distinct projects with isolated tasks and workflows.
+      <p>
+        Each project has its own key, tasks and workflow in {workspace.name}.
       </p>
     </div>
     {#if canManageProjects}
-      <Button onclick={() => (showCreate = true)}>
-        {#snippet children()}New project{/snippet}
-      </Button>
+      <div class="page-actions">
+        <Button variant="primary" onclick={() => (showCreate = true)}>
+          {#snippet children()}
+            <Icon name="plus" size={16} />
+            New project
+          {/snippet}
+        </Button>
+      </div>
     {/if}
   </div>
 
-  {#if successMessage}
-    <Feedback tone="success">
-      {successMessage}
-    </Feedback>
-  {/if}
-
-  {#if errorMessage}
-    <Feedback tone="danger">
-      {errorMessage}
-    </Feedback>
-    <Button onclick={loadProjects}>
-      {#snippet children()}Retry{/snippet}
-    </Button>
-  {/if}
+  <div class="stack messages">
+    {#if errorMessage}
+      <Feedback tone="danger">{errorMessage}</Feedback>
+      <div>
+        <Button onclick={loadProjects}>
+          {#snippet children()}Retry{/snippet}
+        </Button>
+      </div>
+    {/if}
+  </div>
 
   {#if showCreate}
-    <div class="modal-backdrop">
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-project-heading"
-      >
-        <h3 id="create-project-heading">Create new project</h3>
-        <p class="note">
-          Each project has a short key (like ENG or TREST) used as a prefix for
-          all task keys.
-        </p>
+    <Modal
+      title="Create new project"
+      description="The key prefixes every task in the project, like CORE-12."
+      onclose={closeCreate}
+    >
+      {#if createError}
+        <Feedback tone="danger">{createError}</Feedback>
+      {/if}
 
-        {#if createError}
-          <Feedback tone="danger">{createError}</Feedback>
+      <form onsubmit={handleCreateProject} class="form-grid">
+        <InputField
+          id="proj-name"
+          label="Project name"
+          bind:value={createName}
+          required
+          placeholder="Core Engine"
+        />
+
+        <div class="form-row">
+          <div class="field">
+            <label for="proj-slug">Slug</label>
+            <input
+              id="proj-slug"
+              bind:value={createSlug}
+              oninput={() => (slugManual = true)}
+              required
+              aria-describedby="proj-slug-hint"
+            />
+            <p class="note" id="proj-slug-hint">
+              Lowercase letters and hyphens
+            </p>
+          </div>
+          <div class="field">
+            <label for="proj-key">Key</label>
+            <input
+              id="proj-key"
+              class="key-input"
+              bind:value={createKey}
+              oninput={() => (keyManual = true)}
+              required
+              maxlength="8"
+              aria-describedby="proj-key-hint"
+            />
+            <p class="note" id="proj-key-hint">2–8 letters or numbers</p>
+          </div>
+        </div>
+
+        {#if createKey.trim()}
+          <p class="key-preview" aria-live="polite">
+            First task will be
+            <span class="key-sample">{createKey.trim().toUpperCase()}-1</span>
+          </p>
         {/if}
 
-        <form onsubmit={handleCreateProject} class="create-form">
-          <InputField
-            id="proj-name"
-            label="Project name"
-            bind:value={createName}
-            required
-            hint="A clear name (e.g. Core Engine, Web Application)"
-          />
+        <div class="field">
+          <label for="proj-desc">Description (optional)</label>
+          <textarea
+            id="proj-desc"
+            bind:value={createDescription}
+            rows="3"
+            placeholder="What is this project's mission or scope?"></textarea>
+        </div>
 
-          <div class="row-2">
-            <InputField
-              id="proj-slug"
-              label="Slug"
-              bind:value={createSlug}
-              required
-              hint="URL identifier (lowercase and hyphens)"
-            />
-            <InputField
-              id="proj-key"
-              label="Key"
-              bind:value={createKey}
-              required
-              hint="Task prefix, 2–8 uppercase chars (e.g. CORE)"
-            />
-          </div>
-
-          <div class="field">
-            <label for="proj-desc">Description (optional)</label>
-            <textarea
-              id="proj-desc"
-              bind:value={createDescription}
-              rows="3"
-              placeholder="What is this project's mission or scope?"></textarea>
-          </div>
-
-          <div class="modal-actions">
-            <Button
-              type="button"
-              onclick={() => (showCreate = false)}
-              disabled={creating}
-            >
-              {#snippet children()}Cancel{/snippet}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {#snippet children()}{creating
-                  ? "Creating…"
-                  : "Create project"}{/snippet}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div class="dialog-actions">
+          <Button
+            type="button"
+            variant="quiet"
+            onclick={closeCreate}
+            disabled={creating}
+          >
+            {#snippet children()}Cancel{/snippet}
+          </Button>
+          <Button type="submit" variant="primary" disabled={creating}>
+            {#snippet children()}{creating
+                ? "Creating…"
+                : "Create project"}{/snippet}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   {/if}
 
   {#if loading}
+    <div class="projects-grid" aria-hidden="true">
+      {#each [0, 1, 2] as i (i)}
+        <div class="project-card skeleton"></div>
+      {/each}
+    </div>
     <Feedback tone="neutral" announcement="status">Loading projects…</Feedback>
   {:else if projects.length === 0}
-    <div class="empty-state">
+    <div class="empty">
+      <span class="empty-mark"><Icon name="folder" size={22} /></span>
       <h3>No projects yet</h3>
-      <p class="note">
-        Projects group related tasks, track milestones, and organize your work.
+      <p>
+        Projects group related tasks under one key and one workflow, so everyone
+        reads status the same way.
       </p>
       {#if canManageProjects}
-        <Button onclick={() => (showCreate = true)}>
+        <Button variant="primary" onclick={() => (showCreate = true)}>
           {#snippet children()}Create your first project{/snippet}
         </Button>
+      {:else}
+        <p>Ask a workspace owner or admin to create one.</p>
       {/if}
     </div>
   {:else}
-    <div class="projects-grid" role="list">
-      {#each projects as proj (proj.id)}
-        <div class="project-card" role="listitem">
-          <div class="project-header">
-            <span class="project-key" aria-label="Key {proj.key}"
-              >{proj.key}</span
-            >
-            <span class="project-counter"
-              >{proj.task_counter}
-              {proj.task_counter === 1 ? "task" : "tasks"}</span
-            >
-          </div>
-          <h3 class="project-name">{proj.name}</h3>
-          <p class="project-slug">/{proj.slug}</p>
-          {#if proj.description}
-            <p class="project-desc">{proj.description}</p>
-          {/if}
-          <div class="project-actions">
-            <Button onclick={() => onselectproject?.(proj)}>
-              {#snippet children()}Open tasks{/snippet}
-            </Button>
-            {#if canManageProjects}
-              <button
-                type="button"
-                class="archive-btn"
-                onclick={() => handleArchiveProject(proj)}
-                title="Archive project"
+    {#if projects.length > 3}
+      <div class="toolbar">
+        <label class="search-field">
+          <Icon name="search" size={16} />
+          <span class="visually-hidden">Filter projects</span>
+          <input
+            type="search"
+            bind:value={query}
+            placeholder="Filter by name or key"
+          />
+        </label>
+        <span class="note num">
+          {visibleProjects.length} of {projects.length} projects
+        </span>
+      </div>
+    {/if}
+
+    {#if visibleProjects.length === 0}
+      <div class="empty">
+        <h3>No projects match “{query.trim()}”</h3>
+        <Button variant="quiet" onclick={() => (query = "")}>
+          {#snippet children()}Clear filter{/snippet}
+        </Button>
+      </div>
+    {:else}
+      <div class="projects-grid" role="list">
+        {#each visibleProjects as proj (proj.id)}
+          <article
+            class="project-card"
+            role="listitem"
+            style:--project-hue={identityHue(proj.key)}
+          >
+            <div class="card-top">
+              <span class="project-key" aria-label="Key {proj.key}"
+                >{proj.key}</span
               >
-                Archive
-              </button>
+              {#if !stats[proj.id]}
+                <span class="project-counter num"
+                  >{proj.task_counter}
+                  {proj.task_counter === 1 ? "task" : "tasks"} created</span
+                >
+              {/if}
+            </div>
+            <h3 class="project-name">{proj.name}</h3>
+            <p class="project-slug">/{proj.slug}</p>
+            {#if proj.description}
+              <p class="project-desc">{proj.description}</p>
+            {:else}
+              <p class="project-desc empty-desc">No description yet.</p>
             {/if}
-          </div>
-        </div>
-      {/each}
-    </div>
+            {#if stats[proj.id]?.total === 0}
+              <p class="progress-empty">No tasks yet.</p>
+            {:else if stats[proj.id]}
+              {@const st = stats[proj.id]}
+              {@const counted = st.total - st.cancelled}
+              {@const pct =
+                counted > 0 ? Math.round((st.done / counted) * 100) : 0}
+              <div class="progress">
+                <div class="progress-line">
+                  <span class="num"
+                    ><strong>{counted - st.done}</strong> open</span
+                  >
+                  <span class="num">{st.done} of {counted} done</span>
+                </div>
+                <span
+                  class="progress-bar"
+                  role="progressbar"
+                  aria-label="{proj.name} completion"
+                  aria-valuenow={pct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span style:width="{pct}%"></span>
+                </span>
+              </div>
+            {/if}
+            <div class="card-foot">
+              <span class="updated">
+                <Icon name="clock" size={14} />
+                Updated {relativeTime(proj.updated_at)}
+              </span>
+              <div class="card-actions">
+                {#if canManageProjects}
+                  <button
+                    type="button"
+                    class="btn-quiet btn-icon"
+                    onclick={() => handleArchiveProject(proj)}
+                    aria-label="Archive {proj.name}"
+                    title="Archive project"
+                  >
+                    <Icon name="archive" size={17} />
+                  </button>
+                {/if}
+                <Button onclick={() => onselectproject?.(proj)}>
+                  {#snippet children()}
+                    Open tasks
+                    <Icon name="arrow-right" size={15} />
+                  {/snippet}
+                </Button>
+              </div>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </section>
 
+<Toast message={successMessage} onclear={() => (successMessage = null)} />
+
 <style>
-  .projects-section {
-    margin-top: var(--space-6);
+  .messages:empty {
+    display: none;
   }
-  .header-row {
+
+  .messages {
+    margin-bottom: var(--space-5);
+  }
+
+  .toolbar {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: flex-start;
     gap: var(--space-4);
     margin-bottom: var(--space-4);
     flex-wrap: wrap;
   }
-  .section-lead {
-    color: var(--text-secondary);
-    margin-top: var(--space-1);
-    margin-bottom: 0;
-  }
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--drawer-scrim);
-    backdrop-filter: blur(8px);
+
+  .search-field {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-    z-index: 100;
+    width: min(100%, 22rem);
+    color: var(--text-muted);
   }
-  .modal-card {
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-6);
-    max-width: 32rem;
-    width: 100%;
-    box-shadow: var(--shadow-modal);
+
+  .search-field :global(.svg-icon) {
+    position: absolute;
+    left: var(--space-3);
+    pointer-events: none;
   }
-  .create-form {
-    display: grid;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
+
+  .search-field input {
+    padding-left: 2.25rem;
   }
-  .row-2 {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: var(--space-3);
-  }
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-  }
-  .empty-state {
-    padding: var(--space-12) var(--space-6);
-    text-align: center;
-    background: var(--surface-raised);
-    border: var(--border-width) dashed var(--border);
-    border-radius: var(--radius-lg);
-    display: grid;
-    gap: var(--space-3);
-    justify-items: center;
-  }
+
   .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
     gap: var(--space-4);
-    margin-top: var(--space-4);
   }
+
   .project-card {
-    background: var(--surface-raised);
-    border: var(--border-width) solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-5);
+    background:
+      var(--card-fill) padding-box,
+      var(--card-edge) border-box;
+    border: var(--border-width) solid transparent;
+    --project-hue: var(--brand-hue);
+    position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 13rem;
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-card);
-    transition: all var(--transition-fast);
+    overflow: hidden;
+    transition:
+      border-color var(--transition-fast),
+      box-shadow var(--duration) var(--ease-out),
+      transform var(--duration-slow) var(--ease-spring);
   }
+
+  /* Each project carries a faint light in its own hue. */
+  .project-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      90% 60% at 100% 0%,
+      light-dark(
+        oklch(0.93 0.04 var(--project-hue) / 0.55),
+        oklch(0.32 0.07 var(--project-hue) / 0.28)
+      ),
+      transparent 70%
+    );
+  }
+
+  .project-card > * {
+    position: relative;
+  }
+
   .project-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-modal);
+    transform: translateY(-3px);
+    border-color: var(--line-strong);
+    box-shadow:
+      var(--shadow-card),
+      0 18px 40px -28px
+        light-dark(oklch(0.4 0.1 var(--project-hue) / 0.45), oklch(0 0 0 / 0.8));
   }
-  .project-header {
+
+  .project-card.skeleton {
+    background: var(--surface-sunken);
+    box-shadow: none;
+    animation: pulse 1.4s var(--ease-in-out) infinite alternate;
+  }
+
+  .project-card.skeleton::before {
+    display: none;
+  }
+
+  @keyframes pulse {
+    to {
+      opacity: 0.5;
+    }
+  }
+
+  .card-top {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-3);
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
   }
+
   .project-key {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 0.75rem;
-    color: var(--accent);
-    background: var(--selected);
-    border: var(--border-width) solid var(--border);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.75rem;
+    padding: 0 0.625rem;
+    border-radius: var(--radius-xs);
+    font-size: var(--text-xs);
+    font-weight: 680;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    background: light-dark(
+      oklch(0.92 0.05 var(--project-hue)),
+      oklch(0.33 0.08 var(--project-hue))
+    );
+    color: light-dark(
+      oklch(0.35 0.1 var(--project-hue)),
+      oklch(0.92 0.06 var(--project-hue))
+    );
   }
+
   .project-counter {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    background: var(--surface);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-full);
-  }
-  .project-name {
-    margin: 0 0 var(--space-1) 0;
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .project-slug {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-xs);
+    font-weight: 560;
     color: var(--text-muted);
-    margin: 0 0 var(--space-2) 0;
   }
+
+  .project-name {
+    font-size: 1.1875rem;
+    font-weight: 620;
+    letter-spacing: -0.018em;
+  }
+
+  .project-slug {
+    margin-top: 0.125rem;
+    font-size: var(--text-small);
+    color: var(--text-muted);
+  }
+
   .project-desc {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
+    margin-top: var(--space-3);
+    font-size: var(--text-small);
     line-height: 1.5;
-    margin: 0 0 var(--space-4) 0;
-    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
-  .project-actions {
+
+  .empty-desc {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .progress-empty {
+    margin-top: var(--space-4);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .progress {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  .progress-line {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-top: auto;
-    padding-top: var(--space-3);
-    border-top: var(--border-width) solid var(--selected);
-    gap: var(--space-2);
-  }
-  .archive-btn {
-    background: transparent;
-    border: none;
+    font-size: var(--text-xs);
     color: var(--text-muted);
-    font-size: var(--text-small);
-    font-weight: 600;
-    cursor: pointer;
-    padding: var(--space-1) var(--space-2);
-    min-height: 2.75rem;
-    border-radius: var(--radius);
   }
-  .archive-btn:hover {
+
+  .progress-line strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .progress-bar {
+    display: block;
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-sunken);
+    overflow: hidden;
+  }
+
+  .progress-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      light-dark(
+        oklch(0.75 0.08 var(--project-hue)),
+        oklch(0.5 0.1 var(--project-hue))
+      ),
+      light-dark(
+        oklch(0.55 0.13 var(--project-hue)),
+        oklch(0.78 0.12 var(--project-hue))
+      )
+    );
+    transition: width var(--duration-slow) var(--ease-out);
+  }
+
+  .card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: auto;
+    padding-top: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .updated {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: auto;
+  }
+
+  .card-actions :global(.btn-quiet:hover) {
     color: var(--danger);
-    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .key-input {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  .key-preview {
+    margin-top: calc(var(--space-2) * -1);
+    font-size: var(--text-small);
+    color: var(--text-muted);
+  }
+
+  .key-sample {
+    margin-left: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-xs);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
   }
 </style>

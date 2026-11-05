@@ -45,7 +45,7 @@ async fn referenced_assets_have_correct_types_and_security_headers() {
         assert_eq!(response.headers()["x-content-type-options"], "nosniff");
         assert_eq!(
             response.headers()["content-security-policy"],
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
+            "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
         );
         assert!(
             !response
@@ -162,6 +162,6 @@ async fn root_delivers_the_built_frontend_without_a_database() {
     assert_eq!(response.headers()["x-content-type-options"], "nosniff");
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = std::str::from_utf8(&body).unwrap();
-    assert!(html.contains("<title>Trestle — foundation</title>"));
+    assert!(html.contains("<title>Trestle</title>"));
     assert!(html.contains("/assets/"));
 }

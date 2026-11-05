@@ -1,10 +1,56 @@
+# Rust build output
 /target/
+
+# Local environment and secrets
 /.env
 /.env.*
 !/.env.example
+*.pem
+*.key
+
+# Frontend dependencies, builds and caches
 /web/node_modules/
 /web/dist/
+/web/.vite/
+/web/.svelte-kit/
+*.tsbuildinfo
+.eslintcache
+
+# Test and coverage output
 /web/test-results/
 /web/playwright-report/
+/web/blob-report/
+/web/playwright/.cache/
+/web/coverage/
+coverage/
+*.lcov
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local tooling and design references (not part of the product)
 audit-reports/
 .agents/
+.design-ref/
+.taste-skill/
+.impeccable/mocks/
+.impeccable/config.local.json
+
+# Editors and IDEs (keep shared VS Code settings if the team adds them)
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db

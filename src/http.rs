@@ -293,7 +293,7 @@ async fn request_diagnostics_and_headers(request: Request, next: Next) -> Respon
     );
     response.headers_mut().insert(
         "content-security-policy",
-        HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"),
+        HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"),
     );
     response
 }
