@@ -20,8 +20,10 @@ if (-not (Test-Path "go.mod") -or -not (Test-Path "web")) {
         Write-Error "[ERROR] 'git' is required to clone the repository."
         exit 1
     }
-    Write-Host "==> Cloning https://github.com/maruf-pfc/trestle.git..." -ForegroundColor Cyan
-    git clone https://github.com/maruf-pfc/trestle.git trestle
+    if (-not (Test-Path "trestle/go.mod")) {
+        Write-Host "==> Cloning https://github.com/maruf-pfc/trestle.git..." -ForegroundColor Cyan
+        git clone https://github.com/maruf-pfc/trestle.git trestle
+    }
     Set-Location trestle
     & .\run.ps1 @PSBoundParameters
     exit $LASTEXITCODE
@@ -71,6 +73,108 @@ function Get-ComposeCommand {
         if ($LASTEXITCODE -eq 0) { return "podman compose" }
     }
     return $null
+}
+
+# --- Dependency installation ---
+# Missing or unsuitable Go/Node are installed into .tools (no admin rights); Docker via winget.
+$OnWindows = $env:OS -eq "Windows_NT"
+$ToolsDir = Join-Path (Get-Location) ".tools"
+$PathSep = [System.IO.Path]::PathSeparator
+if (Test-Path "$ToolsDir/go/bin") { $env:Path = "$ToolsDir/go/bin$PathSep$env:Path" }
+Get-ChildItem $ToolsDir -Directory -Filter "node-*" -ErrorAction SilentlyContinue | ForEach-Object { $env:Path = "$($_.FullName)$PathSep$env:Path" }
+
+function Get-Version([string]$Text) {
+    try { return [version]($Text.Trim().TrimStart("v", "g", "o") -replace '[^0-9.].*$', '') } catch { return $null }
+}
+
+function Install-Zip([string]$Url, [string]$Name) {
+    if (-not $OnWindows) { throw "Automatic install of $Name is supported on Windows only; on macOS/Linux use ./run.sh" }
+    New-Item -ItemType Directory -Force $ToolsDir | Out-Null
+    $zip = Join-Path $ToolsDir "$Name.zip"
+    Write-Host "  ➜ Downloading $Url..." -ForegroundColor Cyan
+    $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+    Expand-Archive -Path $zip -DestinationPath $ToolsDir -Force
+    Remove-Item $zip
+}
+
+$Arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
+
+# Go 1.21+ fetches the exact toolchain pinned in go.mod by itself; older or absent Go gets installed.
+function Initialize-Go {
+    if (Get-Command go -ErrorAction SilentlyContinue) {
+        $v = Get-Version (go env GOVERSION)
+        if ($v -and $v -ge [version]"1.21") { return }
+    }
+    $want = (Select-String -Path go.mod -Pattern '^toolchain go(.+)$').Matches.Groups[1].Value
+    if (-not $want) { $want = (Select-String -Path go.mod -Pattern '^go (.+)$').Matches.Groups[1].Value }
+    Remove-Item -Recurse -Force "$ToolsDir/go" -ErrorAction SilentlyContinue
+    Install-Zip "https://go.dev/dl/go$want.windows-$Arch.zip" "go"
+    $env:Path = "$ToolsDir/go/bin$PathSep$env:Path"
+}
+
+# web/.npmrc sets engine-strict, so Node and npm must match web/package.json engines exactly.
+function Test-NodeOk {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) { return $false }
+    $n = Get-Version (node --version); $m = Get-Version (npm --version)
+    return ($n -and $m -and $n.Major -eq 24 -and $n -ge [version]"24.21.0" -and $m.Major -eq 11 -and $m -ge [version]"11.19.0")
+}
+
+function Initialize-Node {
+    if (Test-NodeOk) { return }
+    $want = (Get-Content .node-version -Raw).Trim()
+    $nodeArch = if ($Arch -eq "arm64") { "arm64" } else { "x64" }
+    $dir = "node-v$want-win-$nodeArch"
+    Write-Host "  ➜ Installing Node.js $want into .tools (the frontend requires Node 24 and npm 11)..." -ForegroundColor Cyan
+    if (-not (Test-Path "$ToolsDir/$dir")) { Install-Zip "https://nodejs.org/dist/v$want/$dir.zip" "node" }
+    $env:Path = "$ToolsDir/$dir$PathSep$env:Path"
+    if (-not (Test-NodeOk)) {
+        $npm = (Get-Content web/package.json -Raw | ConvertFrom-Json).packageManager
+        npm install -g $npm
+    }
+}
+
+# Installs Docker Desktop when no engine exists and starts it when it is stopped.
+function Initialize-Docker {
+    if (-not (Get-ComposeCommand)) {
+        # A local PostgreSQL configured in .env needs no container engine.
+        $pgPort = 5432
+        if (Test-Path ".env") {
+            $line = Select-String -Path .env -Pattern '^POSTGRES_PORT=(\d+)' | Select-Object -First 1
+            if ($line) { $pgPort = [int]$line.Matches.Groups[1].Value }
+        }
+        if (Test-PortInUse -HostAddress "127.0.0.1" -Port $pgPort) {
+            Write-Host "  ! No container engine; using the PostgreSQL already listening on port $pgPort." -ForegroundColor Yellow
+            return
+        }
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            throw "Docker is required. Install Docker Desktop: https://docs.docker.com/desktop/"
+        }
+        Write-Host "  ➜ Installing Docker Desktop (you may be asked to approve it)..." -ForegroundColor Cyan
+        winget install -e --id Docker.DockerDesktop --accept-source-agreements --accept-package-agreements
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + $PathSep + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker Desktop was installed but needs a sign-out or restart (and WSL 2). Restart, then run this script again."
+        }
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return }
+    docker info *> $null
+    if ($LASTEXITCODE -eq 0) { return }
+    # docker.exe lives in <Docker Desktop>\resources\bin, two levels below the app.
+    $desktop = Join-Path (Split-Path (Split-Path (Split-Path (Get-Command docker).Source))) "Docker Desktop.exe"
+    if ($OnWindows -and (Test-Path $desktop)) {
+        Write-Host "  ➜ Starting Docker Desktop..." -ForegroundColor Cyan
+        Start-Process $desktop
+    }
+    Write-Host "  ➜ Waiting for the Docker engine..." -NoNewline
+    for ($i = 0; $i -lt 90; $i++) {
+        docker info *> $null
+        if ($LASTEXITCODE -eq 0) { Write-Host ""; return }
+        Start-Sleep -Seconds 2
+        Write-Host "." -NoNewline
+    }
+    Write-Host ""
+    throw "The Docker engine is not running. Start Docker Desktop and run this script again."
 }
 
 $ComposeCmd = Get-ComposeCommand
@@ -134,25 +238,15 @@ Write-Host ""
 
 # 1. Check Prerequisites
 Write-Host "[1/6] Checking system tools and prerequisites..."
-if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
-    Write-Error "[ERROR] Go toolchain (go) is not installed. Visit https://go.dev/dl/"
-    exit 1
-}
-$GoVer = (go env GOVERSION)
-Write-Host "  ✓ Go toolchain found ($GoVer)" -ForegroundColor Green
+Initialize-Go
+Write-Host "  ✓ Go toolchain ready ($(go env GOVERSION))" -ForegroundColor Green
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Error "[ERROR] Node.js and npm are required. Visit https://nodejs.org"
-    exit 1
-}
-$NodeVer = (node --version)
-Write-Host "  ✓ Node.js & npm found ($NodeVer)" -ForegroundColor Green
+Initialize-Node
+Write-Host "  ✓ Node.js $(node --version) & npm $(npm --version) ready" -ForegroundColor Green
 
-if ($ComposeCmd) {
-    Write-Host "  ✓ Container runtime found ($ComposeCmd)" -ForegroundColor Green
-} else {
-    Write-Host "  ! Docker/Podman Compose not detected. An existing local PostgreSQL database must be configured in .env." -ForegroundColor Yellow
-}
+Initialize-Docker
+$ComposeCmd = Get-ComposeCommand
+if ($ComposeCmd) { Write-Host "  ✓ Container runtime ready ($ComposeCmd)" -ForegroundColor Green }
 
 # 2. Port Collision Detection & Environment
 Write-Host ""
@@ -175,9 +269,9 @@ $TargetPgPort = if ($EnvSettings.ContainsKey("POSTGRES_PORT")) { [int]$EnvSettin
 if (Test-PortInUse -HostAddress "127.0.0.1" -Port $TargetPgPort) {
     # Check if our own container is running
     $OurDbRunning = $false
-    if (Get-Command docker -ErrorAction SilentlyContinue) {
-        $status = (docker inspect trestle-db-1 --format '{{.State.Status}}' 2>$null)
-        if ($status -eq "running") { $OurDbRunning = $true }
+    if ($ComposeCmd) {
+        $running = Invoke-Expression "$ComposeCmd ps -q --status running db 2>`$null"
+        if ($running) { $OurDbRunning = $true }
     }
     if ($OurDbRunning) {
         $ResolvedPgPort = $TargetPgPort
@@ -246,7 +340,7 @@ if ($ComposeCmd) {
     Write-Host "  ➜ Waiting for PostgreSQL on port $ResolvedPgPort to be ready..." -NoNewline
     $ready = $false
     for ($i = 0; $i -lt 30; $i++) {
-        $check = Invoke-Expression "$ComposeCmd exec -T db pg_isready -U trestle -d trestle 2>&1"
+        $check = Invoke-Expression "$ComposeCmd exec -T db pg_isready -h 127.0.0.1 -U trestle -d trestle 2>&1"
         if ($LASTEXITCODE -eq 0) { $ready = $true; break }
         Start-Sleep -Seconds 1
         Write-Host "." -NoNewline
@@ -256,6 +350,9 @@ if ($ComposeCmd) {
         Write-Error "[ERROR] PostgreSQL did not become ready within 30 seconds."
         exit 1
     }
+    # Postgres reads POSTGRES_PASSWORD only when the volume is first created; keep it in sync with .env.
+    $compose = $ComposeCmd -split " "
+    "ALTER USER trestle WITH PASSWORD '$PgPassword';" | & $compose[0] $compose[1..9] exec -T db psql -q -U trestle -d trestle | Out-Null
     Write-Host "  ✓ PostgreSQL is healthy and accepting connections." -ForegroundColor Green
 } else {
     if (-not (Test-PortInUse -HostAddress "127.0.0.1" -Port $ResolvedPgPort)) {
@@ -271,10 +368,14 @@ Write-Host "[4/6] Verifying frontend assets..."
 if (-not (Test-Path "web/node_modules")) {
     Write-Host "  ➜ Installing frontend dependencies..." -ForegroundColor Cyan
     npm ci --prefix web --ignore-scripts
+    if ($LASTEXITCODE -ne 0) { throw "Installing frontend dependencies failed." }
 }
-if (-not (Test-Path "web/dist") -or -not (Test-Path "web/dist/index.html")) {
+$distIndex = "web/dist/index.html"
+$stale = (Test-Path $distIndex) -and (Get-ChildItem web/src -Recurse -File | Where-Object { $_.LastWriteTime -gt (Get-Item $distIndex).LastWriteTime } | Select-Object -First 1)
+if (-not (Test-Path $distIndex) -or $stale) {
     Write-Host "  ➜ Building frontend production bundle..." -ForegroundColor Cyan
     npm run build --prefix web
+    if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
 }
 Write-Host "  ✓ Frontend assets ready in web/dist." -ForegroundColor Green
 
