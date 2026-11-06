@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trestle -d trestle"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U trestle -d trestle"]
       interval: 5s
       timeout: 3s
       retries: 10

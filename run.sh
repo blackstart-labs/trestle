@@ -23,8 +23,10 @@ if [ ! -f "go.mod" ] || [ ! -d "web" ]; then
         echo "[ERROR] 'git' is required to clone the repository. Please install git and try again." >&2
         exit 1
     fi
-    echo "==> Cloning https://github.com/maruf-pfc/trestle.git..."
-    git clone https://github.com/maruf-pfc/trestle.git trestle
+    if [ ! -f "trestle/go.mod" ]; then
+        echo "==> Cloning https://github.com/maruf-pfc/trestle.git..."
+        git clone https://github.com/maruf-pfc/trestle.git trestle
+    fi
     cd trestle
     exec ./run.sh "$@"
 fi
@@ -102,8 +104,7 @@ detect_container_runtime() {
 is_trestle_db_running() {
     if [ -n "$CONTAINER_CLI" ]; then
         local status
-        status=$($CONTAINER_CLI inspect trestle-db-1 --format '{{.State.Status}}' 2>/dev/null || true)
-        [ "$status" = "running" ] && return 0
+        [ -n "$($COMPOSE_CMD ps -q --status running db 2>/dev/null)" ] && return 0
     fi
     return 1
 }
@@ -111,14 +112,132 @@ is_trestle_db_running() {
 # Get bound host port of running trestle-db container
 get_trestle_db_port() {
     if [ -n "$CONTAINER_CLI" ]; then
-        $CONTAINER_CLI port trestle-db-1 5432/tcp 2>/dev/null | head -n1 | awk -F: '{print $NF}'
+        $COMPOSE_CMD port db 5432 2>/dev/null | head -n1 | awk -F: '{print $NF}'
     fi
 }
 
 # Inspect password from existing container if present
 get_trestle_db_existing_password() {
     if [ -n "$CONTAINER_CLI" ]; then
-        $CONTAINER_CLI inspect trestle-db-1 --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | cut -d= -f2-
+        local id
+        id="$($COMPOSE_CMD ps -aq db 2>/dev/null | head -n1)"
+        [ -n "$id" ] && $CONTAINER_CLI inspect "$id" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | cut -d= -f2-
+    fi
+}
+
+# --- Dependency installation ---
+# Missing or unsuitable Go/Node are installed into .tools/ (no sudo); Docker system-wide.
+TOOLS_DIR="$REPO_ROOT/.tools"
+[ -d "$TOOLS_DIR/go/bin" ] && export PATH="$TOOLS_DIR/go/bin:$PATH"
+for d in "$TOOLS_DIR"/node-*/bin; do [ -d "$d" ] && export PATH="$d:$PATH"; done
+
+# ver_ge A B: true when version A >= B (numeric, first three parts).
+ver_ge() {
+    awk -v a="$1" -v b="$2" 'BEGIN { split(a, x, "."); split(b, y, ".");
+        for (i = 1; i <= 3; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 } exit 0 }'
+}
+
+fetch() {
+    if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"; else wget -qO "$2" "$1"; fi
+}
+
+platform() {
+    case "$(uname -s)" in
+        Linux) OS=linux ;;
+        Darwin) OS=darwin ;;
+        *) red "[ERROR] Unsupported OS $(uname -s). On Windows use run.ps1."; exit 1 ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64) GO_ARCH=amd64; NODE_ARCH=x64 ;;
+        aarch64|arm64) GO_ARCH=arm64; NODE_ARCH=arm64 ;;
+        *) red "[ERROR] Unsupported CPU $(uname -m)."; exit 1 ;;
+    esac
+}
+
+# Go 1.21+ fetches the exact toolchain pinned in go.mod by itself; older or absent Go gets installed.
+ensure_go() {
+    local v
+    v="$(go env GOVERSION 2>/dev/null || true)"
+    if [ -n "$v" ] && ver_ge "${v#go}" 1.21.0; then return 0; fi
+    local want
+    want="$(sed -n 's/^toolchain go//p' go.mod)"
+    [ -n "$want" ] || want="$(sed -n 's/^go //p' go.mod)"
+    platform
+    cyan "  ➜ Installing Go $want into .tools/go..."
+    mkdir -p "$TOOLS_DIR" && rm -rf "$TOOLS_DIR/go"
+    fetch "https://go.dev/dl/go${want}.${OS}-${GO_ARCH}.tar.gz" "$TOOLS_DIR/go.tgz"
+    tar -xzf "$TOOLS_DIR/go.tgz" -C "$TOOLS_DIR" && rm "$TOOLS_DIR/go.tgz"
+    export PATH="$TOOLS_DIR/go/bin:$PATH"
+}
+
+# web/.npmrc sets engine-strict, so Node and npm must match web/package.json engines exactly.
+node_ok() {
+    command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || return 1
+    local n m
+    n="$(node --version | tr -d v)"; m="$(npm --version)"
+    [ "${n%%.*}" = 24 ] && ver_ge "$n" 24.21.0 && [ "${m%%.*}" = 11 ] && ver_ge "$m" 11.19.0
+}
+
+ensure_node() {
+    node_ok && return 0
+    local want
+    want="$(tr -d ' \r\n' < .node-version)"
+    platform
+    cyan "  ➜ Installing Node.js $want into .tools/ (the frontend requires Node 24 and npm 11)..."
+    mkdir -p "$TOOLS_DIR"
+    fetch "https://nodejs.org/dist/v${want}/node-v${want}-${OS}-${NODE_ARCH}.tar.gz" "$TOOLS_DIR/node.tgz"
+    tar -xzf "$TOOLS_DIR/node.tgz" -C "$TOOLS_DIR" && rm "$TOOLS_DIR/node.tgz"
+    export PATH="$TOOLS_DIR/node-v${want}-${OS}-${NODE_ARCH}/bin:$PATH"
+    node_ok || npm install -g "$(sed -n 's/.*"packageManager": *"\(npm@[^"]*\)".*/\1/p' web/package.json)"
+}
+
+# Installs Docker when no container engine exists, starts the daemon, and falls back to sudo.
+ensure_docker() {
+    detect_container_runtime
+    if [ -z "$COMPOSE_CMD" ]; then
+        # A local PostgreSQL configured in .env needs no container engine.
+        local pg_port
+        pg_port="$( [ -f .env ] && sed -n 's/^POSTGRES_PORT=//p' .env)"
+        if port_is_open 127.0.0.1 "${pg_port:-5432}"; then
+            yellow "  ! No container engine; using the PostgreSQL already listening on port ${pg_port:-5432}."
+            return 0
+        fi
+        cyan "  ➜ Installing Docker..."
+        if [ "$(uname -s)" = Darwin ]; then
+            command -v brew >/dev/null 2>&1 || { red "[ERROR] Install Docker Desktop: https://docs.docker.com/desktop/"; exit 1; }
+            brew install --cask docker
+        else
+            local SUDO=""
+            [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+            fetch https://get.docker.com /tmp/get-docker.sh
+            $SUDO sh /tmp/get-docker.sh && rm -f /tmp/get-docker.sh
+        fi
+        detect_container_runtime
+    fi
+    [ "$CONTAINER_CLI" = docker ] || return 0
+    if ! docker info >/dev/null 2>&1; then
+        if [ "$(uname -s)" = Darwin ]; then
+            open -a Docker
+        elif ! sudo -n true 2>/dev/null && [ "$(id -u)" -ne 0 ]; then
+            yellow "  ! Docker is not reachable; you may be asked for your password to start it."
+        fi
+        [ "$(uname -s)" = Darwin ] || { sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true; }
+        printf "  ➜ Waiting for the Docker engine..."
+        for _ in $(seq 1 60); do
+            docker info >/dev/null 2>&1 && break
+            sudo -n docker info >/dev/null 2>&1 && break
+            sleep 2; printf "."
+        done
+        echo ""
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        if sudo docker info >/dev/null 2>&1; then
+            # Fresh installs leave the user outside the docker group until the next login.
+            COMPOSE_CMD="sudo docker compose"; CONTAINER_CLI="sudo docker"
+        else
+            red "[ERROR] The Docker engine is not running. Start Docker and run this script again."
+            exit 1
+        fi
     fi
 }
 
@@ -193,28 +312,14 @@ echo ""
 # 1. Check prerequisites
 echo "[1/6] Checking system tools and prerequisites..."
 
-if ! command -v go >/dev/null 2>&1; then
-    red "[ERROR] Go toolchain (go) is not installed."
-    echo "Install Go (the version in go.mod or newer): https://go.dev/dl/"
-    exit 1
-fi
-GO_VERSION=$(go env GOVERSION)
-green "  ✓ Go toolchain found ($GO_VERSION)"
+ensure_go
+green "  ✓ Go toolchain ready ($(go env GOVERSION))"
 
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    red "[ERROR] Node.js and npm are required to build the frontend."
-    echo "Please install Node.js (v24 recommended): https://nodejs.org/"
-    exit 1
-fi
-NODE_VERSION=$(node --version)
-green "  ✓ Node.js & npm found ($NODE_VERSION)"
+ensure_node
+green "  ✓ Node.js $(node --version) & npm $(npm --version) ready"
 
-detect_container_runtime
-if [ -n "$COMPOSE_CMD" ]; then
-    green "  ✓ Container runtime found ($COMPOSE_CMD)"
-else
-    yellow "  ! Docker/Podman Compose not detected. An existing local PostgreSQL database must be configured in .env."
-fi
+ensure_docker
+[ -n "$COMPOSE_CMD" ] && green "  ✓ Container runtime ready ($COMPOSE_CMD)"
 
 # 2. Port Collision Detection & Environment Setup
 echo ""
@@ -307,7 +412,7 @@ if [ -n "$COMPOSE_CMD" ]; then
     printf "  ➜ Waiting for PostgreSQL on port %s to be ready..." "$POSTGRES_PORT"
     DB_READY=false
     for _ in $(seq 1 30); do
-        if $COMPOSE_CMD exec -T db pg_isready -U trestle -d trestle >/dev/null 2>&1; then
+        if $COMPOSE_CMD exec -T db pg_isready -h 127.0.0.1 -U trestle -d trestle >/dev/null 2>&1; then
             DB_READY=true
             break
         fi
@@ -319,6 +424,8 @@ if [ -n "$COMPOSE_CMD" ]; then
         red "[ERROR] PostgreSQL did not become ready within 30 seconds."
         exit 1
     fi
+    # Postgres reads POSTGRES_PASSWORD only when the volume is first created; keep it in sync with .env.
+    echo "ALTER USER trestle WITH PASSWORD '${POSTGRES_PASSWORD}';" | $COMPOSE_CMD exec -T db psql -q -U trestle -d trestle >/dev/null
     green "  ✓ PostgreSQL is healthy and accepting connections."
 else
     # Verify local PostgreSQL
@@ -336,7 +443,7 @@ echo "[4/6] Verifying frontend assets..."
 
 if [ ! -d "web/node_modules" ]; then
     echo "  ➜ Installing frontend dependencies..."
-    npm ci --prefix web --ignore-scripts || npm install --prefix web --ignore-scripts
+    npm ci --prefix web --ignore-scripts
 fi
 
 if [ ! -d "web/dist" ] || [ ! -f "web/dist/index.html" ]; then
