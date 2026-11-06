@@ -3,6 +3,8 @@ status: accepted
 ---
 # One application and PostgreSQL first
 
+Superseded in part by [ADR 0005](0005-go-backend.md): the language and database library are now Go and pgx.
+
 Trestle needs transactions and consistent authorization across projects, time
 and knowledge without requiring a small operator to run a service fleet. Use
 one Rust application crate with logical domain modules and PostgreSQL through

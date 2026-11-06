@@ -38,7 +38,7 @@ documents, reports, automation. See [the roadmap](docs/product/roadmap.md).
 
 ## Capabilities and Constraints
 
-- Svelte 5 + Vite static frontend, served from the Rust binary on the same origin.
+- Svelte 5 + Vite static frontend, served from the Go binary on the same origin.
 - A strict CSP: `default-src 'none'`, self-only scripts, styles and fonts, and no images or inline styles. Any visual must be CSS or inline SVG; dynamic values go through the CSSOM (`style:` directives).
 - No AI features exist. The UI must not imply AI, metrics or modules that do not exist.
 - Dragging is never the only way to change anything; keyboard and touch are first-class.

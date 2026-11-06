@@ -4,7 +4,7 @@
 # ==============================================================================
 # Automatically handles:
 #  1. Self-bootstrap (clones repo if run externally via curl/pipe)
-#  2. Prerequisite checking (Rust, Node, Docker/Podman)
+#  2. Prerequisite checking (Go, Node, Docker/Podman)
 #  3. Dynamic port collision detection & resolution for DB and Web ports
 #  4. Environment (.env) initialization with secure credentials
 #  5. PostgreSQL container launch & readiness verification
@@ -17,7 +17,7 @@
 set -eo pipefail
 
 # Ensure we are in the repository root. If run outside (e.g. curl ... | bash), clone it.
-if [ ! -f "Cargo.toml" ] || [ ! -d "web" ]; then
+if [ ! -f "go.mod" ] || [ ! -d "web" ]; then
     echo "==> Trestle repository not detected in current directory."
     if ! command -v git >/dev/null 2>&1; then
         echo "[ERROR] 'git' is required to clone the repository. Please install git and try again." >&2
@@ -170,12 +170,12 @@ case "${1:-}" in
         ;;
     migrate)
         [ -f ".env" ] && set -a && source .env && set +a
-        cargo run --locked -- migrate
+        go run . migrate
         exit 0
         ;;
     bootstrap)
         [ -f ".env" ] && set -a && source .env && set +a
-        cargo run --locked -- bootstrap
+        go run . bootstrap
         exit 0
         ;;
 esac
@@ -193,13 +193,13 @@ echo ""
 # 1. Check prerequisites
 echo "[1/6] Checking system tools and prerequisites..."
 
-if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
-    red "[ERROR] Rust toolchain (cargo, rustc) is not installed."
-    echo "Install Rust via rustup: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+if ! command -v go >/dev/null 2>&1; then
+    red "[ERROR] Go toolchain (go) is not installed."
+    echo "Install Go (the version in go.mod or newer): https://go.dev/dl/"
     exit 1
 fi
-RUST_VERSION=$(rustc --version | awk '{print $2}')
-green "  ✓ Rust toolchain found ($RUST_VERSION)"
+GO_VERSION=$(go env GOVERSION)
+green "  ✓ Go toolchain found ($GO_VERSION)"
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
     red "[ERROR] Node.js and npm are required to build the frontend."
@@ -354,7 +354,7 @@ green "  ✓ Frontend assets ready in web/dist."
 # 5. Database Migrations
 echo ""
 echo "[5/6] Applying database migrations..."
-cargo run --locked -- migrate
+go run . migrate
 green "  ✓ Database schema is up to date."
 
 # 6. Instance Bootstrap (Initial Operator Account)
@@ -370,7 +370,7 @@ if [ "${INTERACTIVE_BOOTSTRAP:-false}" != "true" ] && [ -z "${TRESTLE_BOOTSTRAP_
 fi
 
 # Run bootstrap (idempotent: exits 0 if already initialized)
-cargo run --locked -- bootstrap || true
+go run . bootstrap || true
 
 # --- Launch Server ---
 APP_URL="http://${TRESTLE_BIND_ADDR}"
@@ -398,4 +398,4 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-cargo run --locked
+go run .

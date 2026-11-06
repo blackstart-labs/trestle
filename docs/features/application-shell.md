@@ -34,7 +34,7 @@ AC-SH-03: light/dark text contrast >=4.5:1; large text and focus/control boundar
 current page in both themes; this is not WCAG certification.
 AC-SH-04: 320/360/390px phones, landscape, tablet and desktop reflow, 200% text and
 keyboard operation pass. Interactive targets at least 44px; no essential motion.
-AC-SH-05: reproducible frontend checks/build, existing Rust/delivery regressions,
+AC-SH-05: reproducible frontend checks/build, existing backend/delivery regressions,
 container build/runtime and documentation/review/commit complete.
 ## 6. Screens and flows
 Single public shell, with honest development status. Anchor navigation does not
@@ -68,7 +68,7 @@ Record build bytes; do not claim performance budgets from bundle sizes.
 ## 15. Tests
 User approved extended DOM/browser seams (shell/focus, theme persistence/reflow,
 form/feedback), plus existing HTTP/readiness regressions. Test UI not private
-helpers. Browser tests load compiled assets from Rust. Accessibility tooling is
+helpers. Browser tests load compiled assets from the Go server. Accessibility tooling is
 build/test-only. Review baseline approved: `243a53e`.
 ## 16. Accessibility and responsive behavior
 Visible labels, descriptive hints/error association, native controls, focus rings,
@@ -78,13 +78,13 @@ motion; honor forced colors with browser-native semantics. Document manual and
 automated evidence/limits, especially lack of physical-device/screen-reader audit.
 ## 17. Integration
 Use controls in appearance/readiness; build still embeds output through existing
-Rust seam. Future protected domains must replace/extend this shell deliberately,
+Go `go:embed` seam. Future protected domains must replace/extend this shell deliberately,
 not assume anchors or local preferences establish authorization.
 ## 18. Migration/compatibility
 No persistence migration. Unknown theme values degrade to system; local preference
 belongs to origin/browser, not identity. Existing health/error contracts unchanged.
 ## 19. Operations
-Same npm-build then Cargo sequence. Rebuild binary/image for UI changes. Theme
+Same npm-build then Go build sequence. Rebuild binary/image for UI changes. Theme
 storage is optional; browsers denying it remain usable. No backend settings added.
 ## 20. Done
 Meet AC-SH-01–05, document tokens/component contracts and evidence, update tracker/

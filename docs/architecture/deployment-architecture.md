@@ -18,7 +18,7 @@ schema-dependent binary.
 | Docker Linux image | Foundation verified | Build, non-root app + PostgreSQL/private-network smoke |
 | Rootless Podman 3.4.4 | Partial verification | Imported same app image, health/errors/signals; no separate build/full DB deployment |
 | PostgreSQL 18.6 | Foundation verified | Real tests and metadata-only restore; not future domain scale |
-| macOS / Windows server or source build | Unverified | Do not claim support merely because Rust is portable |
+| macOS / Windows server or source build | Unverified | Do not claim support merely because Go cross-compiles |
 | Linux ARM64 | Unverified | No build/runtime evidence yet |
 | Android/Termux server | Evaluation planned | No toolchain/PostgreSQL/storage/process-continuity evidence |
 | Desktop/tablet/mobile browsers | Partial | Foundation smoke tested in Chromium/320px viewport; no product-browser support matrix yet |

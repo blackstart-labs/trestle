@@ -4,10 +4,11 @@ Status: unverified server target, not installation instructions or a support
 promise. Access from a mobile browser is a separate future client capability.
 
 Before publishing a supported recipe, record the Android version/device/CPU,
-Termux source/version, Rust and linker support, memory/storage constraints and
+Termux source/version, Go toolchain support, memory/storage constraints and
 available PostgreSQL version. Run the same build, migration, domain, signal and
-restore tests as other supported servers. Confirm SQLx/Rustls dependencies build
-on the target; a desktop Linux image is not evidence of Android compatibility.
+restore tests as other supported servers. Confirm the static `GOOS=android` or
+`GOOS=linux GOARCH=arm64` build runs on the target; a desktop Linux image is not
+evidence of Android compatibility.
 
 Use app-private storage for the database and secrets; evaluate shared-storage
 permissions separately for imports/exports, never put active PostgreSQL data in

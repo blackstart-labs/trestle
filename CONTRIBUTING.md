@@ -10,9 +10,9 @@ tree; preserve other contributors' uncommitted work.
   criteria before substantial changes.
 - Add deterministic tests through the affected public interfaces. Use real
   PostgreSQL for database behavior and never a production database.
-- Run formatting, Clippy, tests, dependency checks and release build as listed
+- Run gofmt, go vet, tests, govulncheck and release build as listed
   in the README. Report checks you could not run accurately.
-- Build `web/dist` before Cargo; run the frontend format/type/DOM/browser checks
+- Build `web/dist` before any Go build/test; run the frontend format/type/DOM/browser checks
   too. Commit the npm lockfile, not node_modules/dist. Review generated bundled
   license notices and `npm audit`; do not bypass advisories to make CI green.
 - Add forward migrations; never edit applied migrations or delete existing data

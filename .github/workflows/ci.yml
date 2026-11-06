@@ -53,31 +53,10 @@ jobs:
           retention-days: 1
 
   # ----------------------------------------------------------------------------
-  # Stage 2: Security & license compliance (cargo-deny)
+  # Stage 2: Security (govulncheck against the Go module graph)
   # ----------------------------------------------------------------------------
   security:
-    name: Security (Cargo Deny)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - name: Install pinned toolchain
-        run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Install dependency checker
-        run: cargo install cargo-deny --version 0.20.2 --locked
-      - name: Advisories, licenses and dependency sources
-        run: cargo deny check
-
-  # ----------------------------------------------------------------------------
-  # Stage 3: Rust code formatting & Clippy lints
-  # ----------------------------------------------------------------------------
-  rust-lint:
-    name: Rust (Format & Clippy)
+    name: Security (govulncheck)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: frontend
@@ -90,15 +69,38 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      - name: Install pinned toolchain
-        run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          go-version-file: go.mod
+          cache: true
+      - name: Known vulnerabilities in reachable code
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  # ----------------------------------------------------------------------------
+  # Stage 3: Go formatting & vet
+  # ----------------------------------------------------------------------------
+  go-lint:
+    name: Go (gofmt & vet)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: frontend
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Download compiled frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Formatting check
-        run: cargo fmt --all -- --check
-      - name: Lint and type check all targets
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Vet all packages
+        run: go vet ./...
 
   # ----------------------------------------------------------------------------
   # Stage 4: Backend tests & PostgreSQL schema migrations
@@ -123,7 +125,6 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
-      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -133,16 +134,15 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      - name: Install pinned toolchain
-        run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          go-version-file: go.mod
+          cache: true
       - name: Tests and PostgreSQL migrations
-        run: cargo test --locked
+        run: go test ./...
 
   # ----------------------------------------------------------------------------
-  # Stage 5: Playwright browser smoke tests against live Rust server
+  # Stage 5: Playwright browser smoke tests against live Go server
   # ----------------------------------------------------------------------------
   e2e:
     name: E2E (Playwright Browser Tests)
@@ -164,7 +164,6 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
-      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -182,15 +181,14 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      - name: Install pinned toolchain
-        run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          go-version-file: go.mod
+          cache: true
       - name: Install Playwright Chromium
         working-directory: web
         run: npx playwright install --with-deps chromium
-      - name: Browser smoke tests against Rust server
+      - name: Browser smoke tests against Go server
         working-directory: web
         run: npm run test:e2e
 
@@ -201,7 +199,7 @@ jobs:
     name: Release & Container Build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    needs: [frontend, rust-lint, backend-test]
+    needs: [frontend, go-lint, backend-test]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -211,12 +209,11 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      - name: Install pinned toolchain
-        run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          go-version-file: go.mod
+          cache: true
       - name: Release binary build
-        run: cargo build --locked --release
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o trestle .
       - name: Container build verification
         run: docker build --tag trestle:ci .

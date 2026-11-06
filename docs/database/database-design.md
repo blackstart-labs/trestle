@@ -1,7 +1,8 @@
 # Database strategy
 
-Status: PostgreSQL-only foundation. The only current table is SQLx migration
-metadata from the no-product-schema baseline migration. No identity, project,
+Status: PostgreSQL-only foundation. The only current table is migration
+metadata (`_sqlx_migrations`, name kept from the former SQLx backend for
+compatibility) from the no-product-schema baseline migration. No identity, project,
 task, time or document tables exist.
 
 ## Rules for future migrations

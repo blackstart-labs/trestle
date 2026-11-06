@@ -2,11 +2,11 @@
 
 An open-source, self-hosted productivity platform unifying projects, time tracking, knowledge management, and developer workflows in one lightweight system.
 
-**Implemented:** a Rust HTTP backend foundation, PostgreSQL connectivity,
+**Implemented:** a Go HTTP backend foundation, PostgreSQL connectivity,
 explicit migrations, JSON health checks, structured diagnostics, Argon2id identity
 and sessions, workspace tenancy, and automated tests, plus a responsive Svelte
 application shell with light/dark/system appearance, keyboard navigation, real
-readiness check, sign-in, and workspace selector embedded in the single Rust binary.
+readiness check, sign-in, and workspace selector embedded in the single Go binary.
 
 ## Quick start (one-command setup)
 
@@ -36,7 +36,7 @@ Or if you already have the repository cloned:
 1. **Port conflict resolution:** If port `5432` (PostgreSQL) or `3000` (web application) is already in use by another database or application on your system, `run.sh` automatically finds and binds to the next available free ports without colliding.
 2. **Environment & credentials:** Generates a secure `.env` file with a dedicated database password and saves your configured ports.
 3. **Database startup:** Launches PostgreSQL 18 via Docker Compose (or Podman Compose) and waits for connection readiness.
-4. **Frontend build:** Checks and builds production assets into `web/dist` embedded into the Rust executable.
+4. **Frontend build:** Checks and builds production assets into `web/dist` embedded into the Go executable.
 5. **Database migrations:** Automatically applies all schema migrations.
 6. **Admin bootstrap:** Sets up the initial operator account (`admin` / `adminpassword123`). Pass `./run.sh --interactive` if you prefer to prompt for custom credentials.
 7. **Application launch:** Starts the HTTP server and displays the local URL (`http://127.0.0.1:3000` or auto-selected port).
@@ -49,7 +49,7 @@ To stop background services:
 
 ## Requirements
 
-- Rust toolchain from `rust-toolchain.toml` (Rustup installs it on first use).
+- Go toolchain at the version in `go.mod` or newer (<https://go.dev/dl/>).
 - Node 24.22.0 (`.node-version`) and npm 11.19.1, for building/testing only.
 - PostgreSQL 18 (the tested database major).
 - Docker with Compose, Podman with a Compose provider, or a local PostgreSQL
@@ -65,8 +65,8 @@ npm run build --prefix web
 export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 export DATABASE_URL="postgres://trestle:${POSTGRES_PASSWORD}@127.0.0.1:5432/trestle"
 docker compose up -d --wait db
-cargo run --locked -- migrate
-cargo run --locked
+go run . migrate
+go run .
 ```
 
 Stop with Ctrl-C. Use `docker compose stop db` to stop PostgreSQL without
@@ -82,8 +82,8 @@ a provider-free Podman command and a direct PostgreSQL path.
 The app does not load `.env` automatically. `.env.example` documents settings
 without working credentials; supply actual values through the environment.
 
-Open <http://127.0.0.1:3000/>. Cargo requires `web/dist`: build the frontend
-before any Cargo build/test/run, and rebuild the binary after frontend changes.
+Open <http://127.0.0.1:3000/>. Go embeds `web/dist` (`go:embed`): build the frontend
+before any Go build/test/run, and rebuild the binary after frontend changes.
 The runtime needs no Node, npm, source tree or asset directory. For local UI
 development, run the backend and `npm run dev --prefix web`; Vite binds loopback
 and proxies `/health` to port 3000. Do not expose Vite as a production server.
@@ -122,7 +122,7 @@ never fall back to HTML; no client-side product routing is implemented yet.
 
 | Setting | Default | Validation |
 | --- | --- | --- |
-| `DATABASE_URL` | Required | PostgreSQL URL parsed by SQLx; never printed |
+| `DATABASE_URL` | Required | PostgreSQL URL parsed by pgx; never printed |
 | `TRESTLE_BIND_ADDR` | `127.0.0.1:3000` | IP socket address; port must be nonzero |
 | `TRESTLE_MAX_DB_CONNECTIONS` | `5` | Integer, 1–32 |
 | `TRESTLE_DB_TIMEOUT_MS` | `2000` | Integer, 100–10000; pool acquisition and full readiness check |
@@ -144,21 +144,19 @@ npm audit --prefix web --audit-level=low
 npm run build --prefix web
 npm exec --prefix web -- playwright install chromium
 npm run test:e2e --prefix web
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --test config
-cargo test --locked --test http
-# Requires DATABASE_URL pointing to a disposable development/test server:
-cargo test --locked
-cargo build --locked --release
-cargo install cargo-deny --version 0.20.2 --locked
-cargo deny check
+gofmt -l .        # must print nothing
+go vet ./...
+# Database tests need DATABASE_URL pointing to a disposable development/test server:
+go test ./...
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o trestle .
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 docker build --tag trestle:local .
 ```
 
-The database tests require a role with `CREATEDB` permission and create isolated
-SQLx test databases. **Never run them against production.** Missing database
-configuration fails database tests rather than silently skipping them. No test
+The database tests require a role with `CREATEDB` permission and create a fresh
+database per test. **Never run them against production.** Without
+`DATABASE_URL`, database tests are skipped (shown as `SKIP` with `go test -v`)
+and only the database-free tests run. No test
 coverage percentage or performance baseline is claimed.
 
 CI runs the same checks with PostgreSQL, plus a container build. It does not

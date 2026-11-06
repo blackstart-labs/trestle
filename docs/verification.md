@@ -1,5 +1,7 @@
 # Foundation verification
 
+> Recorded against the former Rust backend ([ADR 0005](adr/0005-go-backend.md)). Go equivalents: `cargo fmt` → `gofmt -l .`, `cargo clippy` → `go vet ./...`, `cargo test` → `go test ./...` (set `DATABASE_URL`), `cargo build --release` → `CGO_ENABLED=0 go build -trimpath -o trestle .`, `cargo deny check` → `govulncheck ./...`.
+
 Historical M01a record at commit `79478d7`. For subsequent frontend changes and
 current rerun results, see [M01b verification](verification-frontend.md).
 

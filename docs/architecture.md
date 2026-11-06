@@ -4,14 +4,15 @@ Status: initial architecture approved; product domains are not implemented.
 
 ## Decisions
 
-- Start with one Rust crate and one HTTP process, not microservices.
-- Use Axum/Tokio, Serde, SQLx with PostgreSQL only, and structured tracing.
-- Pin Rust in `rust-toolchain.toml`; commit `Cargo.lock`. SQLx 0.9 requires
-  Rust 1.94 or newer; the selected toolchain is 1.99.0.
+- Start with one Go module and one HTTP process, not microservices
+  ([ADR-0005](adr/0005-go-backend.md) replaced the original Rust backend).
+- Use the standard library `net/http` (ServeMux), `encoding/json`, pgx with
+  PostgreSQL only, and structured `log/slog` JSON logging.
+- The Go version is set by the `go` line in `go.mod`; commit `go.sum`.
 - Keep migrations explicit (`trestle migrate`), separate from HTTP startup.
   This permits a future migration role distinct from the runtime database role.
-- Serve the Svelte/Vite/TypeScript foundation from the same origin. `build.rs`
-  embeds the production output; Node/npm are build/test tools only.
+- Serve the Svelte/Vite/TypeScript foundation from the same origin. `go:embed`
+  in `main.go` embeds the production output; Node/npm are build/test tools only.
 - Future tenancy is workspace-based. Future browser authentication uses
   revocable server-side sessions; no authentication library is selected yet.
 
@@ -19,11 +20,12 @@ Status: initial architecture approved; product domains are not implemented.
 
 | Module | Interface and responsibility |
 | --- | --- |
-| `config` | Parse known environment settings, validate bounds, keep credentials out of diagnostics. |
-| `database` | Construct a bounded lazy PostgreSQL pool and execute embedded migrations explicitly. |
-| `http` | Construct the router; translate health checks and errors into stable JSON responses. |
-| `assets` / `build.rs` | Embed reviewed frontend output and mount exact GET/HEAD routes; no disk reads or SPA fallback. |
-| binary | Initialize diagnostics, choose serve/migrate mode, bind, handle shutdown, close the pool. |
+| `internal/config` | Parse known environment settings, validate bounds, keep credentials out of diagnostics. |
+| `internal/database` | Construct a bounded lazy pgx pool and execute embedded migrations (`migrations/`) explicitly, recorded in `_sqlx_migrations`. |
+| `internal/identity` | Users, passwords (Argon2id), sessions, workspaces and memberships. |
+| `internal/projects` | Projects, tasks, statuses and task collaboration. |
+| `internal/httpapi` | Construct the `net/http` router and middleware; translate health checks, API calls and errors into stable JSON responses; mount embedded assets on exact GET/HEAD routes with no disk reads or SPA fallback. |
+| `main.go` | Embed `web/dist`, initialize diagnostics, choose serve/migrate/operator subcommand, bind, handle shutdown, close the pool. |
 
 Configuration parsing, HTTP responses, and migration execution are the agreed
 test seams. Tests use these public interfaces, including real PostgreSQL for
@@ -37,7 +39,7 @@ Introduce identity, workspaces, projects, tasks/workflows, time tracking, and
 documents as vertical slices. Application interfaces own authorization,
 validation, transactions, and domain operations. HTTP handlers and future UI
 modules do not own business rules. Persistence stays near its owning module.
-Do not introduce generic repository traits or a crate per domain speculatively.
+Do not introduce generic repository traits or a package per domain speculatively.
 
 Workspace is the tenant, project belongs to a workspace, and task is the
 canonical work item. Configurable status names map to stable categories.
@@ -60,21 +62,20 @@ until explicitly tested; Android cannot guarantee background service uptime.
 
 ## Dependency review policy
 
-At initial selection, the crates.io metadata and SQLx release notes were checked
-for current releases, minimum Rust versions, and declared licenses. The chosen
-direct libraries use MIT or MIT/Apache-2.0 licenses. The transitive
-`webpki-roots` certificate data uses CDLA-Permissive-2.0; its reviewed terms allow
-redistribution provided the license text accompanies the data. Preserve that
-notice in distribution artifacts (see `THIRD_PARTY_NOTICES.md`).
-`cargo deny check` evaluates the resolved dependency graph, not just this summary.
-The unpublished root package is excluded from license inference: its existing
-`LICENSE` is manually preserved, rather than allowing a scanner to assign an
-"or later" grant from a generic example. This is not a security guarantee or
-a substitute for reviewing behavior and future advisories.
+Direct Go dependencies are pgx (MIT), google/uuid (BSD-3-Clause),
+golang.org/x/crypto and golang.org/x/term (BSD-3-Clause); every module in the
+shipped binary is MIT or BSD-3-Clause. Their notices are kept in
+`THIRD_PARTY_NOTICES.md`; preserve it in distribution artifacts.
+`govulncheck ./...` reports known vulnerabilities in reachable code of the
+resolved module graph; `go mod verify` checks downloaded modules against
+`go.sum`. Neither checks licenses, so review `THIRD_PARTY_NOTICES.md` on every
+dependency change. The project's existing `LICENSE` is manually preserved.
+This is not a security guarantee or a substitute for reviewing behavior and
+future advisories.
 
-Review lockfile changes deliberately. Update Rust, dependencies, pinned GitHub
+Review lockfile changes deliberately. Update Go, dependencies, pinned GitHub
 Action SHAs and container digests in focused changes, run all documented checks,
 and review upstream release notes and advisories. Never automatically publish.
 No license exceptions or advisory ignores are permitted without a documented
-reason and approval. `license-file` preserves the existing project license;
-do not infer a new SPDX grant from the generic license's example notices.
+reason and approval. Preserve the existing project
+license; do not infer a new SPDX grant from the generic license's example notices.
