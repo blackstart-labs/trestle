@@ -450,99 +450,6 @@
       </div>
     </div>
   </section>
-
-  <!-- Below-the-Stage Quick Documentation Directory -->
-  <section class="quick-directory">
-    <div class="directory-inner">
-      <div class="directory-header">
-        <span class="directory-pill">DOCUMENTATION & ARCHITECTURE</span>
-        <h3 class="directory-title">Explore the Trestle Platform</h3>
-        <p class="directory-desc">
-          Single binary self-hosted workspace with zero SaaS telemetry. Everything you need to deploy, customize, and operate Trestle for yourself or your team.
-        </p>
-      </div>
-
-      <div class="directory-grid">
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("quickstart-guide")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("quickstart-guide")}
-        >
-          <div class="card-icon-tile">🚀</div>
-          <h4 class="card-title">First Steps & Sign-In</h4>
-          <p class="card-desc">Log in, set up your initial workspace, invite team members, and navigate the Trestle interface.</p>
-          <span class="card-action">Getting started guide →</span>
-        </div>
-
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("workspaces")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("workspaces")}
-        >
-          <div class="card-icon-tile">🏢</div>
-          <h4 class="card-title">Workspaces & Teams</h4>
-          <p class="card-desc">Organize isolated workspaces for teams and clients with granular role-based access control.</p>
-          <span class="card-action">Manage workspaces →</span>
-        </div>
-
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("tasks-overview")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("tasks-overview")}
-        >
-          <div class="card-icon-tile">📋</div>
-          <h4 class="card-title">Tasks & Workflows</h4>
-          <p class="card-desc">Dual List and Kanban views, atomic human keys (<code>&lt;KEY&gt;-&lt;NUM&gt;</code>), multi-assignees, and subtasks.</p>
-          <span class="card-action">Explore workflows →</span>
-        </div>
-
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("custom-statuses")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("custom-statuses")}
-        >
-          <div class="card-icon-tile">🎨</div>
-          <h4 class="card-title">Custom Workflow Statuses</h4>
-          <p class="card-desc">5 canonical categories (Backlog, Unstarted, Started, Completed, Cancelled) with customizable pipelines.</p>
-          <span class="card-action">Configure statuses →</span>
-        </div>
-
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("command-palette")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("command-palette")}
-        >
-          <div class="card-icon-tile">⚡</div>
-          <h4 class="card-title">Command Palette & Search</h4>
-          <p class="card-desc">Global <code>⌘K</code> palette for instant task lookup, navigation, keyboard shortcuts, and theme switching.</p>
-          <span class="card-action">View shortcuts →</span>
-        </div>
-
-        <div
-          class="directory-card"
-          role="button"
-          tabindex="0"
-          onclick={() => onnavigate("personalization")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("personalization")}
-        >
-          <div class="card-icon-tile">✨</div>
-          <h4 class="card-title">Themes & Appearance</h4>
-          <p class="card-desc">Customize your workbench: light/dark modes, 5 accent color presets, and accessible WCAG 2.2 AA contrast.</p>
-          <span class="card-action">Customize theme →</span>
-        </div>
-      </div>
-    </div>
-  </section>
 </div>
 
 <style>
@@ -551,10 +458,12 @@
     position: relative;
     width: 100%;
     min-height: 100vh;
-    padding: 1.5rem 1.5rem 4rem;
+    min-height: 100dvh;
+    padding: clamp(0.75rem, 1.8vh, 1.5rem);
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     background: var(--ground);
     color: var(--text);
     overflow-x: hidden;
@@ -586,10 +495,11 @@
     z-index: 1;
     width: 100%;
     max-width: 1360px;
-    height: clamp(680px, 86vh, 840px);
+    height: min(840px, calc(100dvh - clamp(1.5rem, 3.6vh, 3rem)));
+    min-height: 650px;
     margin: 0 auto;
     border-radius: 28px;
-    padding: 2rem 2.5rem 2rem;
+    padding: clamp(1.25rem, 2.2vh, 2rem) clamp(1.5rem, 2.5vw, 2.5rem);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -1208,124 +1118,11 @@
     z-index: 6;
   }
 
-  /* Below-the-Stage Quick Documentation Directory */
-  .quick-directory {
-    width: 100%;
-    max-width: 1360px;
-    margin-top: 3.5rem;
-    z-index: 2;
-  }
-
-  .directory-inner {
-    padding: 0 0.5rem;
-  }
-
-  .directory-header {
-    text-align: center;
-    max-width: 650px;
-    margin: 0 auto 2.5rem;
-  }
-
-  .directory-pill {
-    display: inline-block;
-    padding: 0.25rem 0.8rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    background: var(--accent-soft);
-    color: var(--accent);
-    margin-bottom: 0.75rem;
-  }
-
-  .directory-title {
-    font-size: 2rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: var(--text);
-    margin-bottom: 0.65rem;
-  }
-
-  .directory-desc {
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-    line-height: 1.55;
-  }
-
-  .directory-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-    gap: 1.25rem;
-  }
-
-  .directory-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 1.75rem 1.5rem;
-    cursor: pointer;
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    display: flex;
-    flex-direction: column;
-  }
-  .directory-card:hover {
-    transform: translate3d(0, -3px, 0);
-    border-color: var(--border);
-    box-shadow: 0 12px 30px -8px light-dark(oklch(0 0 0 / 0.08), oklch(0 0 0 / 0.4));
-  }
-
-  .card-icon-tile {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 12px;
-    background: var(--surface-raised);
-    border: 1px solid var(--line);
-    display: grid;
-    place-items: center;
-    font-size: 1.3rem;
-    margin-bottom: 1rem;
-  }
-
-  .card-title {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 0.45rem;
-  }
-
-  .card-desc {
-    font-size: 0.88rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin-bottom: 1.25rem;
-  }
-
-  .card-desc code {
-    font-family: var(--font-mono);
-    font-size: 0.85em;
-    background: var(--surface-sunken);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    border: 1px solid var(--line);
-  }
-
-  .card-action {
-    margin-top: auto;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--accent);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .directory-card:hover .card-action {
-    text-decoration: underline;
-  }
-
   /* Responsive Staging for Tablets and Mobile (< 960px) */
   @media (max-width: 960px) {
     .showcase-outer {
-      padding: 1rem 1rem 3rem;
+      padding: 1rem 1rem 2.5rem;
+      justify-content: flex-start;
     }
     .hero-stage {
       height: auto;
@@ -1447,12 +1244,6 @@
     }
     .slide-description {
       font-size: 0.82rem;
-    }
-    .directory-title {
-      font-size: 1.6rem;
-    }
-    .directory-header {
-      margin-bottom: 1.75rem;
     }
   }
 </style>

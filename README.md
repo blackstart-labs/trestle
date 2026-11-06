@@ -10,11 +10,15 @@
 [![WCAG 2.2 AA](https://img.shields.io/badge/Accessibility-WCAG_2.2_AA-green.svg?style=flat-square)](docs/design/design-principles.md)
 [![Self-Hosted](https://img.shields.io/badge/Deployment-Self--Hosted-purple.svg?style=flat-square)](#-production-self-hosting)
 [![Docker Hub](https://img.shields.io/badge/Docker_Hub-marufsarker%2Ftrestle-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/r/marufsarker/trestle)
-[![Docs](https://img.shields.io/badge/Docs-Portal-success?style=flat-square)](#-documentation)
+[![Docs Live](https://img.shields.io/badge/Docs-tresstle.vercel.app-000000?style=flat-square&logo=vercel&logoColor=white)](https://tresstle.vercel.app)
 
-[Quickstart](#-quickstart-one-command-setup) • [Features](#-features) • [Self-Hosting](#-production-self-hosting) • [Operator CLI](#-operator-cli) • [REST API](#-rest-api-reference) • [Docs Project](#-documentation)
+[Quickstart](#-quickstart-one-command-setup) • [Features](#-features) • [Self-Hosting](#-production-self-hosting) • [Live Documentation](https://tresstle.vercel.app) • [Operator CLI](#-operator-cli) • [REST API](#-rest-api-reference)
 
 ---
+
+<p align="center">
+  <img src="assets/demo.png" alt="Trestle Application Interface" width="100%" />
+</p>
 
 </div>
 
@@ -343,9 +347,16 @@ All product endpoints are served under `/api/v1/`. Authenticated requests requir
 
 ## 📚 Documentation
 
-Detailed architectural and design specifications:
+<p align="center">
+  <a href="https://tresstle.vercel.app" target="_blank" rel="noopener noreferrer">
+    <img src="assets/docs.webp" alt="Trestle Documentation Portal" width="100%" />
+  </a>
+</p>
 
-* **[Documentation Frontend Project](docs-site/)**: Interactive web documentation with live search, guides, and component showcases.
+Visit the live documentation and interactive user manual at **[tresstle.vercel.app](https://tresstle.vercel.app)**.
+
+* **[Live Documentation Portal](https://tresstle.vercel.app)**: Complete interactive user manual with global search (`⌘K`), feature walkthroughs, and responsive showcases.
+* **[Documentation Source Code](docs-site/)**: Svelte 5 + Vite 8 frontend project powering the documentation site.
 * **[Product Vision & Requirements](docs/product/product-requirements.md)**: Product purpose, user personas, and scope.
 * **[Architecture Overview](docs/architecture.md)**: Modular monolith structure, data flow, and boundaries.
 * **[Design Tokens & Principles](docs/design/design-tokens.md)**: Color science, typography, motion curves, and components.

@@ -28,6 +28,9 @@
     </ul>
 
     <h2>Interface Overview</h2>
+    <div class="screenshot-container">
+      <img src="/assets/demo.png" alt="Trestle Application Interface Overview" class="app-screenshot-preview" />
+    </div>
     <p>The application interface consists of three primary zones:</p>
     <ul>
       <li><strong>Navigation Sidebar:</strong> Quick workspace switcher, project links, global search, and workspace settings.</li>
@@ -172,6 +175,9 @@
     <p class="lead">Every project features a dedicated dashboard providing honest, real-time summaries of work velocity and deadlines.</p>
 
     <h2>The Continuous Progress Rail</h2>
+    <div class="screenshot-container">
+      <img src="/assets/demo.png" alt="Trestle Project Dashboard and Progress Rail" class="app-screenshot-preview" />
+    </div>
     <p>The Progress Rail spans every status category in a single visual bar at the top of the project. It provides an immediate visual breakdown of where work stands:</p>
     <ul>
       <li><strong>Backlog:</strong> Ideas and deferred tasks.</li>
@@ -506,6 +512,20 @@ volumes:
 
   .key-example-badge .num {
     color: var(--text);
+  }
+
+  .screenshot-container {
+    margin: 1.5rem 0 2rem;
+    width: 100%;
+  }
+
+  .app-screenshot-preview {
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+    box-shadow: 0 14px 36px -10px light-dark(oklch(0 0 0 / 0.15), oklch(0 0 0 / 0.5));
+    display: block;
   }
 
   kbd {
