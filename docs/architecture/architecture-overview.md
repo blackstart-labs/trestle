@@ -1,16 +1,16 @@
 # Architecture overview
 
 Status: foundation implemented; product topology proposed within the approved
-Rust/PostgreSQL modular-monolith direction. [Current modules](../architecture.md)
+Go/PostgreSQL modular-monolith direction. [Current modules](../architecture.md)
 remain authoritative for executable behavior.
 
 ```text
 Browser ── same-origin HTTPS ── operator reverse proxy
                                       │
-                               Rust application
+                                Go application
                          HTTP → application interfaces
                                 domain modules
-                             SQLx / explicit SQL
+                             pgx / explicit SQL
                                       │
                                  PostgreSQL
 ```

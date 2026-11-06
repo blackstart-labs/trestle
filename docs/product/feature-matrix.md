@@ -8,7 +8,7 @@ migration policy; nothing is deprecated currently.
 
 | Capability / requirement | Status | Scope and implementation | Evidence / prerequisite |
 | --- | --- | --- | --- |
-| Backend foundation / PR-08, PR-10 | Implemented | Rust config, live/ready, explicit metadata migration, logs/errors | [Approved scope](../foundation-milestone.md), `src/`, [verification](../verification.md), commit `79478d7` |
+| Backend foundation / PR-08, PR-10 | Implemented | Go config, live/ready, explicit metadata migration, logs/errors | [Approved scope](../foundation-milestone.md), `internal/`, [verification](../verification.md), commit `79478d7` |
 | CI and deployment / PR-08 | Partial | Workflow, Docker image and dev database configuration | Local lint/build/runtime pass; hosted CI, production upgrades and full notices remain unverified |
 | Product documentation / PR-10 | Partial | Vision, requirements, inventory, roadmap, core architecture and initial identity spec | This documentation milestone; detailed later feature specs not written yet |
 | Frontend foundation / PR-07/08/10 | Implemented | Svelte/Vite/TypeScript; embedded assets; visible readiness/retry, no product UI | [Spec](../features/frontend-foundation.md), [M01b evidence](../verification-frontend.md) |

@@ -4,10 +4,10 @@ export default defineConfig({
   testDir: "./e2e",
   use: { baseURL: "http://127.0.0.1:4317", browserName: "chromium" },
   webServer: {
-    command: "cargo run --locked --manifest-path ../Cargo.toml",
+    command: "go run ..",
     url: "http://127.0.0.1:4317/health/live",
     reuseExistingServer: false,
-    // Includes a cold native build when run directly from a clean checkout.
+    // Includes a cold Go build when run directly from a clean checkout.
     timeout: 600000,
     env: {
       DATABASE_URL: "postgres://unavailable:unavailable@127.0.0.1:1/trestle",

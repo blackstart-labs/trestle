@@ -1,5 +1,7 @@
 # Identity and workspaces verification (M03a.1)
 
+> Recorded against the former Rust backend ([ADR 0005](adr/0005-go-backend.md)). Go equivalents: `cargo fmt` → `gofmt -l .`, `cargo clippy` → `go vet ./...`, `cargo test` → `go test ./...` (set `DATABASE_URL`), `cargo build --release` → `CGO_ENABLED=0 go build -trimpath -o trestle .`, `cargo deny check` → `govulncheck ./...`.
+
 Date: 2026-11-01. Linux x86_64, Node 24.22.0/npm 11.19.1, Rust 1.99.0, PostgreSQL 18-bookworm.
 Scope and agreed seams: [Identity and workspaces](features/identity-and-workspaces.md), [Identity policy](security/identity-policy.md), [ADR-0004](adr/0004-identity-and-workspace-isolation.md).
 

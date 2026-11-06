@@ -5,7 +5,7 @@ every new screen, feature and component. Human contributors follow it too.
 Where this file and older docs disagree, this file wins; fix the older doc.
 
 Trestle is a self-hosted workspace for projects, tasks, time and knowledge:
-a Rust (axum) backend serving a Svelte 5 + Vite static frontend from one
+a Go (net/http) backend serving a Svelte 5 + Vite static frontend from one
 origin. Product terms live in [CONTEXT.md](CONTEXT.md). Use them exactly:
 Workspace, Project, Task, Status, Status category, and so on.
 
@@ -128,7 +128,7 @@ npm run check         # svelte-check: 0 errors, 0 warnings
 npm test              # unit tests (add tests for new behaviour)
 npm run format:check  # prettier
 npm run build         # production build
-npm run test:e2e      # needs the Rust toolchain; axe, contrast, reflow, keyboard
+npm run test:e2e      # needs the Go toolchain; axe, contrast, reflow, keyboard
 ```
 
 Then look at the result, in **both themes**, at **390, 768 and 1440px**:

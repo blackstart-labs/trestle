@@ -7,7 +7,7 @@ This is a development foundation, not an authenticated productivity application.
 - PostgreSQL credentials, database contents, migration history, and operator logs.
 - The operator controls process environment, binary, database role, and network.
 - HTTP callers and network inputs are untrusted, including request URLs.
-- SQLx, PostgreSQL, Rust dependencies, CI actions, and container bases are supply
+- pgx, PostgreSQL, Go module dependencies, CI actions, and container bases are supply
   chain inputs; lockfiles, digests, and advisory checks reduce but do not remove risk.
 
 ## Current safeguards

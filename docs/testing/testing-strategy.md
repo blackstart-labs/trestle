@@ -22,9 +22,10 @@ where practical, then review/refactor without weakening failed assertions.
 | Operations | Direct/container startup, migrate, outage recovery, signals, restore and upgrade |
 | Performance | Seeded workloads, query plans, distributions/resources and declared regression policy |
 
-Use deterministic seeds, controlled clocks, isolated SQLx databases and a
-disposable `CREATEDB` role. Never run tests with production credentials. Missing
-prerequisites must fail required suites explicitly, not silently skip coverage.
+Use deterministic seeds, controlled clocks, a fresh database per
+test (`internal/testdb`) and a disposable `CREATEDB` role. Never run tests with
+production credentials. Database tests skip when `DATABASE_URL` is unset; CI always sets it, so a required run must not
+report database tests as skipped.
 Property-based tests are useful for ordering, time intervals, graph cycles and
 rounding once those rules exist; no property-test dependency is required now.
 

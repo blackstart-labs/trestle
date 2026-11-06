@@ -1,5 +1,7 @@
 # Custom Status Administration Verification (M05a)
 
+> Recorded against the former Rust backend ([ADR 0005](adr/0005-go-backend.md)). Go equivalents: `cargo fmt` → `gofmt -l .`, `cargo clippy` → `go vet ./...`, `cargo test` → `go test ./...` (set `DATABASE_URL`), `cargo build --release` → `CGO_ENABLED=0 go build -trimpath -o trestle .`, `cargo deny check` → `govulncheck ./...`.
+
 Record for milestone M05a: Custom Status Administration and Consistent Transitions.
 
 Date: 2026-11-02. Linux x86_64; Node 24.21.0/npm 11.19.0, Rust 1.99.0; PostgreSQL.

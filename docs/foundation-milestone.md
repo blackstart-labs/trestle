@@ -1,5 +1,7 @@
 # Approved milestone: runnable backend foundation
 
+> Recorded against the former Rust backend ([ADR 0005](adr/0005-go-backend.md)). Go equivalents: `cargo fmt` → `gofmt -l .`, `cargo clippy` → `go vet ./...`, `cargo test` → `go test ./...` (set `DATABASE_URL`), `cargo build --release` → `CGO_ENABLED=0 go build -trimpath -o trestle .`, `cargo deny check` → `govulncheck ./...`.
+
 Approved in the implementation conversation following the read-only audit of
 commit `d0f26824065d72dad43e37209eb7f3c2fbf49e0c`.
 

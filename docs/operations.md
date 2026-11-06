@@ -13,23 +13,24 @@ From the repository root:
 ```bash
 npm ci --prefix web --ignore-scripts
 npm run build --prefix web
-cargo build --locked --release
-./target/release/trestle migrate
-./target/release/trestle
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o trestle .
+./trestle migrate
+./trestle
 ```
 
 The application defaults to `127.0.0.1:3000` and does not require a database
 connection to start serving liveness. Readiness reports database outages.
 The root page and compiled assets are embedded in the binary. Node/npm are only
 needed when building/testing, never on the deployed host. Missing `web/dist`
-fails Cargo with build instructions. Rebuild the frontend and binary together.
+fails the Go build (`go:embed` finds no matching files). Rebuild the frontend and binary together.
 Supply `TRESTLE_BIND_ADDR` explicitly to expose another interface. Run behind a
 TLS reverse proxy with appropriate connection, timeout, and rate limits before
 any non-local exposure. The app itself serves plaintext HTTP/1.
 
 The runtime pool adds `statement_timeout=5000` and `lock_timeout=5000` (milliseconds)
 and disables statement logging. For remote PostgreSQL use `sslmode=verify-full`
-and a trusted server certificate; SQLx supports `sslrootcert` in the URL.
+and a trusted server certificate; pgx supports `sslrootcert` in the URL. The container image includes the
+Debian CA bundle for system-root verification.
 
 ## Podman without Compose
 
@@ -58,7 +59,7 @@ configuration and must be checked on the deployment host.
 
 Build with `docker build --tag trestle:local .` (or `podman build`). The image
 contains a non-root application process, license, and certificate-data notice.
-Its build stage also compiles the frontend with pinned Node/npm; only the Rust
+Its build stage also compiles the frontend with pinned Node/npm; only the static Go
 binary containing those assets reaches the runtime. The browser license inventory
 is available at `/assets/third-party-licenses.txt`.
 It does not contain source secrets or a PostgreSQL server. Container networking
@@ -88,14 +89,15 @@ deployments must offer the corresponding source required by AGPL section 13.
 
 ## Migrations and upgrades
 
-- `trestle migrate` runs embedded forward SQLx migrations and exits nonzero on
+- `trestle migrate` runs embedded forward migrations (`migrations/*.sql`) and exits nonzero on
   failure. It never prints the connection URL or raw database errors.
-- Baseline `202610150001_foundation.sql` executes `SELECT 1`; SQLx creates its
-  `_sqlx_migrations` metadata table. There are no product tables.
+- Baseline `202610150001_foundation.sql` executes `SELECT 1`. History is kept in
+  the `_sqlx_migrations` table, the same table, checksums (SHA-384) and lock as
+  the former Rust/SQLx backend, so existing databases migrate forward unchanged.
 - Serving HTTP does **not** apply or validate migrations. Readiness checks
   connectivity only. Deployments must migrate successfully before routing users.
-- Migrations use SQLx checksums, transactional execution by default, and its
-  PostgreSQL migration lock. Do not change applied migration files or bypass
+- Migrations are checksum-verified, each runs in its own transaction, and the
+  run holds a PostgreSQL advisory lock. Do not change applied migration files or bypass
   checksum errors. Add a new forward migration for schema changes.
 - A migration command is bounded to 60 seconds overall; statements and lock
   waits to five seconds. Do not assume these bounds suit future data migrations.
@@ -105,9 +107,9 @@ deployments must offer the corresponding source required by AGPL section 13.
   copy, document compatibility, run the migration command once, then verify
   readiness and the affected workflows. No automatic downgrade exists.
 
-For SQLx tests, use a disposable test server with a `CREATEDB` role. Each
-`#[sqlx::test]` receives a separate database; failed tests may leave databases
-for inspection. Do not run the suite with production credentials.
+For `go test ./...`, use a disposable test server with a `CREATEDB` role and
+set `DATABASE_URL`. Each database test creates a fresh database and drops it
+when the test ends; without `DATABASE_URL` those tests are skipped. Do not run the suite with production credentials.
 
 ## Backup and restore procedure
 

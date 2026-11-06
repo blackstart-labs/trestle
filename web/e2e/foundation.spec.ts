@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Rust serves the compiled foundation with a real unavailable readiness check", async ({
+test("Go serves the compiled foundation with a real unavailable readiness check", async ({
   page,
 }) => {
   const errors: string[] = [];

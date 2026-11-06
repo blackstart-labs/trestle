@@ -37,7 +37,7 @@ decision groups on 2026-10-15. This file owns policy values; the
   limits in the executable contract and support password managers/paste.
 - Argon2id parameters are **not yet selected or benchmarked**. Measure memory/
   latency on a documented host profile before sign-off. Bound concurrent hashing
-  and waiting work; do not block Tokio with unbounded CPU work.
+  and waiting work; do not let unbounded hashing exhaust CPU or memory.
 - Unknown users and wrong passwords have the same public failure. Include
   comparable dummy verification for unknown users; a shared `401` alone is not
   evidence of timing indistinguishability.

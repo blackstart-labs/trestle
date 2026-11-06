@@ -14,7 +14,7 @@ param (
 $ErrorActionPreference = "Stop"
 
 # Ensure we are in the repository root
-if (-not (Test-Path "Cargo.toml") -or -not (Test-Path "web")) {
+if (-not (Test-Path "go.mod") -or -not (Test-Path "web")) {
     Write-Host "==> Trestle repository not detected in current directory." -ForegroundColor Yellow
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Error "[ERROR] 'git' is required to clone the repository."
@@ -97,12 +97,12 @@ switch ($Command.ToLower()) {
     }
     "migrate" {
         if (Test-Path ".env") { Get-Content ".env" | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [System.Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim()) } } }
-        cargo run --locked -- migrate
+        go run . migrate
         exit $LASTEXITCODE
     }
     "bootstrap" {
         if (Test-Path ".env") { Get-Content ".env" | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [System.Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim()) } } }
-        cargo run --locked -- bootstrap
+        go run . bootstrap
         exit $LASTEXITCODE
     }
     "help" {
@@ -134,12 +134,12 @@ Write-Host ""
 
 # 1. Check Prerequisites
 Write-Host "[1/6] Checking system tools and prerequisites..."
-if (-not (Get-Command cargo -ErrorAction SilentlyContinue) -or -not (Get-Command rustc -ErrorAction SilentlyContinue)) {
-    Write-Error "[ERROR] Rust toolchain (cargo, rustc) is not installed. Visit https://rustup.rs"
+if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+    Write-Error "[ERROR] Go toolchain (go) is not installed. Visit https://go.dev/dl/"
     exit 1
 }
-$RustVer = (rustc --version)
-Write-Host "  ✓ Rust toolchain found ($RustVer)" -ForegroundColor Green
+$GoVer = (go env GOVERSION)
+Write-Host "  ✓ Go toolchain found ($GoVer)" -ForegroundColor Green
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
     Write-Error "[ERROR] Node.js and npm are required. Visit https://nodejs.org"
@@ -281,7 +281,7 @@ Write-Host "  ✓ Frontend assets ready in web/dist." -ForegroundColor Green
 # 5. Database Migrations
 Write-Host ""
 Write-Host "[5/6] Applying database migrations..."
-cargo run --locked -- migrate
+go run . migrate
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[ERROR] Database migrations failed."
     exit $LASTEXITCODE
@@ -298,7 +298,7 @@ if (-not $Interactive) {
     [System.Environment]::SetEnvironmentVariable("TRESTLE_BOOTSTRAP_WORKSPACE_SLUG", "main")
 }
 
-cargo run --locked -- bootstrap
+go run . bootstrap
 # Exit code 0 on fresh bootstrap or "already initialized"
 
 # Launch Server
@@ -316,4 +316,4 @@ Write-Host "Press Ctrl+C to stop the application server."
 Write-Host "(To stop the background database container later, run: .\run.ps1 stop)"
 Write-Host ""
 
-cargo run --locked
+go run .

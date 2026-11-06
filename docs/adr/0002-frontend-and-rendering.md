@@ -3,6 +3,8 @@ status: accepted
 ---
 # Svelte with static delivery and selective rich interactions
 
+Superseded in part by [ADR 0005](0005-go-backend.md): assets are now served from the Go application.
+
 Use Svelte, Vite and TypeScript as the primary frontend direction, approved after
 the initial audit. Serve build assets from the Rust application's origin; do
 not require a production Node server. M01b implements this with pinned build
