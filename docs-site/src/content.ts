@@ -7,6 +7,7 @@ export interface DocSection {
 }
 
 export const SECTIONS: DocSection[] = [
+  { id: "home", title: "Home Showcase", category: "Getting Started", badge: "Showcase", summary: "Visual product showcase and overview inspired by the Trestle design language." },
   { id: "overview", title: "Overview & Architecture", category: "Getting Started", summary: "Product purpose, modular monolith architecture, and core design principles." },
   { id: "quickstart", title: "Quickstart Setup", category: "Getting Started", badge: "1-Command", summary: "One-command instant setup across Linux, macOS, WSL, and Windows." },
   { id: "self-hosting", title: "Production Self-Hosting", category: "Operations", badge: "Docker / Binary", summary: "Docker Compose, standalone static binary, systemd, Caddy/Nginx reverse proxies, and backups." },

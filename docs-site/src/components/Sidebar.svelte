@@ -18,6 +18,15 @@
 
 <aside class="sidebar {mobileOpen ? 'mobile-open' : ''}">
   <nav class="nav-content">
+    <div class="category-group">
+      <button
+        class="nav-link home-showcase-btn {activeId === 'home' ? 'active' : ''}"
+        onclick={() => handleSelect('home')}
+      >
+        <span class="link-label">✨ Home Showcase</span>
+      </button>
+    </div>
+
     {#each CATEGORIES as category}
       <div class="category-group">
         <h3 class="category-title">{category}</h3>

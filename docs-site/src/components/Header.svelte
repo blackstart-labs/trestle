@@ -4,9 +4,10 @@
     ontoggleTheme: () => void;
     onopenSearch: () => void;
     ontoggleMobileMenu: () => void;
+    onnavigateHome?: () => void;
   }
 
-  let { theme, ontoggleTheme, onopenSearch, ontoggleMobileMenu }: Props = $props();
+  let { theme, ontoggleTheme, onopenSearch, ontoggleMobileMenu, onnavigateHome }: Props = $props();
 </script>
 
 <header class="top-nav">
@@ -15,7 +16,7 @@
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
 
-    <div class="brand">
+    <div class="brand" role="button" tabindex="0" onclick={onnavigateHome} onkeydown={(e) => e.key === "Enter" && onnavigateHome?.()}>
       <div class="brand-icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2">
           <path d="M2 6h20M4 6l4 14M20 6l-4 14M6 13h12" />
@@ -24,6 +25,12 @@
       <span class="brand-name">Trestle</span>
       <span class="badge docs-badge">Docs</span>
     </div>
+
+    {#if onnavigateHome}
+      <button class="showcase-return-btn" onclick={onnavigateHome}>
+        ← Home Showcase
+      </button>
+    {/if}
   </div>
 
   <div class="nav-center">
@@ -86,6 +93,29 @@
     display: flex;
     align-items: center;
     gap: 0.65rem;
+    cursor: pointer;
+  }
+  .showcase-return-btn {
+    margin-left: 1rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    border: 1px solid var(--line);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .showcase-return-btn:hover {
+    color: var(--text);
+    background: var(--hover);
+    border-color: var(--border);
+  }
+  @media (max-width: 600px) {
+    .showcase-return-btn {
+      display: none;
+    }
   }
   .brand-icon {
     width: 28px;
