@@ -1,6 +1,14 @@
 # Trestle Documentation Site
 
-The interactive web documentation project for [Trestle](https://github.com/blackstart-labs/trestle).
+The interactive web documentation project and user manual for [Trestle](https://github.com/blackstart-labs/trestle).
+
+🌐 **Live Website:** [tresstle.vercel.app](https://tresstle.vercel.app)
+
+<p align="center">
+  <a href="https://tresstle.vercel.app" target="_blank" rel="noopener noreferrer">
+    <img src="../assets/docs.webp" alt="Trestle Documentation Portal Preview" width="100%" />
+  </a>
+</p>
 
 ## Tech Stack
 

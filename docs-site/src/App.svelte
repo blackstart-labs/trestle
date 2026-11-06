@@ -3,9 +3,10 @@
   import Sidebar from "./components/Sidebar.svelte";
   import SearchModal from "./components/SearchModal.svelte";
   import DocContent from "./pages/DocContent.svelte";
+  import Home from "./pages/Home.svelte";
   import { SECTIONS } from "./content";
 
-  let activeSection = $state("overview");
+  let activeSection = $state("home");
   let theme: "light" | "dark" = $state("dark");
   let searchOpen = $state(false);
   let mobileOpen = $state(false);
@@ -14,8 +15,10 @@
   $effect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
-      if (hash && SECTIONS.some(s => s.id === hash)) {
+      if (hash && (hash === "home" || SECTIONS.some(s => s.id === hash))) {
         activeSection = hash;
+      } else if (!hash) {
+        activeSection = "home";
       }
     };
     handleHash();
@@ -43,52 +46,65 @@
   }
 
   let currentIndex = $derived(SECTIONS.findIndex(s => s.id === activeSection));
-  let prevSection = $derived(currentIndex > 0 ? SECTIONS[currentIndex - 1] : null);
-  let nextSection = $derived(currentIndex < SECTIONS.length - 1 ? SECTIONS[currentIndex + 1] : null);
+  let prevSection = $derived(currentIndex > 1 ? SECTIONS[currentIndex - 1] : null);
+  let nextSection = $derived(currentIndex >= 1 && currentIndex < SECTIONS.length - 1 ? SECTIONS[currentIndex + 1] : (currentIndex === 0 ? SECTIONS[1] : null));
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="docs-app" data-theme={theme}>
-  <Header
-    {theme}
-    ontoggleTheme={toggleTheme}
-    onopenSearch={() => (searchOpen = true)}
-    ontoggleMobileMenu={() => (mobileOpen = !mobileOpen)}
-  />
-
-  <div class="layout-container">
-    <Sidebar
-      activeId={activeSection}
-      onselect={selectSection}
-      {mobileOpen}
-      oncloseMobile={() => (mobileOpen = false)}
+  {#if activeSection === "home"}
+    <Home
+      onnavigate={selectSection}
+      {theme}
+      ontoggleTheme={toggleTheme}
+      onopenSearch={() => (searchOpen = true)}
+    />
+  {:else}
+    <Header
+      {theme}
+      ontoggleTheme={toggleTheme}
+      onopenSearch={() => (searchOpen = true)}
+      ontoggleMobileMenu={() => (mobileOpen = !mobileOpen)}
+      onnavigateHome={() => selectSection("home")}
     />
 
-    <main class="content-pane">
-      <div class="content-inner">
-        <DocContent sectionId={activeSection} />
+    <div class="layout-container">
+      <Sidebar
+        activeId={activeSection}
+        onselect={selectSection}
+        {mobileOpen}
+        oncloseMobile={() => (mobileOpen = false)}
+      />
 
-        <div class="doc-pagination">
-          {#if prevSection}
-            <button class="page-nav prev" onclick={() => selectSection(prevSection.id)}>
-              <span class="nav-sub">Previous</span>
-              <span class="nav-title">← {prevSection.title}</span>
-            </button>
-          {:else}
-            <div></div>
-          {/if}
+      <main class="content-pane">
+        <div class="content-inner">
+          <DocContent sectionId={activeSection} />
 
-          {#if nextSection}
-            <button class="page-nav next" onclick={() => selectSection(nextSection.id)}>
-              <span class="nav-sub">Next</span>
-              <span class="nav-title">{nextSection.title} →</span>
-            </button>
-          {/if}
+          <div class="doc-pagination">
+            {#if prevSection}
+              <button class="page-nav prev" onclick={() => selectSection(prevSection.id)}>
+                <span class="nav-sub">Previous</span>
+                <span class="nav-title">← {prevSection.title}</span>
+              </button>
+            {:else}
+              <button class="page-nav prev" onclick={() => selectSection("home")}>
+                <span class="nav-sub">Previous</span>
+                <span class="nav-title">← Home Showcase</span>
+              </button>
+            {/if}
+
+            {#if nextSection}
+              <button class="page-nav next" onclick={() => selectSection(nextSection.id)}>
+                <span class="nav-sub">Next</span>
+                <span class="nav-title">{nextSection.title} →</span>
+              </button>
+            {/if}
+          </div>
         </div>
-      </div>
-    </main>
-  </div>
+      </main>
+    </div>
+  {/if}
 
   <SearchModal
     bind:open={searchOpen}
