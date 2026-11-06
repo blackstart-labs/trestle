@@ -31,7 +31,7 @@
       <div class="category-group">
         <h3 class="category-title">{category}</h3>
         <ul class="nav-list">
-          {#each SECTIONS.filter(s => s.category === category) as item}
+          {#each SECTIONS.filter(s => s.category === category && s.id !== 'home') as item}
             <li>
               <button
                 class="nav-link {activeId === item.id ? 'active' : ''}"

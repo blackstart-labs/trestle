@@ -148,11 +148,11 @@
       </div>
 
       <nav class="nav-links" aria-label="Main navigation">
-        <button class="nav-link" onclick={() => onnavigate("overview")}>Product</button>
-        <button class="nav-link" onclick={() => onnavigate("projects-tasks")}>Workflows</button>
-        <button class="nav-link" onclick={() => onnavigate("overview")}>Architecture</button>
+        <button class="nav-link" onclick={() => onnavigate("getting-started")}>Product</button>
+        <button class="nav-link" onclick={() => onnavigate("tasks-overview")}>Workflows</button>
+        <button class="nav-link" onclick={() => onnavigate("project-dashboard")}>Dashboard</button>
         <button class="nav-link" onclick={() => onnavigate("self-hosting")}>Self-Hosting</button>
-        <button class="nav-link" onclick={() => onnavigate("overview")}>Docs</button>
+        <button class="nav-link" onclick={() => onnavigate("getting-started")}>Docs</button>
       </nav>
 
       <div class="nav-actions">
@@ -191,7 +191,7 @@
           {/if}
         </button>
 
-        <button class="get-started-btn" onclick={() => onnavigate("quickstart")}>
+        <button class="get-started-btn" onclick={() => onnavigate("quickstart-guide")}>
           Get Started
         </button>
       </div>
@@ -300,8 +300,8 @@
         class="glass-card widget-video"
         role="button"
         tabindex="0"
-        onclick={() => onnavigate("quickstart")}
-        onkeydown={(e) => e.key === "Enter" && onnavigate("quickstart")}
+        onclick={() => onnavigate("quickstart-guide")}
+        onkeydown={(e) => e.key === "Enter" && onnavigate("quickstart-guide")}
         title="Click to view Quickstart and Demo"
       >
         <div class="phone-thumbnail" aria-hidden="true">
@@ -345,7 +345,7 @@
           </div>
           <button
             class="board-arrow-btn"
-            onclick={() => onnavigate("projects-tasks")}
+            onclick={() => onnavigate("tasks-overview")}
             aria-label="Open Tasks view"
             title="View all tasks"
           >
@@ -467,38 +467,38 @@
           class="directory-card"
           role="button"
           tabindex="0"
-          onclick={() => onnavigate("quickstart")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("quickstart")}
+          onclick={() => onnavigate("quickstart-guide")}
+          onkeydown={(e) => e.key === "Enter" && onnavigate("quickstart-guide")}
         >
           <div class="card-icon-tile">🚀</div>
-          <h4 class="card-title">1-Command Quickstart</h4>
-          <p class="card-desc">Run <code>./run.sh</code> or <code>./run.ps1</code>. Auto-provisions Postgres, checks ports, builds Vite, and seeds admin.</p>
-          <span class="card-action">View setup guide →</span>
+          <h4 class="card-title">First Steps & Sign-In</h4>
+          <p class="card-desc">Log in, set up your initial workspace, invite team members, and navigate the Trestle interface.</p>
+          <span class="card-action">Getting started guide →</span>
         </div>
 
         <div
           class="directory-card"
           role="button"
           tabindex="0"
-          onclick={() => onnavigate("self-hosting")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("self-hosting")}
+          onclick={() => onnavigate("workspaces")}
+          onkeydown={(e) => e.key === "Enter" && onnavigate("workspaces")}
         >
-          <div class="card-icon-tile">🐳</div>
-          <h4 class="card-title">Docker Hub Deployment</h4>
-          <p class="card-desc">Official <code>marufsarker/trestle:latest</code> image (~32MB). Ready for Docker Compose, systemd, or bare metal.</p>
-          <span class="card-action">Deploy with Docker →</span>
+          <div class="card-icon-tile">🏢</div>
+          <h4 class="card-title">Workspaces & Teams</h4>
+          <p class="card-desc">Organize isolated workspaces for teams and clients with granular role-based access control.</p>
+          <span class="card-action">Manage workspaces →</span>
         </div>
 
         <div
           class="directory-card"
           role="button"
           tabindex="0"
-          onclick={() => onnavigate("projects-tasks")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("projects-tasks")}
+          onclick={() => onnavigate("tasks-overview")}
+          onkeydown={(e) => e.key === "Enter" && onnavigate("tasks-overview")}
         >
           <div class="card-icon-tile">📋</div>
           <h4 class="card-title">Tasks & Workflows</h4>
-          <p class="card-desc">Dual List and Kanban views, atomic human keys (<code>&lt;KEY&gt;-&lt;NUM&gt;</code>), multi-assignees, subtasks, and progress rails.</p>
+          <p class="card-desc">Dual List and Kanban views, atomic human keys (<code>&lt;KEY&gt;-&lt;NUM&gt;</code>), multi-assignees, and subtasks.</p>
           <span class="card-action">Explore workflows →</span>
         </div>
 
@@ -510,8 +510,8 @@
           onkeydown={(e) => e.key === "Enter" && onnavigate("custom-statuses")}
         >
           <div class="card-icon-tile">🎨</div>
-          <h4 class="card-title">Custom Statuses</h4>
-          <p class="card-desc">5 canonical categories (Backlog, Unstarted, Started, Completed, Cancelled) with customizable labels, colors, and delete remaps.</p>
+          <h4 class="card-title">Custom Workflow Statuses</h4>
+          <p class="card-desc">5 canonical categories (Backlog, Unstarted, Started, Completed, Cancelled) with customizable pipelines.</p>
           <span class="card-action">Configure statuses →</span>
         </div>
 
@@ -519,26 +519,26 @@
           class="directory-card"
           role="button"
           tabindex="0"
-          onclick={() => onnavigate("api-reference")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("api-reference")}
+          onclick={() => onnavigate("command-palette")}
+          onkeydown={(e) => e.key === "Enter" && onnavigate("command-palette")}
         >
-          <div class="card-icon-tile">🔌</div>
-          <h4 class="card-title">REST API & Monolith</h4>
-          <p class="card-desc">Clean JSON endpoints for workspaces, projects, tasks, comments, and time entries with cookie-based auth.</p>
-          <span class="card-action">Read API specs →</span>
+          <div class="card-icon-tile">⚡</div>
+          <h4 class="card-title">Command Palette & Search</h4>
+          <p class="card-desc">Global <code>⌘K</code> palette for instant task lookup, navigation, keyboard shortcuts, and theme switching.</p>
+          <span class="card-action">View shortcuts →</span>
         </div>
 
         <div
           class="directory-card"
           role="button"
           tabindex="0"
-          onclick={() => onnavigate("design-system")}
-          onkeydown={(e) => e.key === "Enter" && onnavigate("design-system")}
+          onclick={() => onnavigate("personalization")}
+          onkeydown={(e) => e.key === "Enter" && onnavigate("personalization")}
         >
           <div class="card-icon-tile">✨</div>
-          <h4 class="card-title">WCAG 2.2 AA Design</h4>
-          <p class="card-desc">Mona Sans typography, OKLCH semantic tokens, critically damped spring motion, and strict no-native-picker rules.</p>
-          <span class="card-action">Review design system →</span>
+          <h4 class="card-title">Themes & Appearance</h4>
+          <p class="card-desc">Customize your workbench: light/dark modes, 5 accent color presets, and accessible WCAG 2.2 AA contrast.</p>
+          <span class="card-action">Customize theme →</span>
         </div>
       </div>
     </div>
