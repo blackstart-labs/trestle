@@ -1254,7 +1254,7 @@
 
   .directory-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
     gap: 1.25rem;
   }
 
@@ -1324,10 +1324,14 @@
 
   /* Responsive Staging for Tablets and Mobile (< 960px) */
   @media (max-width: 960px) {
+    .showcase-outer {
+      padding: 1rem 1rem 3rem;
+    }
     .hero-stage {
       height: auto;
       min-height: auto;
       padding: 1.5rem 1.25rem 2rem;
+      border-radius: 24px;
     }
     .stage-nav .nav-links {
       display: none;
@@ -1336,26 +1340,27 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1.5rem;
-      margin-top: 1.5rem;
+      gap: 1.25rem;
+      margin-top: 1.25rem;
     }
     .headline-left,
     .headline-right {
       position: static;
-      font-size: clamp(2.8rem, 11vw, 4.2rem);
+      font-size: clamp(2.4rem, 10vw, 3.8rem);
       text-align: center;
       max-width: none;
+      line-height: 0.95;
     }
     .headline-right {
-      margin-top: -0.5rem;
+      margin-top: -0.35rem;
     }
     .centerpiece-tilt {
       position: relative;
       top: auto;
       left: auto;
-      margin: 1rem 0;
-      width: 260px;
-      height: 310px;
+      margin: 0.75rem 0;
+      width: 220px;
+      height: 265px;
     }
     .widget-video,
     .widget-tasks-capsule,
@@ -1364,12 +1369,13 @@
       width: 100%;
       max-width: 440px;
       animation: none;
+      box-sizing: border-box;
     }
     .bottom-narrative {
       position: static;
       max-width: 100%;
       text-align: center;
-      margin-top: 1rem;
+      margin-top: 0.75rem;
     }
     .carousel-nav {
       justify-content: center;
@@ -1377,7 +1383,76 @@
     .bottom-tagline {
       position: static;
       text-align: center;
-      margin-top: 1rem;
+      margin-top: 0.75rem;
+    }
+  }
+
+  /* Mobile screen optimization (< 560px) */
+  @media (max-width: 560px) {
+    .showcase-outer {
+      padding: 0.65rem 0.5rem 2.5rem;
+    }
+    .hero-stage {
+      border-radius: 20px;
+      padding: 1.15rem 0.85rem 1.5rem;
+    }
+    .stage-nav {
+      gap: 0.35rem;
+    }
+    .brand-title {
+      font-size: 1.05rem;
+    }
+    .brand-bolt {
+      width: 1.85rem;
+      height: 1.85rem;
+      border-radius: 0.5rem;
+    }
+    .nav-actions {
+      gap: 0.45rem;
+    }
+    .action-btn {
+      width: 2rem;
+      height: 2rem;
+    }
+    .get-started-btn {
+      padding: 0.4rem 0.85rem;
+      font-size: 0.82rem;
+    }
+    .centerpiece-tilt {
+      width: 180px;
+      height: 220px;
+      margin: 0.25rem 0;
+    }
+    .board-cards-grid {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+    }
+    .task-subcard {
+      padding: 0.7rem 0.85rem;
+    }
+    .subcard-footer {
+      border-top: none;
+      margin-top: 0;
+      padding-top: 0;
+    }
+    .widget-tasks-capsule {
+      min-width: 0;
+      padding: 0.75rem 1rem;
+    }
+    .widget-video {
+      padding: 0.65rem 0.85rem;
+    }
+    .slide-heading {
+      font-size: 1.25rem;
+    }
+    .slide-description {
+      font-size: 0.82rem;
+    }
+    .directory-title {
+      font-size: 1.6rem;
+    }
+    .directory-header {
+      margin-bottom: 1.75rem;
     }
   }
 </style>
