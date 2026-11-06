@@ -64,12 +64,10 @@ until explicitly tested; Android cannot guarantee background service uptime.
 
 Direct Go dependencies are pgx (MIT), google/uuid (BSD-3-Clause),
 golang.org/x/crypto and golang.org/x/term (BSD-3-Clause); every module in the
-shipped binary is MIT or BSD-3-Clause. Their notices are kept in
-`THIRD_PARTY_NOTICES.md`; preserve it in distribution artifacts.
+shipped binary is MIT or BSD-3-Clause.
 `govulncheck ./...` reports known vulnerabilities in reachable code of the
 resolved module graph; `go mod verify` checks downloaded modules against
-`go.sum`. Neither checks licenses, so review `THIRD_PARTY_NOTICES.md` on every
-dependency change. The project's existing `LICENSE` is manually preserved.
+`go.sum`. The project's existing `LICENSE` is manually preserved.
 This is not a security guarantee or a substitute for reviewing behavior and
 future advisories.
 

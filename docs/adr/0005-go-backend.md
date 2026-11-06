@@ -20,5 +20,4 @@ with the same SHA-384 checksums, so existing databases migrate forward without
 any manual step and applied migration files must still never change.
 `CGO_ENABLED=0` produces a single static binary. Checks become `gofmt`,
 `go vet`, `go test ./...` and `govulncheck`; database tests skip when
-`DATABASE_URL` is unset, so CI must always set it. govulncheck does not review
-licenses, so `THIRD_PARTY_NOTICES.md` is maintained by hand from `go.sum`.
+`DATABASE_URL` is unset, so CI must always set it.

@@ -1,6 +1,6 @@
 <script lang="ts" module>
   // One outline family: 24px grid, 1.75 stroke, round caps. Paths follow the
-  // Feather/Lucide drawing conventions (see THIRD_PARTY_NOTICES.md).
+  // Feather/Lucide drawing conventions.
   export type IconName =
     | "calendar"
     | "user"

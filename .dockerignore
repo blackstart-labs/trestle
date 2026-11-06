@@ -3,7 +3,6 @@
 !go.sum
 !*.go
 !LICENSE
-!THIRD_PARTY_NOTICES.md
 !internal/
 !internal/**
 !migrations/

@@ -21,8 +21,8 @@ if (-not (Test-Path "go.mod") -or -not (Test-Path "web")) {
         exit 1
     }
     if (-not (Test-Path "trestle/go.mod")) {
-        Write-Host "==> Cloning https://github.com/maruf-pfc/trestle.git..." -ForegroundColor Cyan
-        git clone https://github.com/maruf-pfc/trestle.git trestle
+        Write-Host "==> Cloning https://github.com/blackstart-labs/trestle.git..." -ForegroundColor Cyan
+        git clone https://github.com/blackstart-labs/trestle.git trestle
     }
     Set-Location trestle
     & .\run.ps1 @PSBoundParameters
@@ -365,8 +365,9 @@ if ($ComposeCmd) {
 # 4. Frontend Build
 Write-Host ""
 Write-Host "[4/6] Verifying frontend assets..."
-if (-not (Test-Path "web/node_modules")) {
+if (-not (Test-Path "web/node_modules") -or -not (Test-Path "web/node_modules/vite")) {
     Write-Host "  ➜ Installing frontend dependencies..." -ForegroundColor Cyan
+    if (Test-Path "web/node_modules") { Remove-Item -Recurse -Force "web/node_modules" -ErrorAction SilentlyContinue }
     npm ci --prefix web --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw "Installing frontend dependencies failed." }
 }
