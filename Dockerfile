@@ -19,7 +19,7 @@ FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595
 WORKDIR /app
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/trestle /app/trestle
-COPY LICENSE THIRD_PARTY_NOTICES.md /app/
+COPY LICENSE /app/
 USER 10001:10001
 ENV TRESTLE_BIND_ADDR=0.0.0.0:3000
 EXPOSE 3000

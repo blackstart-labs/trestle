@@ -24,8 +24,8 @@ if [ ! -f "go.mod" ] || [ ! -d "web" ]; then
         exit 1
     fi
     if [ ! -f "trestle/go.mod" ]; then
-        echo "==> Cloning https://github.com/maruf-pfc/trestle.git..."
-        git clone https://github.com/maruf-pfc/trestle.git trestle
+        echo "==> Cloning https://github.com/blackstart-labs/trestle.git..."
+        git clone https://github.com/blackstart-labs/trestle.git trestle
     fi
     cd trestle
     exec ./run.sh "$@"
@@ -103,8 +103,9 @@ detect_container_runtime() {
 # Check if our trestle-db container is already running
 is_trestle_db_running() {
     if [ -n "$CONTAINER_CLI" ]; then
-        local status
-        [ -n "$($COMPOSE_CMD ps -q --status running db 2>/dev/null)" ] && return 0
+        local running
+        running="$($COMPOSE_CMD ps -q --status running db 2>/dev/null || true)"
+        [ -n "$running" ] && return 0
     fi
     return 1
 }
@@ -112,7 +113,7 @@ is_trestle_db_running() {
 # Get bound host port of running trestle-db container
 get_trestle_db_port() {
     if [ -n "$CONTAINER_CLI" ]; then
-        $COMPOSE_CMD port db 5432 2>/dev/null | head -n1 | awk -F: '{print $NF}'
+        $COMPOSE_CMD port db 5432 2>/dev/null | awk -F: 'NR==1 {print $NF}' || true
     fi
 }
 
@@ -120,8 +121,11 @@ get_trestle_db_port() {
 get_trestle_db_existing_password() {
     if [ -n "$CONTAINER_CLI" ]; then
         local id
-        id="$($COMPOSE_CMD ps -aq db 2>/dev/null | head -n1)"
-        [ -n "$id" ] && $CONTAINER_CLI inspect "$id" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | cut -d= -f2-
+        id="$($COMPOSE_CMD ps -aq db 2>/dev/null || true)"
+        id="$(echo "$id" | awk 'NR==1 {print $1}')"
+        if [ -n "$id" ]; then
+            $CONTAINER_CLI inspect "$id" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | awk -F= '$1=="POSTGRES_PASSWORD" {print substr($0, length($1)+2); exit}' || true
+        fi
     fi
 }
 
@@ -336,7 +340,7 @@ fi
 TARGET_PG_PORT="${POSTGRES_PORT:-5432}"
 
 if is_trestle_db_running; then
-    EXISTING_PORT=$(get_trestle_db_port)
+    EXISTING_PORT="$(get_trestle_db_port || true)"
     if [ -n "$EXISTING_PORT" ]; then
         POSTGRES_PORT="$EXISTING_PORT"
         green "  ✓ Reusing running Trestle database on 127.0.0.1:$POSTGRES_PORT"
@@ -374,7 +378,7 @@ fi
 
 # Determine Database Password
 if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-    EXISTING_PASS=$(get_trestle_db_existing_password)
+    EXISTING_PASS="$(get_trestle_db_existing_password || true)"
     if [ -n "$EXISTING_PASS" ]; then
         POSTGRES_PASSWORD="$EXISTING_PASS"
     elif command -v openssl >/dev/null 2>&1; then
@@ -425,7 +429,7 @@ if [ -n "$COMPOSE_CMD" ]; then
         exit 1
     fi
     # Postgres reads POSTGRES_PASSWORD only when the volume is first created; keep it in sync with .env.
-    echo "ALTER USER trestle WITH PASSWORD '${POSTGRES_PASSWORD}';" | $COMPOSE_CMD exec -T db psql -q -U trestle -d trestle >/dev/null
+    echo "ALTER USER trestle WITH PASSWORD '${POSTGRES_PASSWORD}';" | $COMPOSE_CMD exec -T db psql -q -U trestle -d trestle >/dev/null 2>&1 || true
     green "  ✓ PostgreSQL is healthy and accepting connections."
 else
     # Verify local PostgreSQL
@@ -441,8 +445,9 @@ fi
 echo ""
 echo "[4/6] Verifying frontend assets..."
 
-if [ ! -d "web/node_modules" ]; then
+if [ ! -d "web/node_modules" ] || [ ! -e "web/node_modules/.bin/vite" ]; then
     echo "  ➜ Installing frontend dependencies..."
+    rm -rf web/node_modules
     npm ci --prefix web --ignore-scripts
 fi
 
@@ -451,7 +456,8 @@ if [ ! -d "web/dist" ] || [ ! -f "web/dist/index.html" ]; then
     npm run build --prefix web
 else
     # Check if any web/src file is newer than web/dist
-    if [ -n "$(find web/src -newer web/dist/index.html 2>/dev/null | head -n1)" ]; then
+    NEWER_SRC="$(find web/src -newer web/dist/index.html 2>/dev/null || true)"
+    if [ -n "$NEWER_SRC" ]; then
         echo "  ➜ Frontend source changes detected. Rebuilding..."
         npm run build --prefix web
     fi
