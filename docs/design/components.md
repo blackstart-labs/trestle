@@ -7,6 +7,7 @@ them through real application interactions, not private internals.
 | --- | --- |
 | `Button` | Native button with `variant` primary, secondary, quiet, danger or danger-quiet; 44px target; optional `label` for icon-only use |
 | `InputField` | Visible label linked by ID, hint below the control via `aria-describedby` |
+| `MarkdownEditor` | Task descriptions in creation and the drawer. Write/Preview modes, selection formatting for bold, italic, headings, lists, links and code; preview uses the unsaved draft and never saves. Read-only users see rendered content. Raw HTML is escaped, output sanitized, and images become alt text with no requests. Wide code/tables scroll inside `.markdown-preview`. Markdown source (including significant whitespace) is stored unchanged. |
 | `Select` | The only dropdown, with variants field, chip and ghost. Options take a colour dot or icon, an optional hint and an optional description. It is a listbox popover with arrows, Home/End, typeahead and Esc (which closes only the menu). A visible `<label for=id>` or the `label` prop names it. |
 | `DatePicker` | The only date input. A calendar popover with Today, Tomorrow, Next week and Clear, arrow-key grid navigation, today and overdue states, and the value as `YYYY-MM-DD` or `""`. |
 | `MultiPicker` | A searchable checklist popover for assignees and labels. Each toggle applies immediately, and `oncreate` adds inline creation. |
@@ -64,3 +65,13 @@ them through real application interactions, not private internals.
 
 Empty, loading (skeletons plus a status message), filtered-empty, error and retry
 states exist on every list. Destructive actions confirm and name what changes.
+
+Task property saves PATCH only the selected property. Title/description drafts
+survive property, assignee and label refreshes; details save only changed text.
+While saving, repeat writes are disabled. A failed write keeps the draft and the
+last saved property value with a persistent inline error. Activity records status
+and priority only when their persisted values change, including moves between
+two Statuses in the same Status category; identical writes do not add entries.
+The task list responds to available container width, including enlarged text,
+so its columns become stacked rows before fixed columns overflow the page.
+Preview links open in a new tab with opener/referrer isolation, preserving drafts.

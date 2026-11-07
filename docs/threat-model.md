@@ -45,7 +45,10 @@ This is a development foundation, not an authenticated productivity application.
   superuser configuration for production.
 - No backup/restore or zero-downtime upgrade guarantee exists. Follow and verify
   the operational procedure before trusting data to a deployment.
-- There is no file upload, Markdown rendering, or public API-token handling.
+- There is no file upload or public API-token handling. Task descriptions render
+  bundled Markdown locally: raw HTML is escaped, output is sanitized with an
+  explicit element/attribute allowlist, and images render as alt text. No remote
+  media loads or inline styles are introduced; the CSP remains unchanged.
   Optional project integration credentials and outbound notifications are covered below.
 - Password authentication will need Argon2id, bounded hashing concurrency,
   abuse controls, bootstrap/recovery rules, and revocable sessions.
