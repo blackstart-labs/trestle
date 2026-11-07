@@ -27,6 +27,8 @@ jobs:
       - name: Install dependencies
         working-directory: web
         run: npm ci --ignore-scripts
+      - name: Runner dependency refresh regression
+        run: node --test tests/runner-frontend.test.mjs
       - name: Format check
         working-directory: web
         run: npm run format:check

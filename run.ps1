@@ -365,18 +365,34 @@ if ($ComposeCmd) {
 # 4. Frontend Build
 Write-Host ""
 Write-Host "[4/6] Verifying frontend assets..."
-if (-not (Test-Path "web/node_modules") -or -not (Test-Path "web/node_modules/vite")) {
+$dependenciesChanged = $false
+$dependencyFiles = @("package.json", "package-lock.json")
+$dependenciesMatch = $true
+foreach ($file in $dependencyFiles) {
+    $installed = "web/node_modules/.trestle-$file"
+    if (-not (Test-Path $installed) -or (Get-FileHash "web/$file").Hash -ne (Get-FileHash $installed).Hash) {
+        $dependenciesMatch = $false
+        break
+    }
+}
+if (-not (Test-Path "web/node_modules/vite") -or -not $dependenciesMatch) {
     Write-Host "  ➜ Installing frontend dependencies..." -ForegroundColor Cyan
-    if (Test-Path "web/node_modules") { Remove-Item -Recurse -Force "web/node_modules" -ErrorAction SilentlyContinue }
     npm ci --prefix web --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw "Installing frontend dependencies failed." }
+    $dependenciesChanged = $true
 }
 $distIndex = "web/dist/index.html"
 $stale = (Test-Path $distIndex) -and (Get-ChildItem web/src -Recurse -File | Where-Object { $_.LastWriteTime -gt (Get-Item $distIndex).LastWriteTime } | Select-Object -First 1)
-if (-not (Test-Path $distIndex) -or $stale) {
+if ($dependenciesChanged -or -not (Test-Path $distIndex) -or $stale) {
     Write-Host "  ➜ Building frontend production bundle..." -ForegroundColor Cyan
     npm run build --prefix web
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
+}
+if ($dependenciesChanged) {
+    # Record only after a successful build, so a failed setup is retried.
+    foreach ($file in $dependencyFiles) {
+        Copy-Item -LiteralPath "web/$file" -Destination "web/node_modules/.trestle-$file"
+    }
 }
 Write-Host "  ✓ Frontend assets ready in web/dist." -ForegroundColor Green
 
