@@ -250,7 +250,7 @@ function setupFetchMock(customResponses?: Record<string, unknown>) {
           new Response(
             JSON.stringify({
               ...mockTask,
-              title: "Implement database connection pooling (Updated)",
+              ...JSON.parse(init.body as string),
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           ),
@@ -352,6 +352,94 @@ test("allows adding a subtask", async () => {
   await waitFor(() => {
     expect(screen.getByText("Subtask added.")).toBeTruthy();
   });
+});
+
+test("property saves send only the chosen field and preserve unsaved Markdown", async () => {
+  const fetchMock = setupFetchMock();
+  const view = render(TaskDetailDrawer, {
+    task: mockTask,
+    workspace: mockWorkspace,
+    project: mockProject,
+    onclose: vi.fn(),
+  });
+  const draft = "  **Project structure**\n\n- Next step  \n";
+  await fireEvent.input(screen.getByLabelText("Description"), {
+    target: { value: draft },
+  });
+  await fireEvent.click(screen.getByLabelText("Priority"));
+  await fireEvent.click(screen.getByRole("option", { name: "Low" }));
+  await waitFor(() =>
+    expect(screen.getByText("Task property saved.")).toBeTruthy(),
+  );
+  const patches = () =>
+    fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH");
+  expect(patches()).toHaveLength(1);
+  expect(JSON.parse(patches()[0][1].body)).toEqual({ priority: "low" });
+  // The parent echoes the canonical response back into the drawer.
+  await view.rerender({ task: { ...mockTask, priority: "low" } });
+  expect(
+    (screen.getByLabelText("Description") as HTMLTextAreaElement).value,
+  ).toBe(draft);
+  expect(screen.getByText("Unsaved changes")).toBeTruthy();
+  await fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+  await waitFor(() => expect(patches()).toHaveLength(2));
+  expect(JSON.parse(patches()[1][1].body)).toEqual({ description: draft });
+});
+
+test("opening, previewing, and selecting the existing priority never writes", async () => {
+  const fetchMock = setupFetchMock();
+  render(TaskDetailDrawer, {
+    task: mockTask,
+    workspace: mockWorkspace,
+    project: mockProject,
+    onclose: vi.fn(),
+  });
+  await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+  await fireEvent.click(screen.getByLabelText("Priority"));
+  await fireEvent.click(screen.getByRole("option", { name: "High" }));
+  expect(
+    fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH"),
+  ).toHaveLength(0);
+});
+
+test("failed property and description saves retain the saved property and draft", async () => {
+  const fetchMock = setupFetchMock();
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+    init?.method === "PATCH"
+      ? Promise.resolve(
+          new Response(
+            JSON.stringify({ error: { message: "Try saving again." } }),
+            { status: 503 },
+          ),
+        )
+      : original(url, init),
+  );
+  render(TaskDetailDrawer, {
+    task: mockTask,
+    workspace: mockWorkspace,
+    project: mockProject,
+    onclose: vi.fn(),
+  });
+  await fireEvent.input(screen.getByLabelText("Description"), {
+    target: { value: "Unsaved **draft**" },
+  });
+  await fireEvent.click(screen.getByLabelText("Priority"));
+  await fireEvent.click(screen.getByRole("option", { name: "Low" }));
+  await waitFor(() =>
+    expect(screen.getByText("Try saving again.")).toBeTruthy(),
+  );
+  expect(screen.getByLabelText("Priority").textContent).toContain("High");
+  await fireEvent.click(screen.getByRole("button", { name: "Save details" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Save details" })).toHaveProperty(
+      "disabled",
+      false,
+    ),
+  );
+  expect(
+    (screen.getByLabelText("Description") as HTMLTextAreaElement).value,
+  ).toBe("Unsaved **draft**");
 });
 
 test("closes drawer on Escape key press", async () => {

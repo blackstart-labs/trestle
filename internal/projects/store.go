@@ -451,13 +451,26 @@ func taskKey(ctx context.Context, db Querier, workspaceID, projectID, taskID uui
 	return humanKey(key, n), mapErr(err)
 }
 
-func UpdateTask(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID, projectID, taskID uuid.UUID, params UpdateTaskParams) (Task, error) {
+func UpdateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, workspaceID, projectID, taskID uuid.UUID, params UpdateTaskParams) (Task, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback(ctx)
+	// Compare under a row lock so concurrent identical writes log one change.
+	var previousStatus, previousPriority string
+	var previousStatusID *uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT status, status_id, priority FROM tasks
+		WHERE id = $1 AND project_id = $2 AND workspace_id = $3 FOR UPDATE`, taskID, projectID, workspaceID).
+		Scan(&previousStatus, &previousStatusID, &previousPriority); err != nil {
+		return Task{}, mapErr(err)
+	}
 	var targetStatusID *uuid.UUID
 	var targetCategory *string
 	if params.StatusID != nil {
 		var id uuid.UUID
 		var category string
-		if err := db.QueryRow(ctx, "SELECT id, category FROM task_statuses WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
+		if err := tx.QueryRow(ctx, "SELECT id, category FROM task_statuses WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
 			*params.StatusID, projectID, workspaceID).Scan(&id, &category); err != nil {
 			return Task{}, mapErr(err)
 		}
@@ -465,7 +478,7 @@ func UpdateTask(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID
 	} else if params.Status != nil {
 		var id uuid.UUID
 		var category string
-		err := db.QueryRow(ctx, "SELECT id, category FROM task_statuses WHERE project_id = $1 AND workspace_id = $2 AND (category = $3 OR name = $3) ORDER BY position ASC LIMIT 1",
+		err := tx.QueryRow(ctx, "SELECT id, category FROM task_statuses WHERE project_id = $1 AND workspace_id = $2 AND (category = $3 OR name = $3) ORDER BY position ASC LIMIT 1",
 			projectID, workspaceID, *params.Status).Scan(&id, &category)
 		switch {
 		case err == nil:
@@ -477,7 +490,7 @@ func UpdateTask(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID
 		}
 	}
 
-	tag, err := db.Exec(ctx, `UPDATE tasks
+	tag, err := tx.Exec(ctx, `UPDATE tasks
 		SET updated_at = $1,
 		     title = COALESCE($2, title),
 		     description = COALESCE($3, description),
@@ -495,21 +508,29 @@ func UpdateTask(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID
 	if tag.RowsAffected() == 0 {
 		return Task{}, ErrNotFound
 	}
-	if err := audit(ctx, db, actorID, "task.updated", map[string]any{
+	if err := audit(ctx, tx, actorID, "task.updated", map[string]any{
 		"workspace_id": workspaceID, "project_id": projectID, "task_id": taskID,
 	}); err != nil {
 		return Task{}, err
 	}
-	// Activity entries are best-effort, as before.
-	if targetCategory != nil {
-		_ = RecordTaskActivity(ctx, db, workspaceID, taskID, actorID, "task.status_changed", map[string]any{
+	statusIDChanged := targetStatusID != nil && (previousStatusID == nil || *previousStatusID != *targetStatusID)
+	if targetCategory != nil && (*targetCategory != previousStatus || statusIDChanged) {
+		if err := RecordTaskActivity(ctx, tx, workspaceID, taskID, actorID, "task.status_changed", map[string]any{
 			"status": *targetCategory, "status_id": targetStatusID,
-		})
+		}); err != nil {
+			return Task{}, err
+		}
 	}
-	if params.Priority != nil {
-		_ = RecordTaskActivity(ctx, db, workspaceID, taskID, actorID, "task.priority_changed", map[string]any{"priority": *params.Priority})
+	if params.Priority != nil && *params.Priority != previousPriority {
+		if err := RecordTaskActivity(ctx, tx, workspaceID, taskID, actorID, "task.priority_changed", map[string]any{"priority": *params.Priority}); err != nil {
+			return Task{}, err
+		}
 	}
-	return GetTask(ctx, db, workspaceID, projectID, taskID)
+	updated, err := GetTask(ctx, tx, workspaceID, projectID, taskID)
+	if err != nil {
+		return Task{}, err
+	}
+	return updated, tx.Commit(ctx)
 }
 
 func DeleteTask(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID, projectID, taskID uuid.UUID) error {

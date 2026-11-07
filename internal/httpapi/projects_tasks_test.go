@@ -94,6 +94,47 @@ func ptLen(t *testing.T, field string, v any, want int) []any {
 	return arr
 }
 
+func TestTaskActivityOnlyRecordsActualPropertyChanges(t *testing.T) {
+	app := newApp(t)
+	_, wsID := ptBootstrap(app, "alice", "secure-pass-123", "Alice", "Engineering", "engineering")
+	c := app.login("alice", "secure-pass-123")
+	base := fmt.Sprintf("/api/v1/workspaces/%s/projects", wsID)
+	project := ptExpect(t, c.do("POST", base, map[string]any{"name": "Core", "slug": "core", "key": "CORE"}), http.StatusCreated).JSON(t)
+	base += "/" + project["id"].(string)
+	task := ptExpect(t, c.do("POST", base+"/tasks", map[string]any{"title": "Review progress", "status": "unstarted", "priority": "none"}), http.StatusCreated).JSON(t)
+	path := base + "/tasks/" + task["id"].(string)
+	for i := 0; i < 3; i++ {
+		ptExpect(t, c.do("PATCH", path, map[string]any{"status": "unstarted", "priority": "low"}), http.StatusOK)
+	}
+	markdown := "  **Structure**\n\n- Next step  \n"
+	got := ptExpect(t, c.do("PATCH", path, map[string]any{"description": markdown}), http.StatusOK).JSON(t)
+	ptEq(t, "description", got["description"], markdown)
+	ptEq(t, "status", got["status"], "unstarted")
+	ptEq(t, "priority", got["priority"], "low")
+	// A distinct Status in the same category still counts as a real change.
+	status := ptExpect(t, c.do("POST", base+"/statuses", map[string]any{"name": "Ready", "category": "unstarted", "color": "#315b3b"}), http.StatusCreated).JSON(t)
+	for i := 0; i < 3; i++ {
+		ptExpect(t, c.do("PATCH", path, map[string]any{"status_id": status["id"]}), http.StatusOK)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ptExpect(t, c.do("PATCH", path, map[string]any{"priority": "medium"}), http.StatusOK)
+		}()
+	}
+	wg.Wait()
+	activities := ptExpect(t, c.do("GET", path+"/activity", nil), http.StatusOK).JSON(t)["activities"].([]any)
+	counts := map[string]int{}
+	for _, entry := range activities {
+		counts[entry.(map[string]any)["action"].(string)]++
+	}
+	if counts["task.status_changed"] != 1 || counts["task.priority_changed"] != 2 {
+		t.Fatalf("unexpected activity counts: %v", counts)
+	}
+}
+
 func TestProjectAndTaskLifecycleEndToEnd(t *testing.T) {
 	app := newApp(t)
 	_, wsID := ptBootstrap(app, "alice", "secure-pass-123", "Alice Smith", "Acme Engineering", "acme-eng")

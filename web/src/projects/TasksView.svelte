@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
+  import MarkdownEditor from "../ui/MarkdownEditor.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
   import Modal from "../ui/Modal.svelte";
@@ -436,12 +437,20 @@
 
   function closeCreate() {
     if (creating) return;
+    if (
+      (createTitle.trim() || createDesc) &&
+      !confirm(
+        "Close this task draft? Your unsaved text will be kept until you leave this Project.",
+      )
+    )
+      return;
     showCreate = false;
     createError = null;
   }
 
   async function handleCreateTask(e: Event) {
     e.preventDefault();
+    if (creating) return;
     createError = null;
 
     const trimmedTitle = createTitle.trim();
@@ -466,7 +475,7 @@
 
       const payload: Record<string, unknown> = {
         title: trimmedTitle,
-        description: createDesc.trim(),
+        description: createDesc,
         status: resolvedCategory,
         priority: createPriority,
       };
@@ -896,15 +905,11 @@
           placeholder="Describe the actionable work item"
         />
 
-        <div class="field">
-          <label for="task-desc">Description</label>
-          <textarea
-            id="task-desc"
-            bind:value={createDesc}
-            rows="3"
-            placeholder="Additional details, acceptance criteria, or context"
-          ></textarea>
-        </div>
+        <MarkdownEditor
+          id="task-desc"
+          bind:value={createDesc}
+          disabled={creating}
+        />
 
         <div class="form-row three">
           <div class="field">
@@ -1220,6 +1225,10 @@
 {/if}
 
 <style>
+  .tasks {
+    container-type: inline-size;
+  }
+
   /* ── Heading ─────────────────────────────────────────────────── */
   :global(.btn-kbd) {
     min-width: 1.25rem;
@@ -1835,7 +1844,7 @@
   }
 
   /* ── Responsive list ─────────────────────────────────────────── */
-  @media (max-width: 72rem) {
+  @container (max-width: 60rem) {
     .task-head {
       display: none;
     }
@@ -1873,7 +1882,7 @@
     }
   }
 
-  @media (max-width: 40rem) {
+  @container (max-width: 40rem) {
     .page-head {
       align-items: stretch;
     }

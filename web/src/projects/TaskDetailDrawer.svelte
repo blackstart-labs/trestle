@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
+  import MarkdownEditor from "../ui/MarkdownEditor.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
   import type { Task } from "./TasksView.svelte";
@@ -97,26 +98,22 @@
   let editTitle = $state(task.title);
   // svelte-ignore state_referenced_locally
   let editDescription = $state(task.description || "");
-  // svelte-ignore state_referenced_locally
-  let editStatus = $state(task.status);
-  // svelte-ignore state_referenced_locally
-  let editStatusId = $state(task.status_id || "");
-  // svelte-ignore state_referenced_locally
-  let editPriority = $state(task.priority);
-  // svelte-ignore state_referenced_locally
-  let editDueDate = $state(task.due_date || "");
   let savingDetails = $state(false);
 
-  $effect(() => {
-    if (task) {
-      currentTask = task;
-      editTitle = task.title;
-      editDescription = task.description || "";
-      editStatus = task.status;
-      editStatusId = task.status_id || "";
-      editPriority = task.priority;
-      editDueDate = task.due_date || "";
+  function acceptTask(updated: Task) {
+    const differentTask = updated.id !== currentTask.id;
+    // Property/assignee refreshes must not discard unsaved long text.
+    if (differentTask || editTitle === currentTask.title)
+      editTitle = updated.title;
+    if (differentTask || editDescription === (currentTask.description || "")) {
+      editDescription = updated.description || "";
     }
+    currentTask = updated;
+  }
+
+  $effect(() => {
+    const incoming = task;
+    untrack(() => acceptTask(incoming));
   });
 
   // Subtasks
@@ -217,10 +214,11 @@
   // Title and description save explicitly; everything else saves on change.
   const dirty = $derived(
     editTitle.trim() !== currentTask.title ||
-      editDescription.trim() !== (currentTask.description || "").trim(),
+      editDescription !== (currentTask.description || ""),
   );
 
   function requestClose() {
+    if (savingDetails) return;
     if (
       dirty &&
       !confirm("Discard your unsaved changes to the title and description?")
@@ -322,13 +320,7 @@
       );
       if (res.ok) {
         const updated = await res.json();
-        currentTask = updated;
-        editTitle = updated.title;
-        editDescription = updated.description || "";
-        editStatus = updated.status;
-        editStatusId = updated.status_id || "";
-        editPriority = updated.priority;
-        editDueDate = updated.due_date || "";
+        acceptTask(updated);
         ontaskupdated?.(updated);
       }
     } catch {
@@ -338,32 +330,35 @@
 
   async function handleSaveDetails(e?: Event) {
     e?.preventDefault();
+    if (savingDetails || !canManage || !dirty) return;
     const trimmedTitle = editTitle.trim();
     if (!trimmedTitle) {
       showNotice("Task title is required.", "danger");
       return;
     }
 
-    const csrf = getCsrfToken();
-    if (!csrf) return;
+    const payload: Record<string, unknown> = {};
+    if (trimmedTitle !== currentTask.title) payload.title = trimmedTitle;
+    if (editDescription !== (currentTask.description || ""))
+      payload.description = editDescription;
+    await saveTask(payload, true);
+  }
 
+  async function saveTask(payload: Record<string, unknown>, details = false) {
+    if (savingDetails || !canManage) return;
+    const csrf = getCsrfToken();
+    if (!csrf) {
+      showNotice(
+        "Your session could not be verified. Reload and try again.",
+        "danger",
+      );
+      return;
+    }
+    const taskId = currentTask.id;
     savingDetails = true;
     try {
-      const payload: Record<string, unknown> = {
-        title: trimmedTitle,
-        description: editDescription.trim(),
-        priority: editPriority,
-        due_date: editDueDate.trim() ? editDueDate.trim() : null,
-      };
-
-      if (editStatusId && statuses.some((s) => s.id === editStatusId)) {
-        payload.status_id = editStatusId;
-      } else {
-        payload.status = editStatus;
-      }
-
       const res = await fetch(
-        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}`,
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${taskId}`,
         {
           method: "PATCH",
           headers: {
@@ -377,14 +372,22 @@
 
       if (res.ok) {
         const updated: Task = await res.json();
-        currentTask = updated;
+        if (currentTask.id !== taskId) return;
+        acceptTask(updated);
+        if (details) {
+          editTitle = updated.title;
+          editDescription = updated.description || "";
+        }
         ontaskupdated?.(updated);
-        showNotice("Task details saved.", "success");
+        showNotice(
+          details ? "Task details saved." : "Task property saved.",
+          "success",
+        );
         void loadActivities();
       } else {
         const err = await res.json().catch(() => null);
         showNotice(
-          err?.error?.message || "Failed to save task details.",
+          err?.error?.message || "Could not save the task. Try again.",
           "danger",
         );
       }
@@ -695,7 +698,7 @@
   );
 
   function navigate(target: Task | null) {
-    if (!target || !onnavigate) return;
+    if (!target || !onnavigate || savingDetails) return;
     if (
       dirty &&
       !confirm("Discard your unsaved changes to the title and description?")
@@ -934,6 +937,8 @@
               id="detail-title"
               class="title-input"
               bind:value={editTitle}
+              readonly={!canManage}
+              disabled={savingDetails}
               required
               rows="1"
               onkeydown={(e) => {
@@ -944,14 +949,12 @@
                 }
               }}></textarea>
 
-            <label for="detail-desc" class="visually-hidden">Description</label>
-            <textarea
+            <MarkdownEditor
               id="detail-desc"
-              class="desc-input"
               bind:value={editDescription}
-              rows="3"
-              placeholder="Add a description: context, acceptance criteria, links…"
-            ></textarea>
+              readonly={!canManage}
+              disabled={savingDetails}
+            />
 
             <div class="save-row">
               {#if dirty}
@@ -960,6 +963,7 @@
                   >
                   <Button
                     variant="quiet"
+                    disabled={savingDetails}
                     onclick={() => {
                       editTitle = currentTask.title;
                       editDescription = currentTask.description || "";
@@ -1160,18 +1164,15 @@
               <Select
                 id="detail-status"
                 variant="chip"
-                value={statuses.length > 0 ? editStatusId : editStatus}
+                value={statuses.length > 0
+                  ? currentTask.status_id || ""
+                  : currentTask.status}
+                disabled={savingDetails || !canManage}
                 options={statusOptions}
                 onchange={(v) => {
-                  if (statuses.length > 0) {
-                    editStatusId = v;
-                    const matched = statuses.find((s) => s.id === v);
-                    if (matched) editStatus = matched.category;
-                  } else {
-                    editStatusId = "";
-                    editStatus = v as Task["status"];
-                  }
-                  void handleSaveDetails();
+                  void saveTask(
+                    statuses.length > 0 ? { status_id: v } : { status: v },
+                  );
                 }}
               />
             </dd>
@@ -1183,11 +1184,11 @@
               <Select
                 id="detail-priority"
                 variant="chip"
-                value={editPriority}
+                value={currentTask.priority}
+                disabled={savingDetails || !canManage}
                 options={priorityOptions}
                 onchange={(v) => {
-                  editPriority = v as Task["priority"];
-                  void handleSaveDetails();
+                  void saveTask({ priority: v });
                 }}
               />
             </dd>
@@ -1201,10 +1202,10 @@
                 variant="chip"
                 label="Due date"
                 placeholder="No due date"
-                value={editDueDate}
+                value={currentTask.due_date || ""}
+                disabled={savingDetails || !canManage}
                 onchange={(v) => {
-                  editDueDate = v;
-                  void handleSaveDetails();
+                  void saveTask({ due_date: v || null });
                 }}
               />
             </dd>
@@ -1516,8 +1517,7 @@
     gap: var(--space-2);
   }
 
-  .title-input,
-  .desc-input {
+  .title-input {
     width: calc(100% + var(--space-6));
     margin: 0 calc(var(--space-3) * -1);
     padding: var(--space-2) var(--space-3);
@@ -1540,20 +1540,11 @@
     color: var(--text);
   }
 
-  .desc-input {
-    min-height: 5.5rem;
-    font-size: var(--text-body);
-    line-height: 1.65;
-    color: var(--text-secondary);
-  }
-
-  .title-input:hover:not(:focus),
-  .desc-input:hover:not(:focus) {
+  .title-input:hover:not(:focus) {
     background: var(--hover);
   }
 
-  .title-input:focus,
-  .desc-input:focus {
+  .title-input:focus {
     background: var(--surface-sunken);
     border-color: var(--focus);
     box-shadow: 0 0 0 3px var(--accent-soft);
