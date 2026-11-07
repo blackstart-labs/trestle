@@ -97,7 +97,7 @@ git clone https://github.com/blackstart-labs/trestle.git && cd trestle && run.cm
 1. **Tool Verification:** Detects Go, Node.js, and container runtimes (Docker/Podman). If Go or Node are missing, it installs isolated copies into `.tools/` without touching system packages.
 2. **Port Conflict Resolution:** If port `5432` (PostgreSQL) or `3000` (web app) is busy, it automatically binds to the next available free port without colliding.
 3. **Database Container:** Starts PostgreSQL 18 via Docker Compose and waits for readiness.
-4. **Production Build:** Builds and bundles the Svelte 5 frontend into `web/dist`.
+4. **Production Build:** Installs locked frontend dependencies when `web/package.json` or `web/package-lock.json` changes, then rebuilds `web/dist`. Unchanged dependencies are reused on later starts.
 5. **Database Migrations:** Applies all database schema migrations.
 6. **Admin Bootstrap:** Provisions the initial operator (`admin` / `adminpassword123`). Pass `--interactive` to enter custom credentials.
 7. **Application Launch:** Serves the app at `http://127.0.0.1:3000` (or auto-assigned port).

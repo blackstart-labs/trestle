@@ -445,13 +445,16 @@ fi
 echo ""
 echo "[4/6] Verifying frontend assets..."
 
-if [ ! -d "web/node_modules" ] || [ ! -e "web/node_modules/.bin/vite" ]; then
+DEPENDENCIES_CHANGED=false
+if [ ! -e "web/node_modules/.bin/vite" ] ||
+    ! cmp -s web/package-lock.json web/node_modules/.trestle-package-lock.json ||
+    ! cmp -s web/package.json web/node_modules/.trestle-package.json; then
     echo "  ➜ Installing frontend dependencies..."
-    rm -rf web/node_modules
     npm ci --prefix web --ignore-scripts
+    DEPENDENCIES_CHANGED=true
 fi
 
-if [ ! -d "web/dist" ] || [ ! -f "web/dist/index.html" ]; then
+if [ "$DEPENDENCIES_CHANGED" = true ] || [ ! -f "web/dist/index.html" ]; then
     echo "  ➜ Building frontend production bundle..."
     npm run build --prefix web
 else
@@ -461,6 +464,11 @@ else
         echo "  ➜ Frontend source changes detected. Rebuilding..."
         npm run build --prefix web
     fi
+fi
+if [ "$DEPENDENCIES_CHANGED" = true ]; then
+    # Record only after a successful build, so a failed setup is retried.
+    cp web/package-lock.json web/node_modules/.trestle-package-lock.json
+    cp web/package.json web/node_modules/.trestle-package.json
 fi
 green "  ✓ Frontend assets ready in web/dist."
 
