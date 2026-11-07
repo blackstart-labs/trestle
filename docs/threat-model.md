@@ -45,12 +45,30 @@ This is a development foundation, not an authenticated productivity application.
   superuser configuration for production.
 - No backup/restore or zero-downtime upgrade guarantee exists. Follow and verify
   the operational procedure before trusting data to a deployment.
-- There is no file upload, Markdown rendering, webhook, API token, or integration
-  credential handling. Add explicit threat-model updates when these arrive.
+- There is no file upload, Markdown rendering, or public API-token handling.
+  Optional project integration credentials and outbound notifications are covered below.
 - Password authentication will need Argon2id, bounded hashing concurrency,
   abuse controls, bootstrap/recovery rules, and revocable sessions.
 - Workspace isolation must cover reads, writes, membership changes, aggregates,
   search and exports, with database constraints and negative cross-tenant tests.
+
+## Project integration trust boundary
+
+Workspace owners/admins alone can store, replace, inspect delivery metadata, test,
+or disconnect project integrations. Session and CSRF middleware apply to every
+mutation; project existence is checked within the authorized Workspace and the
+database enforces the composite relationship. Secrets are write-only through the
+API and omitted from responses and sanitized error text. They are plaintext in
+PostgreSQL and backups: database operators remain trusted and must protect storage.
+Outbound HTTP uses fixed, validated Telegram/Slack/Discord HTTPS endpoints, rejects
+credentials/ports/query overrides in webhook URLs, disables proxies and redirects,
+and checks resolved IPs at connection time to prevent private-network access.
+Only task names, keys, and categories are sent, so connecting a channel authorizes
+that Project's task metadata to leave this instance. Discord mentions and Slack
+markup are disabled. Delivery has bounded deadlines, no retries, and sanitized
+latest-attempt feedback. Reverse-proxy rate limits are still required; the test
+cooldown is not a concurrent-request abuse limit. See
+[project integrations](features/project-integrations.md) for precise event scope.
 
 ## Source availability
 

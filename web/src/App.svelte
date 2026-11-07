@@ -23,6 +23,7 @@
   let openTaskId = $state<string | null>(null);
   let workspaceTab = $state<"dashboard" | "projects" | "members">("dashboard");
   let checkingAuth = $state(true);
+  let settingsSection = $state("");
   // Skip the chooser on arrival; an explicit switch always shows it.
   let autoOpenWorkspace = $state(true);
   let activeTab = $state<"overview" | "workspaces" | "signin" | "settings">(
@@ -172,7 +173,7 @@
 
   // Settings sections (#appearance, #instance-status) are deep links into
   // the one Settings page: render it, then focus the section's heading.
-  const SETTINGS_SECTIONS = ["appearance", "instance-status"];
+  const SETTINGS_SECTIONS = ["appearance", "instance-status", "integration"];
 
   async function focusSection(id: string) {
     await tick();
@@ -183,11 +184,13 @@
 
   function route(hash: string) {
     if (hash === "settings") {
+      settingsSection = "";
       activeTab = "settings";
       void focusSection("settings-heading");
     } else if (hash === "signin" || hash === "workspaces") {
       activeTab = hash;
     } else if (SETTINGS_SECTIONS.includes(hash)) {
+      settingsSection = hash;
       activeTab = "settings";
       void focusSection(hash);
     } else {
@@ -317,6 +320,14 @@
         icon: "pulse",
         keywords: "health database readiness",
         run: () => void navigateHash("instance-status"),
+      },
+      {
+        id: "go-integration",
+        group: "Go to",
+        label: "Settings: Integration",
+        icon: "settings",
+        keywords: "project telegram slack discord notifications webhook",
+        run: () => void navigateHash("integration"),
       },
       {
         id: "toggle-scheme",
@@ -738,7 +749,12 @@
           />
         {/if}
       {:else if activeTab === "settings"}
-        <Settings />
+        <Settings
+          section={settingsSection}
+          workspace={selectedWorkspace}
+          signedIn={!!user}
+          initialProjectId={selectedProject?.id || ""}
+        />
       {:else}
         <Overview
           {user}
@@ -1145,6 +1161,8 @@
   .topbar-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--space-2);
     margin-left: auto;
     min-width: 0;
