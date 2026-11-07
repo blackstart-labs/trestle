@@ -1,23 +1,74 @@
 <script lang="ts">
   import Appearance from "./Appearance.svelte";
   import Readiness from "./Readiness.svelte";
+  import Integrations from "./Integrations.svelte";
+  import type { Workspace } from "./auth/WorkspaceChooser.svelte";
+  let {
+    workspace = null,
+    signedIn = false,
+    initialProjectId = "",
+    section = "",
+  }: {
+    workspace?: Workspace | null;
+    signedIn?: boolean;
+    initialProjectId?: string;
+    section?: string;
+  } = $props();
 </script>
 
 <section class="settings" aria-labelledby="settings-heading">
   <div class="page-head">
     <div>
       <h1 id="settings-heading" tabindex="-1">Settings</h1>
-      <p>How Trestle looks on this browser, and the health of this instance.</p>
+      <p>Appearance, instance health, and project integrations.</p>
     </div>
   </div>
 
-  <div class="settings-grid">
-    <Appearance />
-    <Readiness />
-  </div>
+  <nav class="page-actions settings-sections" aria-label="Settings sections">
+    <a
+      href="#appearance"
+      aria-current={section === "appearance" ? "page" : undefined}>Appearance</a
+    >
+    <a
+      href="#instance-status"
+      aria-current={section === "instance-status" ? "page" : undefined}
+      >Instance status</a
+    >
+    <a
+      href="#integration"
+      aria-current={section === "integration" ? "page" : undefined}
+      >Integration</a
+    >
+  </nav>
+
+  {#if section === "integration"}
+    <Integrations {workspace} {signedIn} {initialProjectId} />
+  {:else}
+    <div class="settings-grid">
+      <Appearance />
+      <Readiness />
+    </div>
+  {/if}
 </section>
 
 <style>
+  .settings-sections {
+    margin-bottom: var(--space-5);
+    gap: var(--space-5);
+    border-bottom: var(--border-width) solid var(--line);
+  }
+  .settings-sections a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height);
+    border-bottom: 2px solid transparent;
+    text-decoration: none;
+    color: var(--text-muted);
+  }
+  .settings-sections a[aria-current="page"] {
+    border-bottom-color: var(--accent);
+    color: var(--text);
+  }
   .settings-grid {
     display: grid;
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);

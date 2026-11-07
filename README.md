@@ -26,7 +26,7 @@
 
 **Trestle** is built for developers, indie creators, consultants, and teams who want complete data ownership over their everyday work without the weight or telemetry of SaaS alternatives. 
 
-Trestle couples a high-performance **Go (`net/http`) backend** with a reactive **Svelte 5 SPA frontend**, compiling everything into a **single static binary** via `go:embed`. At runtime, it requires only a PostgreSQL 18 database: no Node.js runtime, no asset bundles to host separately, and zero external network calls.
+Trestle couples a high-performance **Go (`net/http`) backend** with a reactive **Svelte 5 SPA frontend**, compiling everything into a **single static binary** via `go:embed`. At runtime, it requires only a PostgreSQL 18 database: no Node.js runtime or asset bundles to host separately. Optional project integrations send outbound notifications to Telegram, Slack, and Discord; core work requires no external service.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

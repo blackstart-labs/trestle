@@ -48,6 +48,9 @@
     | "target"
     | "flag"
     | "trend"
+    | "telegram"
+    | "slack"
+    | "discord"
     | "copy";
 </script>
 
@@ -212,6 +215,21 @@
     <path
       d="M16 8V5.5A2.5 2.5 0 0 0 13.5 3h-8A2.5 2.5 0 0 0 3 5.5v8A2.5 2.5 0 0 0 5.5 16H8"
     />
+    <!-- Brand paths adapted from Tabler Icons; MIT notice: /assets/icon-licenses.txt. -->
+  {:else if name === "telegram"}
+    <path d="M15 10l-4 4l6 6l4 -16l-18 7l4 2l2 6l3 -4" />
+  {:else if name === "slack"}
+    <path d="M12 12v-6a2 2 0 0 1 4 0v6m0 -2a2 2 0 1 1 2 2h-6" />
+    <path d="M12 12h6a2 2 0 0 1 0 4h-6m2 0a2 2 0 1 1 -2 2v-6" />
+    <path d="M12 12v6a2 2 0 0 1 -4 0v-6m0 2a2 2 0 1 1 -2 -2h6" />
+    <path d="M12 12h-6a2 2 0 0 1 0 -4h6m-2 0a2 2 0 1 1 2 -2v6" />
+  {:else if name === "discord"}
+    <path d="M8 12a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" />
+    <path d="M14 12a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" />
+    <path
+      d="M15.5 17c0 1 1.5 3 2 3c1.5 0 2.833 -1.667 3.5 -3c.667 -1.667 .5 -5.833 -1.5 -11.5c-1.457 -1.015 -3 -1.34 -4.5 -1.5l-.972 1.923a11.913 11.913 0 0 0 -4.053 0l-.975 -1.923c-1.5 .16 -3.043 .485 -4.5 1.5c-2 5.667 -2.167 9.833 -1.5 11.5c.667 1.333 2 3 3.5 3c.5 0 2 -2 2 -3"
+    />
+    <path d="M7 16.5c3.5 1 6.5 1 10 0" />
   {:else if name === "circle-check"}
     <circle cx="12" cy="12" r="9" />
     <path d="m8.5 12 2.5 2.5 4.5-5" />

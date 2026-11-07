@@ -29,6 +29,22 @@ them through real application interactions, not private internals.
 
 ## Work surfaces
 
+- **Settings → Integration** selects an active Project in the current Workspace.
+  Workspace owners/admins can save, replace, test, and disconnect Telegram, Slack,
+  and Discord connections. It uses Select, Modal, Feedback, and Toast; credentials
+  are password fields, never returned after saving. Dirty forms guard closing,
+  failures preserve inputs, and disconnect explicitly confirms credential removal.
+  Loading, retry, no-Project, signed-out, and permission-limited states are explicit.
+  Settings section links and the command palette open `#integration` and focus its
+  heading. Provider rows wrap actions on phones using the same tokens in both themes.
+  Telegram, Slack, and Discord use their outline brand marks from `Icon`, with
+  visible names. The adapted Tabler path license ships at `/assets/icon-licenses.txt`.
+  Integration is a dedicated Settings section. A Project context rail describes
+  event scope and shared metadata beside three separate provider panels; it moves
+  above the providers below 52rem of available content width, including with enlarged
+  text. The active Settings section is marked in words
+  and with an underline. Appearance and Instance status retain their shared view.
+
 - **Dashboard** is the workspace home, and all of it is computed from real tasks, reading at most 12 projects × 100 tasks and saying so when it samples:
   - stat cards for active projects, open tasks (with a status mini-rail), due this week (a seven-day bar chart and the overdue count) and completion (a ring)
   - **My work**: your open assigned tasks, the most urgent first

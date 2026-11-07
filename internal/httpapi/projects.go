@@ -495,6 +495,7 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 		storeError(w, err, "failed to create "+lower, "")
 		return
 	}
+	s.notifyTask(r, ids[0], ids[1], "created", t.HumanKey, t.Title, t.Status)
 	writeJSON(w, http.StatusCreated, toTask(t))
 }
 
@@ -576,6 +577,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to update task", "")
 		return
 	}
+	s.notifyTask(r, ids[0], ids[1], "updated", t.HumanKey, t.Title, t.Status)
 	writeJSON(w, http.StatusOK, toTask(t))
 }
 
@@ -584,10 +586,16 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request, session *Aut
 	if !ok {
 		return
 	}
+	t, err := projects.GetTask(r.Context(), s.Pool, ids[0], ids[1], ids[2])
+	if err != nil {
+		storeError(w, err, "failed to get task for deletion", "")
+		return
+	}
 	if err := projects.DeleteTask(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2]); err != nil {
 		storeError(w, err, "failed to delete task", "")
 		return
 	}
+	s.notifyTask(r, ids[0], ids[1], "deleted", t.HumanKey, "", "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -33,7 +33,7 @@ service required for core work.
 Shipped today: local sign-in, workspace membership and roles, ownership
 transfer, projects with keys, tasks with labels, assignees, subtasks, comments
 and activity, custom statuses mapped to five canonical categories, and list and
-board views. Planned and not yet built: milestones, cycles, time tracking,
+board views, and project notifications to Telegram, Slack, and Discord. Planned and not yet built: milestones, cycles, time tracking,
 documents, reports, automation. See [the roadmap](docs/product/roadmap.md).
 
 ## Capabilities and Constraints
@@ -59,7 +59,7 @@ No customers, testimonials, benchmarks or usage metrics exist. Do not fabricate 
 2. Every frequent job is one click or one keystroke away (command palette, inline status menus).
 3. Phone users finish the same workflows as desktop users.
 4. Colour carries meaning (state, category, priority) and is always paired with words.
-5. Owned infrastructure first: no third-party requests at runtime.
+5. Owned infrastructure first: the browser makes no third-party requests. Optional project integrations send notifications from the server to explicitly configured providers.
 
 ## Accessibility & Inclusion
 
