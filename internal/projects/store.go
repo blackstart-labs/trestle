@@ -103,6 +103,7 @@ type Task struct {
 	MilestoneID    *uuid.UUID
 	MilestoneTitle *string
 	MilestoneColor *string
+	SpentHours     float64
 	Labels         []Label
 	Assignees      []TaskAssignee
 	CreatedAt      time.Time
@@ -472,11 +473,16 @@ func fetchAssignees(ctx context.Context, db Querier, taskIDs []uuid.UUID) (map[u
 const taskColumns = `t.id, t.workspace_id, t.project_id, p.key, t.task_number, t.title, t.description,
 	t.status, t.priority, t.due_date, t.created_by, t.parent_id,
 	t.status_id, ts.name, ts.color, t.created_at, t.updated_at,
-	t.milestone_id, m.title, m.color
+	t.milestone_id, m.title, m.color, COALESCE(ttl.spent_hours, 0)
 	FROM tasks t
 	JOIN projects p ON p.id = t.project_id
 	LEFT JOIN task_statuses ts ON ts.id = t.status_id
-	LEFT JOIN milestones m ON m.id = t.milestone_id`
+	LEFT JOIN milestones m ON m.id = t.milestone_id
+	LEFT JOIN (
+		SELECT task_id, COALESCE(SUM(hours), 0) AS spent_hours
+		FROM task_time_logs
+		GROUP BY task_id
+	) ttl ON ttl.task_id = t.id`
 
 // queryTasks runs a task query and attaches labels and assignees.
 func queryTasks(ctx context.Context, db Querier, sql string, args ...any) ([]Task, error) {
@@ -489,7 +495,7 @@ func queryTasks(ctx context.Context, db Querier, sql string, args ...any) ([]Tas
 		err := r.Scan(&t.ID, &t.WorkspaceID, &t.ProjectID, &t.ProjectKey, &t.TaskNumber, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.CreatedBy, &t.ParentID,
 			&t.StatusID, &t.StatusName, &t.StatusColor, &t.CreatedAt, &t.UpdatedAt,
-			&t.MilestoneID, &t.MilestoneTitle, &t.MilestoneColor)
+			&t.MilestoneID, &t.MilestoneTitle, &t.MilestoneColor, &t.SpentHours)
 		t.HumanKey = humanKey(t.ProjectKey, t.TaskNumber)
 		return t, err
 	})

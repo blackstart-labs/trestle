@@ -184,6 +184,7 @@ type taskItem struct {
 	MilestoneID    *string        `json:"milestone_id"`
 	MilestoneTitle *string        `json:"milestone_title"`
 	MilestoneColor *string        `json:"milestone_color"`
+	SpentHours     float64        `json:"spent_hours"`
 	Labels         []labelItem    `json:"labels"`
 	Assignees      []assigneeItem `json:"assignees"`
 	CreatedAt      string         `json:"created_at"`
@@ -198,7 +199,8 @@ func toTask(t projects.Task) taskItem {
 		CreatedBy: idPtr(t.CreatedBy), ParentID: idPtr(t.ParentID), StatusID: idPtr(t.StatusID),
 		StatusName: t.StatusName, StatusColor: t.StatusColor,
 		MilestoneID: idPtr(t.MilestoneID), MilestoneTitle: t.MilestoneTitle, MilestoneColor: t.MilestoneColor,
-		Labels: mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
+		SpentHours: t.SpentHours,
+		Labels:     mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
 		CreatedAt: ts(t.CreatedAt), UpdatedAt: ts(t.UpdatedAt),
 	}
 	if t.DueDate != nil {
