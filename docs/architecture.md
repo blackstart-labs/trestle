@@ -1,79 +1,95 @@
-# Backend foundation
+# Architecture & System Design
 
-Status: initial architecture approved; product domains are not implemented.
+Trestle is a self-hosted workspace for projects, tasks, time, and knowledge:
+a single Go (`net/http`) backend serving an embedded Svelte 5 + Vite static frontend from one origin.
 
-## Decisions
+## Core Architectural Decisions
 
-- Start with one Go module and one HTTP process, not microservices
-  ([ADR-0005](adr/0005-go-backend.md) replaced the original Rust backend).
-- Use the standard library `net/http` (ServeMux), `encoding/json`, pgx with
-  PostgreSQL only, and structured `log/slog` JSON logging.
-- The Go version is set by the `go` line in `go.mod`; commit `go.sum`.
-- Keep migrations explicit (`trestle migrate`), separate from HTTP startup.
-  This permits a future migration role distinct from the runtime database role.
-- Serve the Svelte/Vite/TypeScript foundation from the same origin. `go:embed`
-  in `main.go` embeds the production output; Node/npm are build/test tools only.
-- Future tenancy is workspace-based. Future browser authentication uses
-  revocable server-side sessions; no authentication library is selected yet.
+- **Modular Monolith**: One Go module and one HTTP process, eliminating microservice deployment complexity while preserving clean module boundaries ([ADR-0005](adr/0005-go-backend.md)).
+- **Standard Library Foundation**: Built on Go's `net/http` (`ServeMux`), `encoding/json`, `log/slog` structured logging, and PostgreSQL via `pgx/v5` connection pooling.
+- **Single-Origin Deployment**: Svelte 5 production assets are embedded into the Go binary at compile-time via `go:embed`. Node.js and npm are build-time tools only; the deployed production server is a single static Go binary.
+- **Explicit Migrations**: Database schema migrations (`trestle migrate`) run forward explicitly before HTTP serving starts. Serving HTTP never applies schema migrations automatically.
+- **Tenant Isolation**: Workspace is the primary tenant boundary. All data lookups, mutations, aggregates, and searches are strictly scoped by workspace and project IDs.
+- **Strict Content Security Policy (CSP)**: `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`. No runtime CDNs, external fonts, remote scripts, or inline `style="..."` attributes.
 
-## Current module responsibilities
+---
 
-| Module | Interface and responsibility |
+## System Architecture
+
+```text
+┌────────────────────────────────────────────────────────┐
+│                   Web Browser / Client                 │
+│              (Svelte 5 + Vite, Mona Sans)              │
+└───────────────────────────┬────────────────────────────┘
+                            │ HTTPS / Same-Origin HTTP
+┌───────────────────────────▼────────────────────────────┐
+│                    Trestle HTTP Server                 │
+│                                                        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ internal/httpapi (Router, Session, CSRF, Health) │  │
+│  └────────┬───────────────────────┬─────────────────┘  │
+│           │                       │                    │
+│  ┌────────▼──────────┐ ┌──────────▼─────────────────┐  │
+│  │ internal/identity │ │    internal/projects       │  │
+│  │ (Auth, Sessions,  │ │ (Projects, Tasks, Statuses,│  │
+│  │  Workspaces)      │ │  Milestones, Integrations) │  │
+│  └────────┬──────────┘ └──────────┬─────────────────┘  │
+│           │                       │                    │
+│  ┌────────▼───────────────────────▼─────────────────┐  │
+│  │  internal/database (pgxpool, Migrations, Store)  │  │
+│  └────────────────────────┬─────────────────────────┘  │
+└───────────────────────────┼────────────────────────────┘
+                            │ TCP / UNIX Socket
+┌───────────────────────────▼────────────────────────────┐
+│                  PostgreSQL Database                   │
+│          (_sqlx_migrations, Workspaces, Tasks)         │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Module Responsibilities
+
+| Module | Responsibility |
 | --- | --- |
-| `internal/config` | Parse known environment settings, validate bounds, keep credentials out of diagnostics. |
-| `internal/database` | Construct a bounded lazy pgx pool and execute embedded migrations (`migrations/`) explicitly, recorded in `_sqlx_migrations`. |
-| `internal/identity` | Users, passwords (Argon2id), sessions, workspaces and memberships. |
-| `internal/projects` | Projects, tasks, statuses and task collaboration. |
-| `internal/httpapi` | Construct the `net/http` router and middleware; translate health checks, API calls and errors into stable JSON responses; mount embedded assets on exact GET/HEAD routes with no disk reads or SPA fallback. |
-| `main.go` | Embed `web/dist`, initialize diagnostics, choose serve/migrate/operator subcommand, bind, handle shutdown, close the pool. |
+| `main.go` | Entry point, CLI subcommand dispatch (`serve`, `migrate`, `bootstrap`), embedded asset mounting, graceful shutdown with request draining. |
+| `internal/config` | Strict environment variable parsing, bounds validation, credential redaction in logs. |
+| `internal/database` | Bounded lazy `pgxpool.Pool` construction, transaction helpers, and forward migration runner using PostgreSQL advisory locking and SHA-384 checksums. |
+| `internal/identity` | Argon2id password hashing, constant-time verification, session lifecycle, workspaces, memberships, and operator recovery. |
+| `internal/projects` | Project management, task scheduling, custom statuses, category rollups, milestones, and webhook event dispatch. |
+| `internal/integrations` | Outbound event delivery (Telegram, Slack, Discord) with SSRF safeguards, non-routable IP blocking, and write-only credentials. |
+| `internal/httpapi` | HTTP router (`ServeMux`), middleware (sessions, CSRF, logging, recoverer), JSON error envelopes, and static asset serving. |
+| `web/` | Svelte 5 frontend with runes (`$state`, `$derived`, `$props`), Mona Sans typography, semantic design tokens, and WCAG 2.2 AA accessibility. |
 
-Configuration parsing, HTTP responses, and migration execution are the agreed
-test seams. Tests use these public interfaces, including real PostgreSQL for
-migrations and successful readiness checks.
-M01b additionally tests visible browser readiness interactions and compiled asset
-delivery through HTTP and Chromium; see its feature specification.
+---
 
-## Future module design
+## Domain Model & Invariants
 
-Introduce identity, workspaces, projects, tasks/workflows, time tracking, and
-documents as vertical slices. Application interfaces own authorization,
-validation, transactions, and domain operations. HTTP handlers and future UI
-modules do not own business rules. Persistence stays near its owning module.
-Do not introduce generic repository traits or a package per domain speculatively.
+```text
+User ──< WorkspaceMembership >── Workspace ──< Project
+                                                 │
+                        ┌────────────────────────┼────────────────────────┐
+                        │                        │                        │
+                     Status                  Milestone                   Task
+                        │                                                 │
+                        └────────────────── Task ─────────────────────────┘
+                                             │
+                        ┌────────────────────┼────────────────────┐
+                        │                    │                    │
+                    Assignee               Label               Comment
+```
 
-Workspace is the tenant, project belongs to a workspace, and task is the
-canonical work item. Configurable status names map to stable categories.
-Use composite constraints where necessary to keep task/project/workspace and
-workflow relationships consistent. Billing customers are not tenant identities.
+### Invariants:
+1. **Tenant Containment**: A project belongs to exactly one workspace. Tasks, statuses, labels, and milestones cannot cross project or workspace boundaries.
+2. **Deterministic Task Keys**: Each task has an internal UUID and a human-readable identifier (e.g. `CORE-12`) scoped to the project key and allocated sequentially within a transaction.
+3. **Status Category Mapping**: Custom project statuses map to five canonical categories: `backlog`, `unstarted`, `started`, `completed`, `cancelled`. Completion rates always compute as `completed ÷ (all − cancelled)`.
+4. **Milestone Targets**: Milestones group tasks toward outcomes with start and due dates, color branding, and progress rollup calculations.
 
-## Resource model
+---
 
-The HTTP process does not require a database connection to start. Readiness
-performs one bounded `SELECT 1`; liveness performs no database work. There is no
-background polling, caching, worker, broker, or automatic schema modification.
-Pool minimum is zero; maximum and acquisition/readiness timeout are bounded.
-Statements and lock waits have server-side timeouts. HTTP request diagnostics
-omit raw URLs, headers, bodies, and database errors.
+## Resource & Performance Strategy
 
-There are no measured latency, memory, throughput, or cross-product performance
-claims. Set budgets after measuring representative workloads, including total
-PostgreSQL and application resources. SQLite and Android/Termux are unsupported
-until explicitly tested; Android cannot guarantee background service uptime.
-
-## Dependency review policy
-
-Direct Go dependencies are pgx (MIT), google/uuid (BSD-3-Clause),
-golang.org/x/crypto and golang.org/x/term (BSD-3-Clause); every module in the
-shipped binary is MIT or BSD-3-Clause.
-`govulncheck ./...` reports known vulnerabilities in reachable code of the
-resolved module graph; `go mod verify` checks downloaded modules against
-`go.sum`. The project's existing `LICENSE` is manually preserved.
-This is not a security guarantee or a substitute for reviewing behavior and
-future advisories.
-
-Review lockfile changes deliberately. Update Go, dependencies, pinned GitHub
-Action SHAs and container digests in focused changes, run all documented checks,
-and review upstream release notes and advisories. Never automatically publish.
-No license exceptions or advisory ignores are permitted without a documented
-reason and approval. Preserve the existing project
-license; do not infer a new SPDX grant from the generic license's example notices.
+- **Zero-Start Dependency**: The HTTP server starts without requiring a reachable database; `/health/live` responds immediately, while `/health/ready` evaluates database readiness.
+- **Bounded Pools**: The `pgxpool` configuration enforces explicit connection limits (`MinConns = 0`, bounded `MaxConns`, `ConnectTimeout`).
+- **Server-Side Deadlines**: Queries run with `statement_timeout=5000` and `lock_timeout=5000` to prevent stalled locks from exhausting connection capacity.
+- **Critically Damped Motion**: Frontend transitions run through `web/src/lib/motion.ts` using spring physics (`--ease-spring`) without overshooting or layout cascading.

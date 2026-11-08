@@ -1,80 +1,114 @@
-# Initial threat model
+# Threat Model & Security Policy
 
-This is a development foundation, not an authenticated productivity application.
+This document defines Trestle's security architecture, trust boundaries, access control policies, and operational safeguards.
 
-## Assets and trust
+---
 
-- PostgreSQL credentials, database contents, migration history, and operator logs.
-- The operator controls process environment, binary, database role, and network.
-- HTTP callers and network inputs are untrusted, including request URLs.
-- pgx, PostgreSQL, Go module dependencies, CI actions, and container bases are supply
-  chain inputs; lockfiles, digests, and advisory checks reduce but do not remove risk.
+## 1. Trust Boundaries & Actors
 
-## Current safeguards
+```text
+┌────────────────────────────────────────────────────────┐
+│                   Untrusted Network                    │
+│           (Callers, Web Browsers, Webhooks)            │
+└───────────────────────────┬────────────────────────────┘
+                            │ HTTPS / HTTP
+┌───────────────────────────▼────────────────────────────┐
+│                    Reverse Proxy                       │  Boundary: TLS termination,
+│             (Nginx, Caddy, Cloudflare)                 │  rate-limiting, DDoS defense
+└───────────────────────────┬────────────────────────────┘
+                            │ Loopback / Private Network
+┌───────────────────────────▼────────────────────────────┐
+│                 Trestle Application                    │  Boundary: Auth, CSRF,
+│                  (Go net/http Server)                  │  Tenant isolation, RBAC
+└─────────────┬───────────────────────────┬──────────────┘
+              │                           │
+              │ SQL                       │ Outbound Webhooks (SSRF Guard)
+┌─────────────▼───────────────┐ ┌─────────▼──────────────┐
+│     PostgreSQL Database     │ │ External Services      │
+│     (Workspaces, Tasks)     │ │ (Telegram, Discord...) │
+└─────────────────────────────┘ └────────────────────────┘
+```
 
-- Default HTTP bind is loopback. Development PostgreSQL is bound to loopback.
-- Health endpoints expose only fixed status/error objects, never database details.
-- Configuration diagnostics redact database options; parser errors name settings,
-  not their values. SQL statement logging is disabled for application pools.
-- Request diagnostics record method, matched route, status, and duration, not
-  raw paths/query strings, headers, cookies, credentials, or bodies.
-- Pool size, acquisition/readiness duration, SQL statement/lock duration, and
-  shutdown drain duration are bounded. Health requests do not parse bodies.
-- The serving process never runs migrations automatically.
-- Container process runs without root; no credentials are baked into the image.
-- CI has read-only repository permissions and does not publish or deploy.
+### Actor Categories:
+- **Host / Cluster Operator**: Controls binary, environment variables, PostgreSQL credentials, and filesystem. Has root authority over local data.
+- **Workspace Owner**: Has full administrative authority over a workspace, including billing, member management, and ownership transfer.
+- **Workspace Admin**: Can manage projects, members, and project integrations, but cannot remove/demote the owner or transfer ownership.
+- **Workspace Member / Contributor**: Can view and create tasks, participate in discussions, update assigned work, and view projects in their workspace.
+- **Workspace Guest / Viewer**: Read-only participant with explicit grants to specific projects.
+- **Untrusted Caller**: Any unauthenticated network client submitting HTTP requests to the public listener.
 
-## Remaining risks and required next work
+---
 
-- There is no authentication, authorization, session handling, CSRF protection,
-  or tenant data isolation yet. Do not add product endpoints before these are
-  designed, implemented, and tested.
-- Health endpoints are unauthenticated. Repeated readiness calls still consume
-  database resources; restrict them at the reverse proxy and tune probe frequency.
-- HTTP TLS, connection-level limits, slow-client protection and ingress rate
-  limits are operator responsibilities for this milestone. The built-in server
-  is not an Internet-facing hardened edge proxy.
-- PostgreSQL TLS is supported by the driver; local examples use local plaintext
-  connections. For remote databases require certificate verification
-  (`sslmode=verify-full`) and trusted certificates. Do not assume TLS is enforced
-  by the default URL behavior.
-- Environment variables are visible to privileged host/container operators.
-  Use an appropriate secret manager; never paste credentials into issues or logs.
-- Migration credentials can modify schema. Use a separate migration role in
-  production and a restricted runtime role. Do not use the local development
-  superuser configuration for production.
-- No backup/restore or zero-downtime upgrade guarantee exists. Follow and verify
-  the operational procedure before trusting data to a deployment.
-- There is no file upload or public API-token handling. Task descriptions render
-  bundled Markdown locally: raw HTML is escaped, output is sanitized with an
-  explicit element/attribute allowlist, and images render as alt text. No remote
-  media loads or inline styles are introduced; the CSP remains unchanged.
-  Optional project integration credentials and outbound notifications are covered below.
-- Password authentication will need Argon2id, bounded hashing concurrency,
-  abuse controls, bootstrap/recovery rules, and revocable sessions.
-- Workspace isolation must cover reads, writes, membership changes, aggregates,
-  search and exports, with database constraints and negative cross-tenant tests.
+## 2. Authentication & Identity Policy
 
-## Project integration trust boundary
+### Credential Handling
+- **Usernames**: 3–64 ASCII alphanumeric characters plus `.`, `_`, and `-`. Stored and matched case-insensitively using lowercase canonicalization.
+- **Argon2id Hashing**: Passwords are never stored in plaintext. They are salted with unique cryptographic randomness and hashed using Argon2id (`time=1`, `memory=64MB`, `threads=4`).
+- **Timing Leak Prevention**: Login verification uses constant-time comparison. When an unknown username is supplied, a dummy verification pass is executed to ensure equivalent response latency.
 
-Workspace owners/admins alone can store, replace, inspect delivery metadata, test,
-or disconnect project integrations. Session and CSRF middleware apply to every
-mutation; project existence is checked within the authorized Workspace and the
-database enforces the composite relationship. Secrets are write-only through the
-API and omitted from responses and sanitized error text. They are plaintext in
-PostgreSQL and backups: database operators remain trusted and must protect storage.
-Outbound HTTP uses fixed, validated Telegram/Slack/Discord HTTPS endpoints, rejects
-credentials/ports/query overrides in webhook URLs, disables proxies and redirects,
-and checks resolved IPs at connection time to prevent private-network access.
-Only task names, keys, and categories are sent, so connecting a channel authorizes
-that Project's task metadata to leave this instance. Discord mentions and Slack
-markup are disabled. Delivery has bounded deadlines, no retries, and sanitized
-latest-attempt feedback. Reverse-proxy rate limits are still required; the test
-cooldown is not a concurrent-request abuse limit. See
-[project integrations](features/project-integrations.md) for precise event scope.
+### Sessions
+- **Opaque Session Tokens**: Cryptographically secure 256-bit random tokens stored as SHA-256 digests in PostgreSQL (`sessions` table).
+- **Cookie Flags**: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` (in TLS production environments).
+- **Session Lifespan**:
+  - Idle timeout: 12 hours of inactivity.
+  - Absolute timeout: Configured via `SESSION_TTL_HOURS` (default 14 days).
+- **Revocation**:
+  - Logout revokes the current session immediately.
+  - Password change or operator reset revokes all active sessions for that account.
 
-## Source availability
+### CSRF Protection
+- State-changing operations (`POST`, `PUT`, `PATCH`, `DELETE`) require an `X-CSRF-Token` HTTP header matching the value stored in the `trestle-csrf` cookie.
+- Validated via constant-time string comparison (`subtle.ConstantTimeCompare`) before routing to handlers.
 
-Preserve the AGPL license. Network deployments of modified versions must provide
-the corresponding source as required by section 13. Release artifacts must be
-traceable to their source, including build and installation instructions.
+---
+
+## 3. Permissions & RBAC Matrix
+
+| Operation | Workspace Owner | Workspace Admin | Workspace Member | Workspace Guest |
+| --- | :---: | :---: | :---: | :---: |
+| Transfer workspace ownership | **Yes** (Owner only) | No | No | No |
+| Delete workspace | **Yes** (Owner only) | No | No | No |
+| Add / remove workspace members | **Yes** | **Yes** (cannot demote owner) | No | No |
+| Create / archive projects | **Yes** | **Yes** | No | No |
+| Configure project integrations | **Yes** | **Yes** | No | No |
+| Manage custom statuses & milestones | **Yes** | **Yes** | **Yes** | No |
+| Create / edit tasks | **Yes** | **Yes** | **Yes** | No |
+| View tasks & project contents | **Yes** | **Yes** | **Yes** | Granted projects only |
+| Add comments | **Yes** | **Yes** | **Yes** | Granted projects only |
+| Delete own comments | **Yes** | **Yes** | **Yes** | **Yes** |
+| Delete any comment | **Yes** | **Yes** | No | No |
+| Revoke own sessions | **Yes** | **Yes** | **Yes** | **Yes** |
+
+---
+
+## 4. Tenant Isolation Invariants
+
+1. **Workspace Scoping**: Every database lookup, insertion, update, and deletion is constrained by `workspace_id`.
+2. **Concealed 404s**: Probing IDs from another tenant returns `404 Not Found`, identical to non-existent IDs. `403 Forbidden` is only used when the resource's existence within the user's workspace is known but the action exceeds role permissions.
+3. **Task Key Uniqueness**: Sequential task numbering (`project.task_counter`) is updated atomically in transactions, scoped strictly to the parent project.
+
+---
+
+## 5. Webhook Security & SSRF Protection
+
+Trestle allows projects to dispatch notifications to Discord, Slack, and Telegram:
+- **SSRF Mitigation**: Webhook URLs are strictly validated:
+  - Scheme must be `https://`.
+  - Non-routable IP addresses (RFC 1918 private ranges, loopback `127.0.0.0/8`, link-local `169.254.0.0/16`, IPv6 loopback `::1`) are blocked during DNS resolution.
+  - Custom ports, userinfo, and query parameter overrides are rejected.
+  - Redirects and HTTP proxies are disabled on outbound webhook clients.
+- **Write-Only Storage**: Webhook tokens and secrets are write-only through the API; they are never reflected back in API responses.
+- **Payload Minimization**: Outbound payloads contain only project name, task key, title, and status category. Assignee details, internal descriptions, and comments are never sent over integrations.
+
+---
+
+## 6. Content Security Policy (CSP) & XSS Defenses
+
+Trestle enforces a strict Content Security Policy header on all HTML responses:
+```http
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+```
+
+- **No Remote CDNs**: All scripts, styles, and fonts (Mona Sans) are self-hosted and bundled.
+- **No Inline Styles**: The CSP explicitly forbids `style="..."` attributes. Dynamic properties are passed through Svelte CSS variables (`style:--status-color`).
+- **Markdown Sanitization**: User-submitted markdown (descriptions, comments) is rendered with an allowlist-based HTML sanitizer. Raw `<script>`, `<iframe>`, and dangerous attributes (`onclick`, `javascript:`) are stripped.
