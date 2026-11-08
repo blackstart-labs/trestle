@@ -109,4 +109,3 @@ func TestMilestoneLifecycleAndTaskRollup(t *testing.T) {
 		t.Fatalf("expected nil milestone_id after milestone deletion, got %v", t2After["milestone_id"])
 	}
 }
-

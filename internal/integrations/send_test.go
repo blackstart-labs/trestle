@@ -96,7 +96,7 @@ func TestProviderPayloadsAndFailures(t *testing.T) {
 					}
 					return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(response)), Header: http.Header{}}, nil
 				})}
-				err := send(context.Background(), c, provider, secret, chat, "Task @everyone <https://example.com>")
+				err := send(context.Background(), c, provider, secret, chat, "", "Task @everyone <https://example.com>")
 				wantError := mode == "network" || mode == "rejected" || (provider == "telegram" && mode != "success")
 				if !called || (err != nil) != wantError {
 					t.Fatalf("%s: unexpected result %v", mode, err)

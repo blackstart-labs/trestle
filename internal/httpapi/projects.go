@@ -165,19 +165,19 @@ type activityItem struct {
 }
 
 type taskItem struct {
-	ID          string         `json:"id"`
-	WorkspaceID string         `json:"workspace_id"`
-	ProjectID   string         `json:"project_id"`
-	ProjectKey  string         `json:"project_key"`
-	TaskNumber  int64          `json:"task_number"`
-	HumanKey    string         `json:"human_key"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	Status      string         `json:"status"`
-	Priority    string         `json:"priority"`
-	DueDate     *string        `json:"due_date"`
-	CreatedBy   *string        `json:"created_by"`
-	ParentID    *string        `json:"parent_id"`
+	ID             string         `json:"id"`
+	WorkspaceID    string         `json:"workspace_id"`
+	ProjectID      string         `json:"project_id"`
+	ProjectKey     string         `json:"project_key"`
+	TaskNumber     int64          `json:"task_number"`
+	HumanKey       string         `json:"human_key"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	Status         string         `json:"status"`
+	Priority       string         `json:"priority"`
+	DueDate        *string        `json:"due_date"`
+	CreatedBy      *string        `json:"created_by"`
+	ParentID       *string        `json:"parent_id"`
 	StatusID       *string        `json:"status_id"`
 	StatusName     *string        `json:"status_name"`
 	StatusColor    *string        `json:"status_color"`

@@ -118,8 +118,8 @@ type PaginatedTasks struct {
 
 type CreateProjectParams struct {
 	Name, Slug, Key, Description string
-	AvatarData                  []byte
-	AvatarMIME                  string
+	AvatarData                   []byte
+	AvatarMIME                   string
 }
 
 type UpdateProjectParams struct {
@@ -341,21 +341,23 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 	}
 
 	var milestoneTitle *string
+	var milestoneColor *string
 	if params.MilestoneID != nil {
-		var title string
-		if err := tx.QueryRow(ctx, "SELECT title FROM milestones WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
-			*params.MilestoneID, projectID, workspaceID).Scan(&title); err != nil {
+		var title, color string
+		if err := tx.QueryRow(ctx, "SELECT title, color FROM milestones WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
+			*params.MilestoneID, projectID, workspaceID).Scan(&title, &color); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return Task{}, ErrNotFound
 			}
 			return Task{}, err
 		}
 		milestoneTitle = &title
+		milestoneColor = &color
 	}
 
 	t := Task{ID: uuid.New(), WorkspaceID: workspaceID, ProjectID: projectID, Title: params.Title, Description: params.Description,
 		Priority: params.Priority, DueDate: params.DueDate, CreatedBy: actorID, ParentID: params.ParentID,
-		MilestoneID: params.MilestoneID, MilestoneTitle: milestoneTitle,
+		MilestoneID: params.MilestoneID, MilestoneTitle: milestoneTitle, MilestoneColor: milestoneColor,
 		Labels: []Label{}, Assignees: []TaskAssignee{}}
 
 	// Increment the project's task counter atomically.
@@ -651,8 +653,7 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 			return Task{}, err
 		}
 	}
-	milestoneChanged := params.SetMilestoneID && (
-		(previousMilestoneID == nil && params.MilestoneID != nil) ||
+	milestoneChanged := params.SetMilestoneID && ((previousMilestoneID == nil && params.MilestoneID != nil) ||
 		(previousMilestoneID != nil && params.MilestoneID == nil) ||
 		(previousMilestoneID != nil && params.MilestoneID != nil && *previousMilestoneID != *params.MilestoneID))
 	if milestoneChanged {

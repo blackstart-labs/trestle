@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/maruf-pfc/trestle/internal/projects"
 )
 
 func TestProjectIntegrationsLifecycleAndIsolation(t *testing.T) {

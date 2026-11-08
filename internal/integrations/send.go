@@ -125,8 +125,8 @@ func send(ctx context.Context, c *http.Client, provider, secret, chat, topic, te
 	case "telegram":
 		endpoint = "https://api.telegram.org/bot" + secret + "/sendMessage"
 		p := map[string]any{
-			"chat_id": cleanChat,
-			"text": text,
+			"chat_id":              cleanChat,
+			"text":                 text,
 			"link_preview_options": map[string]bool{"is_disabled": true},
 		}
 		if cleanTopic != "" {
@@ -168,8 +168,8 @@ func send(ctx context.Context, c *http.Client, provider, secret, chat, topic, te
 		plainText := strings.ReplaceAll(text, "<a href=\"", "")
 		plainText = strings.ReplaceAll(plainText, "\">Open in Trestle</a>", "")
 		p := map[string]any{
-			"chat_id": cleanChat,
-			"text": plainText,
+			"chat_id":              cleanChat,
+			"text":                 plainText,
 			"link_preview_options": map[string]bool{"is_disabled": true},
 		}
 		if cleanTopic != "" {
