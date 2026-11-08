@@ -75,6 +75,7 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET "+ws+"/projects", s.auth(s.listProjects))
 	mux.HandleFunc("POST "+ws+"/projects", s.auth(s.createProject))
 	mux.HandleFunc("GET "+p, s.auth(s.getProject))
+	mux.HandleFunc("PATCH "+p, s.auth(s.updateProject))
 	mux.HandleFunc("POST "+p+"/archive", s.auth(s.archiveProject))
 	mux.HandleFunc("GET "+p+"/integrations", s.auth(s.listIntegrations))
 	mux.HandleFunc("PUT "+p+"/integrations/{provider}", s.auth(s.saveIntegration))

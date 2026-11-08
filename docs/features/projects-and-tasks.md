@@ -79,6 +79,7 @@ Following [permissions matrix](../security/permissions-matrix.md):
 | `GET` | `/api/v1/workspaces/{workspace_id}/projects` | Member | List active projects |
 | `POST` | `/api/v1/workspaces/{workspace_id}/projects` | Admin/Owner | Create project |
 | `GET` | `/api/v1/workspaces/{workspace_id}/projects/{project_id}` | Member | Get project details |
+| `PATCH` | `/api/v1/workspaces/{workspace_id}/projects/{project_id}` | Admin/Owner | Update project name, slug, or description; project key stays fixed |
 | `POST` | `/api/v1/workspaces/{workspace_id}/projects/{project_id}/archive` | Admin/Owner | Archive project |
 | `GET` | `/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks` | Member | Paginated tasks (`?status=&limit=&offset=`) |
 | `POST` | `/api/v1/workspaces/{workspace_id}/projects/{project_id}/tasks` | Member | Create task |
@@ -89,3 +90,17 @@ Following [permissions matrix](../security/permissions-matrix.md):
 All endpoints require active session authentication and validate membership in `workspace_id`.
 All mutations require a valid `X-CSRF-Token` header.
 Pagination parameters are bounded: default `limit = 20`, max `limit = 100`.
+
+Project editing accepts any non-empty subset of `name`, `slug`, and `description`.
+Names are trimmed (1–120 bytes); slugs are trimmed, lowercased, and validated with
+the creation rules (2–48 ASCII letters, numbers or hyphens, no leading/trailing
+hyphen). Descriptions allow 0–2000 bytes; an empty string clears the description.
+Duplicate workspace slugs return 409 and leave all fields unchanged. The update
+and `project.updated` audit event commit together. Project IDs, keys, task numbers,
+archive state, and creation timestamps remain unchanged. Supplying a `key` returns
+400; task references must stay stable. A missing/cross-workspace project returns
+404, and members cannot edit project metadata.
+
+Owners/admins open **Edit** from a project card or **Edit project** from its task
+header. The shared dialog preserves input on failure, saves only changed fields,
+disables duplicate submission, and confirms before discarding unsaved changes.

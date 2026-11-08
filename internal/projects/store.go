@@ -115,6 +115,10 @@ type CreateProjectParams struct {
 	Name, Slug, Key, Description string
 }
 
+type UpdateProjectParams struct {
+	Name, Slug, Description *string
+}
+
 type CreateTaskParams struct {
 	Title       string
 	Description string
@@ -211,6 +215,28 @@ func ListProjects(ctx context.Context, db Querier, workspaceID uuid.UUID, includ
 func GetProject(ctx context.Context, db Querier, workspaceID, projectID uuid.UUID) (Project, error) {
 	p, err := scanProject(db.QueryRow(ctx, "SELECT "+projectColumns+" FROM projects WHERE id = $1 AND workspace_id = $2", projectID, workspaceID))
 	return p, mapErr(err)
+}
+
+func UpdateProject(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, workspaceID, projectID uuid.UUID, params UpdateProjectParams) (Project, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return Project{}, err
+	}
+	defer tx.Rollback(ctx)
+	p, err := scanProject(tx.QueryRow(ctx, `UPDATE projects
+		SET name = COALESCE($1, name), slug = COALESCE($2, slug),
+		    description = COALESCE($3, description), updated_at = now()
+		WHERE id = $4 AND workspace_id = $5 RETURNING `+projectColumns,
+		params.Name, params.Slug, params.Description, projectID, workspaceID))
+	if err != nil {
+		return Project{}, mapErr(err)
+	}
+	if err := audit(ctx, tx, actorID, "project.updated", map[string]any{
+		"workspace_id": workspaceID, "project_id": projectID,
+	}); err != nil {
+		return Project{}, err
+	}
+	return p, tx.Commit(ctx)
 }
 
 func ArchiveProject(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID, projectID uuid.UUID) (Project, error) {

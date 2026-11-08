@@ -353,6 +353,58 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request, session *Aut
 	writeJSON(w, http.StatusOK, toProject(p))
 }
 
+func (s *Server) updateProject(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, _, ok := s.scope(w, r, session, true, "project_id")
+	if !ok {
+		return
+	}
+	var req struct {
+		Name        *string `json:"name"`
+		Slug        *string `json:"slug"`
+		Description *string `json:"description"`
+		Key         *string `json:"key"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Key != nil {
+		badRequest(w, "Project key cannot be changed because existing task keys use it")
+		return
+	}
+	if req.Name == nil && req.Slug == nil && req.Description == nil {
+		badRequest(w, "Provide a project name, slug, or description to update")
+		return
+	}
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" || len(name) > 120 {
+			badRequest(w, "Project name must be between 1 and 120 characters")
+			return
+		}
+		req.Name = &name
+	}
+	if req.Slug != nil {
+		slug := strings.ToLower(strings.TrimSpace(*req.Slug))
+		if !validProjectSlug(slug) {
+			badRequest(w, "Project slug must be 2-48 lowercase alphanumeric characters or hyphens")
+			return
+		}
+		req.Slug = &slug
+	}
+	if req.Description != nil && len(*req.Description) > 2000 {
+		badRequest(w, "Project description cannot exceed 2000 characters")
+		return
+	}
+	p, err := projects.UpdateProject(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.UpdateProjectParams{
+		Name: req.Name, Slug: req.Slug, Description: req.Description,
+	})
+	if err != nil {
+		storeError(w, err, "failed to update project", "A project with this slug already exists in the workspace")
+		return
+	}
+	writeJSON(w, http.StatusOK, toProject(p))
+}
+
 func (s *Server) archiveProject(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
 	ids, _, ok := s.scope(w, r, session, true, "project_id")
 	if !ok {

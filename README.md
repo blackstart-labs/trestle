@@ -331,6 +331,7 @@ All product endpoints are served under `/api/v1/`. Authenticated requests requir
 | `/api/v1/workspaces/{id}/transfer-ownership` | `POST` | Transfer workspace ownership with re-authentication. |
 | `/api/v1/workspaces/{id}/projects` | `GET` / `POST` | List and create workspace projects. |
 | `/api/v1/workspaces/{id}/projects/{pId}` | `GET` | Retrieve project details. |
+| `/api/v1/workspaces/{id}/projects/{pId}` | `PATCH` | Update project name, slug, and description (owner/admin); keep the project key fixed. |
 | `/api/v1/workspaces/{id}/projects/{pId}/archive` | `POST` | Archive project. |
 | `/api/v1/workspaces/{id}/projects/{pId}/tasks` | `GET` / `POST` | List tasks (with filter & pagination) and create tasks. |
 | `/api/v1/.../tasks/{taskId}` | `GET` / `PATCH` / `DELETE` | Retrieve, update properties, or delete task. |
