@@ -14,7 +14,9 @@
   import Icon from "./ui/Icon.svelte";
   import BrandMark from "./ui/BrandMark.svelte";
   import CommandPalette, { type Command } from "./ui/CommandPalette.svelte";
+  import Toast from "./ui/Toast.svelte";
   import { accents, preferences } from "./lib/preferences.svelte";
+  import { liveTimer } from "./lib/timer.svelte";
   import { identityHue, initials } from "./lib/identity";
 
   let user = $state<User | null>(null);
@@ -35,6 +37,24 @@
   let paletteProjects = $state<Project[]>([]);
   let paletteLoading = $state(false);
   let paletteReturnFocus: HTMLElement | null = null;
+  let toastMessage = $state<string | null>(null);
+
+  function navigateToActiveTask() {
+    if (!liveTimer.active) return;
+    route(
+      `task/${liveTimer.active.workspaceId}/${liveTimer.active.projectId}/${liveTimer.active.taskId}`,
+    );
+  }
+
+  async function stopActiveTimer() {
+    const token = getCookie("trestle-csrf");
+    const res = await liveTimer.stopAndLog(token || "");
+    if (res.ok) {
+      toastMessage = `Logged ${res.spentHours}h to task`;
+    } else {
+      toastMessage = res.error || "Failed to log time";
+    }
+  }
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -217,13 +237,18 @@
 
   // Settings sections (#appearance, #instance-status) are deep links into
   // the one Settings page: render it, then focus the section's heading.
-  const SETTINGS_SECTIONS = ["appearance", "instance-status", "integration"];
+  const SETTINGS_SECTIONS = [
+    "appearance",
+    "instance-status",
+    "integration",
+    "workspace",
+    "profile",
+  ];
 
   async function focusSection(id: string) {
     await tick();
     const target = document.getElementById(id);
     target?.focus({ preventScroll: true });
-    target?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
 
   async function openTaskFromRoute(
@@ -535,6 +560,7 @@
 
   onMount(() => {
     preferences.init();
+    liveTimer.init();
 
     if (getCookie("trestle-csrf")) {
       void checkSession();
@@ -723,6 +749,44 @@
       {/if}
 
       <div class="topbar-actions">
+        {#if liveTimer.active}
+          <div class="live-timer-banner" aria-label="Active live timer">
+            <span class="live-pulse-dot" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="live-timer-task"
+              onclick={navigateToActiveTask}
+              title="{liveTimer.active.taskHumanKey}: {liveTimer.active
+                .taskTitle}"
+            >
+              <span class="live-timer-key">{liveTimer.active.taskHumanKey}</span
+              >
+              <span class="live-timer-time num"
+                >{liveTimer.formattedDuration}</span
+              >
+            </button>
+            <button
+              type="button"
+              class="live-timer-btn live-timer-stop"
+              onclick={stopActiveTimer}
+              title="Stop and log time"
+              aria-label="Stop timer"
+            >
+              <Icon name="stop" size={12} />
+              <span>Stop</span>
+            </button>
+            <button
+              type="button"
+              class="live-timer-btn live-timer-discard"
+              onclick={() => liveTimer.discard()}
+              title="Discard timer"
+              aria-label="Discard timer"
+            >
+              <Icon name="close" size={12} />
+            </button>
+          </div>
+        {/if}
+
         <button
           type="button"
           class="search-trigger"
@@ -837,9 +901,15 @@
         <Settings
           section={settingsSection}
           workspace={selectedWorkspace}
+          {user}
           signedIn={!!user}
           initialProjectId={selectedProject?.id || ""}
+          onselectsection={(sec) => (settingsSection = sec)}
           onselectworkspace={(ws) => (selectedWorkspace = ws)}
+          onworkspaceupdated={(ws) => {
+            selectedWorkspace = ws;
+          }}
+          onuserupdated={(u) => (user = u)}
         />
       {:else}
         <Overview
@@ -854,6 +924,10 @@
 
 {#if paletteOpen}
   <CommandPalette {commands} loading={paletteLoading} onclose={closePalette} />
+{/if}
+
+{#if toastMessage}
+  <Toast message={toastMessage} onclear={() => (toastMessage = null)} />
 {/if}
 
 <style>

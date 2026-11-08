@@ -53,7 +53,10 @@
     | "discord"
     | "copy"
     | "image"
-    | "upload";
+    | "upload"
+    | "play"
+    | "stop"
+    | "pause";
 </script>
 
 <script lang="ts">
@@ -243,6 +246,13 @@
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <polyline points="17 8 12 3 7 8" />
     <line x1="12" y1="3" x2="12" y2="15" />
+  {:else if name === "play"}
+    <polygon points="6 4 20 12 6 20 6 4" />
+  {:else if name === "stop"}
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+  {:else if name === "pause"}
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
   {/if}
 </svg>
 

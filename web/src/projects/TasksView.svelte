@@ -31,6 +31,7 @@
     initials,
     isOverdue,
   } from "../lib/identity";
+  import { liveTimer } from "../lib/timer.svelte";
 
   export interface Task {
     id: string;
@@ -54,6 +55,7 @@
     milestone_color?: string | null;
     labels?: Label[];
     assignees?: TaskAssignee[];
+    spent_hours?: number;
     created_at: string;
     updated_at: string;
   }
@@ -136,6 +138,16 @@
 
   // Board horizontal scroll hints.
   let boardEl = $state<HTMLElement | null>(null);
+
+  async function handleStopLiveTimer() {
+    const csrf = getCsrfToken();
+    const res = await liveTimer.stopAndLog(csrf || "");
+    if (res.ok) {
+      successMessage = `Logged ${res.spentHours}h to task.`;
+    } else {
+      createError = res.error || "Failed to log time.";
+    }
+  }
   let moreRight = $state(false);
   let moreLeft = $state(false);
 
@@ -791,6 +803,13 @@
     void loadProjectMilestones();
     void loadCategoryTotals();
     if (openTaskId) void openTaskById(openTaskId);
+
+    const unreg = liveTimer.onLog((taskId, spent) => {
+      tasks = tasks.map((t) =>
+        t.id === taskId ? { ...t, spent_hours: spent } : t,
+      );
+    });
+    return () => unreg();
   });
 
   async function openTaskById(id: string) {
@@ -1529,6 +1548,23 @@
             >
               <span class="task-line">
                 <span class="key">{task.human_key}</span>
+                {#if liveTimer.active?.taskId === task.id}
+                  <span
+                    class="time-spent-badge live-active"
+                    title="Live timer running on this task"
+                  >
+                    <span class="live-pulse-dot" aria-hidden="true"></span>
+                    <span class="num">{liveTimer.formattedDuration}</span>
+                  </span>
+                {:else if task.spent_hours && task.spent_hours > 0}
+                  <span
+                    class="time-spent-badge"
+                    title="Logged time: {task.spent_hours}h"
+                  >
+                    <Icon name="clock" size={11} />
+                    <span>{task.spent_hours}h</span>
+                  </span>
+                {/if}
                 <span class="task-title">{task.title}</span>
               </span>
               {#if task.description}
@@ -1578,6 +1614,35 @@
             </span>
 
             <span class="cell cell-controls">
+              {#if liveTimer.active?.taskId === task.id}
+                <button
+                  type="button"
+                  class="btn-quiet btn-icon"
+                  onclick={() => void handleStopLiveTimer()}
+                  title="Stop live timer"
+                  aria-label="Stop live timer on {task.human_key}"
+                >
+                  <Icon name="stop" size={16} />
+                </button>
+              {:else if canDelete}
+                <button
+                  type="button"
+                  class="btn-quiet btn-icon start-timer-btn"
+                  title="Start live timer on {task.human_key}"
+                  aria-label="Start live timer on {task.human_key}"
+                  onclick={() => {
+                    liveTimer.start({
+                      id: task.id,
+                      human_key: task.human_key,
+                      title: task.title,
+                      project_id: project.id,
+                      workspace_id: workspace.id,
+                    });
+                  }}
+                >
+                  <Icon name="play" size={14} />
+                </button>
+              {/if}
               {@render statusMenu(task)}
               {#if canDelete}
                 <button
@@ -1690,6 +1755,23 @@
                 >
                   <span class="card-top">
                     <span class="key">{task.human_key}</span>
+                    {#if liveTimer.active?.taskId === task.id}
+                      <span
+                        class="time-spent-badge live-active"
+                        title="Live timer running on this task"
+                      >
+                        <span class="live-pulse-dot" aria-hidden="true"></span>
+                        <span class="num">{liveTimer.formattedDuration}</span>
+                      </span>
+                    {:else if task.spent_hours && task.spent_hours > 0}
+                      <span
+                        class="time-spent-badge"
+                        title="Logged time: {task.spent_hours}h"
+                      >
+                        <Icon name="clock" size={11} />
+                        <span>{task.spent_hours}h</span>
+                      </span>
+                    {/if}
                     {#if task.priority !== "none"}
                       <span class="priority" data-priority={task.priority}
                         >{task.priority}</span
@@ -1720,6 +1802,35 @@
                 <div class="card-foot">
                   {@render dueDate(task)}
                   {@render assigneeStack(task)}
+                  {#if liveTimer.active?.taskId === task.id}
+                    <button
+                      type="button"
+                      class="btn-quiet btn-icon"
+                      onclick={() => void handleStopLiveTimer()}
+                      title="Stop live timer"
+                      aria-label="Stop live timer on {task.human_key}"
+                    >
+                      <Icon name="stop" size={14} />
+                    </button>
+                  {:else if canDelete}
+                    <button
+                      type="button"
+                      class="btn-quiet btn-icon start-timer-btn"
+                      title="Start live timer on {task.human_key}"
+                      aria-label="Start live timer on {task.human_key}"
+                      onclick={() => {
+                        liveTimer.start({
+                          id: task.id,
+                          human_key: task.human_key,
+                          title: task.title,
+                          project_id: project.id,
+                          workspace_id: workspace.id,
+                        });
+                      }}
+                    >
+                      <Icon name="play" size={12} />
+                    </button>
+                  {/if}
                   {@render statusMenu(task)}
                 </div>
               </article>
