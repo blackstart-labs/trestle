@@ -10,6 +10,7 @@
     name: string;
     slug: string;
     role: string;
+    avatar_url?: string | null;
   }
 
   let {

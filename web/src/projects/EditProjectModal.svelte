@@ -264,6 +264,24 @@
         maxlength="2000"
         disabled={saving || !canManage}></textarea>
     </div>
+
+    <div class="project-export-box">
+      <div class="export-meta">
+        <span class="export-title">Project Data Export</span>
+        <span class="export-note"
+          >Download tasks, milestones, statuses, and time logs.</span
+        >
+      </div>
+      <a
+        href={`/api/v1/workspaces/${workspace.id}/projects/${project.id}/export`}
+        download={`${project.key}-export.json`}
+        class="btn btn-secondary btn-export"
+      >
+        <Icon name="upload" size={16} />
+        <span>Export JSON</span>
+      </a>
+    </div>
+
     {#if dirty}<p class="note" aria-live="polite">Unsaved changes</p>{/if}
     <div class="dialog-actions">
       <Button variant="quiet" disabled={saving} onclick={requestClose}
@@ -320,6 +338,40 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  .project-export-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+    border: var(--border-width) solid var(--line);
+    margin-top: var(--space-2);
+  }
+
+  .export-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+  }
+
+  .export-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .export-note {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .btn-export {
+    text-decoration: none;
+    flex-shrink: 0;
   }
 
   .file-picker-label {

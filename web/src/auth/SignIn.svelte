@@ -10,6 +10,7 @@
     display_name: string;
     locale: string;
     timezone: string;
+    avatar_url?: string | null;
   }
 
   let {
