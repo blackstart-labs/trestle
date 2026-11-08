@@ -36,6 +36,7 @@
 
   let localStatuses = $state<TaskStatus[]>([]);
   let loading = $state(false);
+  let reordering = $state(false);
   let error = $state<string | null>(null);
   let success = $state<string | null>(null);
 
@@ -261,19 +262,30 @@
   }
 
   async function handleMove(index: number, direction: "up" | "down") {
-    if (!canManage) return;
+    if (!canManage || reordering) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= localStatuses.length) return;
 
-    const newOrder = [...localStatuses];
+    const csrf = getCsrfToken();
+    if (!csrf) {
+      error = "Security token missing. Please refresh.";
+      return;
+    }
+
+    const previousOrder = localStatuses;
+    const newOrder = [...previousOrder];
     const [moved] = newOrder.splice(index, 1);
     newOrder.splice(targetIndex, 0, moved);
 
-    // Optimistic local update
-    localStatuses = newOrder;
-
-    const csrf = getCsrfToken();
-    if (!csrf) return;
+    // The parent and Board sort by position, so update it along with the array.
+    const orderedStatuses = newOrder.map((status, position) => ({
+      ...status,
+      position,
+    }));
+    localStatuses = orderedStatuses;
+    reordering = true;
+    error = null;
+    success = null;
 
     try {
       const statusIds = newOrder.map((s) => s.id);
@@ -290,13 +302,19 @@
       );
 
       if (res.ok) {
-        onstatusesupdated?.(localStatuses);
+        onstatusesupdated?.(orderedStatuses);
       } else {
-        // Rollback
-        await refreshStatuses();
+        localStatuses = previousOrder;
+        const data = await res.json().catch(() => null);
+        error =
+          data?.error?.message || "Could not save status order. Try again.";
       }
     } catch {
-      await refreshStatuses();
+      localStatuses = previousOrder;
+      error =
+        "Could not save status order. Check your connection and try again.";
+    } finally {
+      reordering = false;
     }
   }
 
@@ -427,6 +445,10 @@
         <Feedback tone="success">{success}</Feedback>
       {/if}
 
+      {#if reordering}
+        <Feedback announcement="status">Saving status order…</Feedback>
+      {/if}
+
       <div class="section-toolbar">
         <span class="count-label num"
           >{localStatuses.length}
@@ -435,6 +457,7 @@
         {#if canManage && !showCreateForm}
           <button
             type="button"
+            disabled={reordering}
             onclick={() => {
               showCreateForm = true;
               error = null;
@@ -542,7 +565,11 @@
             >
               Cancel
             </button>
-            <button type="submit" class="btn-primary" disabled={creating}>
+            <button
+              type="submit"
+              class="btn-primary"
+              disabled={creating || reordering}
+            >
               {creating ? "Saving…" : "Save status"}
             </button>
           </div>
@@ -580,7 +607,7 @@
                   <button
                     type="button"
                     class="btn-primary"
-                    disabled={savingEdit}
+                    disabled={savingEdit || reordering}
                     onclick={() => handleSaveEdit(st.id)}
                   >
                     {savingEdit ? "Saving…" : "Save"}
@@ -610,7 +637,12 @@
                     <button
                       type="button"
                       class="btn-quiet btn-icon"
-                      disabled={idx === 0}
+                      disabled={reordering ||
+                        loading ||
+                        creating ||
+                        savingEdit ||
+                        deleting ||
+                        idx === 0}
                       onclick={() => handleMove(idx, "up")}
                       aria-label="Move {st.name} up"
                     >
@@ -619,7 +651,12 @@
                     <button
                       type="button"
                       class="btn-quiet btn-icon"
-                      disabled={idx === localStatuses.length - 1}
+                      disabled={reordering ||
+                        loading ||
+                        creating ||
+                        savingEdit ||
+                        deleting ||
+                        idx === localStatuses.length - 1}
                       onclick={() => handleMove(idx, "down")}
                       aria-label="Move {st.name} down"
                     >
@@ -629,6 +666,7 @@
                   <button
                     type="button"
                     class="btn-quiet btn-icon"
+                    disabled={reordering}
                     onclick={() => startEdit(st)}
                     aria-label="Edit {st.name}"
                   >
@@ -637,7 +675,7 @@
                   <button
                     type="button"
                     class="btn-quiet btn-icon delete-btn"
-                    disabled={localStatuses.length <= 1}
+                    disabled={reordering || localStatuses.length <= 1}
                     onclick={() => promptDelete(st)}
                     aria-label="Delete {st.name}"
                   >
@@ -887,7 +925,11 @@
   }
 
   .category-pill {
-    color: var(--cat-color);
+    color: var(--text-secondary);
+  }
+
+  .category-pill .dot {
+    background: var(--cat-color);
   }
 
   .row-controls,
