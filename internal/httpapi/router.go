@@ -33,7 +33,7 @@ type Server struct {
 	Limiter *identity.LoginLimiter
 }
 
-const csp = "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
+const csp = "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
 
 // maxBody matches the previous framework's default JSON body limit.
 const maxBody = 2 << 20
@@ -77,6 +77,9 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET "+p, s.auth(s.getProject))
 	mux.HandleFunc("PATCH "+p, s.auth(s.updateProject))
 	mux.HandleFunc("POST "+p+"/archive", s.auth(s.archiveProject))
+	mux.HandleFunc("GET "+p+"/image", s.auth(s.getProjectImage))
+	mux.HandleFunc("PUT "+p+"/image", s.auth(s.setProjectImage))
+	mux.HandleFunc("DELETE "+p+"/image", s.auth(s.deleteProjectImage))
 	mux.HandleFunc("GET "+p+"/integrations", s.auth(s.listIntegrations))
 	mux.HandleFunc("PUT "+p+"/integrations/{provider}", s.auth(s.saveIntegration))
 	mux.HandleFunc("DELETE "+p+"/integrations/{provider}", s.auth(s.deleteIntegration))
@@ -93,6 +96,13 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("PUT "+p+"/statuses/positions", s.auth(s.reorderStatuses))
 	mux.HandleFunc("PATCH "+p+"/statuses/{status_id}", s.auth(s.updateStatus))
 	mux.HandleFunc("DELETE "+p+"/statuses/{status_id}", s.auth(s.deleteStatus))
+
+	// Milestones
+	mux.HandleFunc("GET "+p+"/milestones", s.auth(s.listMilestones))
+	mux.HandleFunc("POST "+p+"/milestones", s.auth(s.createMilestone))
+	mux.HandleFunc("GET "+p+"/milestones/{milestone_id}", s.auth(s.getMilestone))
+	mux.HandleFunc("PATCH "+p+"/milestones/{milestone_id}", s.auth(s.updateMilestone))
+	mux.HandleFunc("DELETE "+p+"/milestones/{milestone_id}", s.auth(s.deleteMilestone))
 
 	// Labels, assignees, subtasks, comments, activity
 	mux.HandleFunc("GET "+p+"/labels", s.auth(s.listLabels))

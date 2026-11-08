@@ -358,10 +358,11 @@ Visit the live documentation and interactive user manual at **[tresstle.vercel.a
 
 * **[Live Documentation Portal](https://tresstle.vercel.app)**: Complete interactive user manual with global search (`⌘K`), feature walkthroughs, and responsive showcases.
 * **[Documentation Source Code](docs-site/)**: Svelte 5 + Vite 8 frontend project powering the documentation site.
-* **[Product Vision & Requirements](docs/product/product-requirements.md)**: Product purpose, user personas, and scope.
 * **[Architecture Overview](docs/architecture.md)**: Modular monolith structure, data flow, and boundaries.
+* **[Database Schema & Migrations](docs/database.md)**: PostgreSQL schema, connection pooling, and migration lifecycles.
+* **[REST API Specification](docs/api.md)**: REST endpoints, authentication cookies, CSRF defense, and JSON contracts.
 * **[Design Tokens & Principles](docs/design/design-tokens.md)**: Color science, typography, motion curves, and components.
-* **[Threat Model & Security](docs/security/threat-model.md)**: Assets, threats, safeguards, and permission matrix.
+* **[Threat Model & Security](docs/threat-model.md)**: Assets, threats, safeguards, and permission matrix.
 * **[Operations & Troubleshooting](docs/operations.md)**: Production deployment, migrations, backups, and disaster recovery.
 
 ---

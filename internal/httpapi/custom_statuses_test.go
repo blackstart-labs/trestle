@@ -25,17 +25,17 @@ func TestCustomStatusesLifecycleAndRemap(t *testing.T) {
 	projID := ptExpect(t, ac.do("POST", base, map[string]any{"name": "Status Test Project", "slug": "status-proj", "key": "STAT"}), http.StatusCreated).JSON(t)["id"].(string)
 	proj := base + "/" + projID
 
-	// 4. Five default statuses, in order.
-	statuses := ptLen(t, "statuses", ptExpect(t, bc.do("GET", proj+"/statuses", nil), http.StatusOK).JSON(t)["statuses"], 5)
+	// 4. Six default statuses, in order.
+	statuses := ptLen(t, "statuses", ptExpect(t, bc.do("GET", proj+"/statuses", nil), http.StatusOK).JSON(t)["statuses"], 6)
 	var names []string
 	for _, s := range statuses {
 		names = append(names, s.(map[string]any)["name"].(string))
 	}
-	if want := []string{"Backlog", "To Do", "In Progress", "Done", "Cancelled"}; !slices.Equal(names, want) {
+	if want := []string{"Backlog", "Todo", "In Progress", "In Review", "Done", "Cancelled"}; !slices.Equal(names, want) {
 		t.Fatalf("default statuses = %v, want %v", names, want)
 	}
 	todoID := statuses[1].(map[string]any)["id"].(string)
-	doneID := statuses[3].(map[string]any)["id"].(string)
+	doneID := statuses[4].(map[string]any)["id"].(string)
 
 	// 5. Member Bob cannot create a status.
 	ptExpect(t, bc.do("POST", proj+"/statuses", map[string]any{"name": "Blocked", "category": "started", "color": "#9f302b"}), http.StatusForbidden)
@@ -45,7 +45,7 @@ func TestCustomStatusesLifecycleAndRemap(t *testing.T) {
 	qaID := qa["id"].(string)
 	ptEq(t, "name", qa["name"], "In QA")
 	ptEq(t, "category", qa["category"], "started")
-	ptEq(t, "position", qa["position"], 5)
+	ptEq(t, "position", qa["position"], 6)
 
 	// 7. Duplicate name conflicts.
 	ptExpect(t, ac.do("POST", proj+"/statuses", map[string]any{"name": "In QA", "category": "started"}), http.StatusConflict)

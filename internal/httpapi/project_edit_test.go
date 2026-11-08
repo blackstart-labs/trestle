@@ -81,3 +81,42 @@ func TestProjectEditingAuthorizationAndIsolation(t *testing.T) {
 	ptExpect(t, noCSRF.do("PATCH", path, patch), http.StatusForbidden)
 	ptExpect(t, app.login("admin", "project-edit-pw").do("PATCH", path, patch), http.StatusOK)
 }
+
+func TestProjectImageUploadAndRetrieval(t *testing.T) {
+	app := newApp(t)
+	_, wsID := ptBootstrap(app, "owner", "project-edit-pw", "Owner", "Engineering", "engineering")
+	c := app.login("owner", "project-edit-pw")
+	base := fmt.Sprintf("/api/v1/workspaces/%s/projects", wsID)
+
+	samplePNG := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+	projectWithImg := ptExpect(t, c.do("POST", base, map[string]any{
+		"name": "Image Project", "slug": "image-project", "key": "IMG", "image": samplePNG,
+	}), http.StatusCreated).JSON(t)
+
+	imgURL, ok := projectWithImg["image_url"].(string)
+	if !ok || imgURL == "" {
+		t.Fatalf("expected image_url to be present on created project, got %v", projectWithImg["image_url"])
+	}
+
+	path := base + "/" + projectWithImg["id"].(string)
+	res := ptExpect(t, c.do("GET", path+"/image", nil), http.StatusOK)
+	if ct := res.Header.Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("expected content-type image/png, got %s", ct)
+	}
+
+	updated := ptExpect(t, c.do("PATCH", path, map[string]any{
+		"name": "Updated Image Project",
+	}), http.StatusOK).JSON(t)
+	if updated["image_url"] == nil {
+		t.Fatalf("expected image_url to remain, got nil")
+	}
+
+	ptExpect(t, c.do("DELETE", path+"/image", nil), http.StatusOK)
+	deleted := ptExpect(t, c.do("GET", path, nil), http.StatusOK).JSON(t)
+	if deleted["image_url"] != nil {
+		t.Fatalf("expected image_url to be nil after deletion, got %v", deleted["image_url"])
+	}
+
+	ptExpect(t, c.do("GET", path+"/image", nil), http.StatusNotFound)
+}

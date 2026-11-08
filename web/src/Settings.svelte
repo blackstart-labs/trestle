@@ -8,11 +8,13 @@
     signedIn = false,
     initialProjectId = "",
     section = "",
+    onselectworkspace,
   }: {
     workspace?: Workspace | null;
     signedIn?: boolean;
     initialProjectId?: string;
     section?: string;
+    onselectworkspace?: (ws: Workspace) => void;
   } = $props();
 </script>
 
@@ -27,12 +29,8 @@
   <nav class="page-actions settings-sections" aria-label="Settings sections">
     <a
       href="#appearance"
-      aria-current={section === "appearance" ? "page" : undefined}>Appearance</a
-    >
-    <a
-      href="#instance-status"
-      aria-current={section === "instance-status" ? "page" : undefined}
-      >Instance status</a
+      aria-current={section !== "integration" ? "page" : undefined}
+      >Appearance</a
     >
     <a
       href="#integration"
@@ -42,7 +40,12 @@
   </nav>
 
   {#if section === "integration"}
-    <Integrations {workspace} {signedIn} {initialProjectId} />
+    <Integrations
+      {workspace}
+      {signedIn}
+      {initialProjectId}
+      {onselectworkspace}
+    />
   {:else}
     <div class="settings-grid">
       <Appearance />

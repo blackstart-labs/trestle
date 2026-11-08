@@ -18,6 +18,7 @@
     description: string;
     task_counter: number;
     archived: boolean;
+    image_url?: string | null;
     created_at: string;
     updated_at: string;
   }
@@ -79,6 +80,8 @@
   let createSlug = $state("");
   let createKey = $state("");
   let createDescription = $state("");
+  let createImage = $state("");
+  let createImagePreview = $state("");
   let slugManual = $state(false);
   let keyManual = $state(false);
   let creating = $state(false);
@@ -132,10 +135,36 @@
     }
   });
 
+  function handleImageFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      createError = "Image must be 5 MB or smaller.";
+      return;
+    }
+    const blobUrl = URL.createObjectURL(file);
+    createImagePreview = blobUrl;
+    const reader = new FileReader();
+    reader.onload = () => {
+      createImage = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearCreateImage() {
+    createImage = "";
+    if (createImagePreview) {
+      URL.revokeObjectURL(createImagePreview);
+      createImagePreview = "";
+    }
+  }
+
   function closeCreate() {
     if (creating) return;
     showCreate = false;
     createError = null;
+    clearCreateImage();
   }
 
   export async function loadProjects() {
@@ -192,6 +221,15 @@
 
     creating = true;
     try {
+      const payload: Record<string, string> = {
+        name: trimmedName,
+        slug: trimmedSlug,
+        key: trimmedKey,
+        description: createDescription.trim(),
+      };
+      if (createImage) {
+        payload.image = createImage;
+      }
       const res = await fetch(`/api/v1/workspaces/${workspace.id}/projects`, {
         method: "POST",
         headers: {
@@ -199,12 +237,7 @@
           "X-CSRF-Token": csrf,
           Accept: "application/json",
         },
-        body: JSON.stringify({
-          name: trimmedName,
-          slug: trimmedSlug,
-          key: trimmedKey,
-          description: createDescription.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 201) {
@@ -218,6 +251,7 @@
         createDescription = "";
         slugManual = false;
         keyManual = false;
+        clearCreateImage();
       } else if (res.status === 409) {
         createError =
           "A project with this slug or key already exists in this workspace.";
@@ -367,6 +401,52 @@
         {/if}
 
         <div class="field">
+          <label for="proj-image">Project icon (optional)</label>
+          <div class="image-uploader">
+            <div class="avatar-preview">
+              {#if createImagePreview}
+                <img
+                  src={createImagePreview}
+                  alt="Project icon preview"
+                  class="preview-img"
+                />
+              {:else}
+                <span class="preview-empty" aria-hidden="true">
+                  <Icon name="image" size={20} />
+                </span>
+              {/if}
+            </div>
+            <div class="uploader-actions">
+              <label class="btn btn-secondary file-picker-label">
+                <Icon name="upload" size={16} />
+                <span
+                  >{createImagePreview ? "Change image" : "Upload image"}</span
+                >
+                <input
+                  id="proj-image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  onchange={handleImageFile}
+                  class="visually-hidden"
+                />
+              </label>
+              {#if createImagePreview}
+                <button
+                  type="button"
+                  class="btn-quiet btn-icon"
+                  onclick={clearCreateImage}
+                  aria-label="Remove image"
+                  title="Remove image"
+                >
+                  <Icon name="trash" size={16} />
+                </button>
+              {/if}
+            </div>
+          </div>
+          <p class="note">PNG, JPEG, WebP, GIF or SVG up to 5 MB.</p>
+        </div>
+
+        <div class="field">
           <label for="proj-desc">Description (optional)</label>
           <textarea
             id="proj-desc"
@@ -451,14 +531,35 @@
             style:--project-hue={identityHue(proj.key)}
           >
             <div class="card-top">
-              <span class="project-key" aria-label="Key {proj.key}"
-                >{proj.key}</span
-              >
-              {#if !stats[proj.id]}
-                <span class="project-counter num"
-                  >{proj.task_counter}
-                  {proj.task_counter === 1 ? "task" : "tasks"} created</span
+              <div class="card-top-identity">
+                {#if proj.image_url}
+                  <img
+                    src={proj.image_url}
+                    alt="{proj.name} icon"
+                    class="project-avatar"
+                  />
+                {:else}
+                  <span class="project-key" aria-label="Key {proj.key}"
+                    >{proj.key}</span
+                  >
+                {/if}
+                {#if !stats[proj.id]}
+                  <span class="project-counter num"
+                    >{proj.task_counter}
+                    {proj.task_counter === 1 ? "task" : "tasks"} created</span
+                  >
+                {/if}
+              </div>
+              {#if canManageProjects}
+                <button
+                  type="button"
+                  class="btn-quiet btn-icon delete-card-btn"
+                  onclick={() => handleArchiveProject(proj)}
+                  aria-label="Delete project {proj.name}"
+                  title="Delete project"
                 >
+                  <Icon name="trash" size={17} />
+                </button>
               {/if}
             </div>
             <h3 class="project-name">{proj.name}</h3>
@@ -511,15 +612,6 @@
                         size={17}
                       />Edit{/snippet}
                   </Button>
-                  <button
-                    type="button"
-                    class="btn-quiet btn-icon"
-                    onclick={() => handleArchiveProject(proj)}
-                    aria-label="Archive {proj.name}"
-                    title="Archive project"
-                  >
-                    <Icon name="archive" size={17} />
-                  </button>
                 {/if}
                 <Button onclick={() => onselectproject?.(proj)}>
                   {#snippet children()}
@@ -666,6 +758,22 @@
     justify-content: space-between;
     gap: var(--space-3);
     margin-bottom: var(--space-4);
+  }
+
+  .card-top-identity {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .delete-card-btn {
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  .delete-card-btn:hover:not(:disabled) {
+    color: var(--danger);
+    background: var(--danger-soft);
   }
 
   .project-key {
@@ -822,5 +930,55 @@
     color: var(--accent);
     font-weight: 650;
     font-variant-numeric: tabular-nums;
+  }
+
+  .image-uploader {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .avatar-preview {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius);
+    border: var(--border-width) solid var(--line);
+    background: var(--surface-sunken);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .preview-empty {
+    color: var(--text-muted);
+    display: grid;
+    place-items: center;
+  }
+
+  .uploader-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .file-picker-label {
+    cursor: pointer;
+  }
+
+  .project-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--radius-xs);
+    object-fit: cover;
+    border: var(--border-width) solid var(--line);
+    background: var(--surface-sunken);
+    flex-shrink: 0;
   }
 </style>

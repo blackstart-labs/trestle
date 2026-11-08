@@ -1,0 +1,42 @@
+name: Optimize Images
+
+on:
+  pull_request:
+    paths:
+      - "**.jpg"
+      - "**.jpeg"
+      - "**.png"
+      - "**.webp"
+      - "**.svg"
+      - "!web/dist/**"
+      - "!web/node_modules/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  optimize:
+    name: Compress & Optimize Images
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compress Images
+        uses: calibreapp/image-actions@main
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          compressOnly: false
+          jpegQuality: "85"
+          jpegProgressive: true
+          pngQuality: "85"
+          webpQuality: "85"
+          ignorePaths: "node_modules/**,web/dist/**,web/node_modules/**"
+

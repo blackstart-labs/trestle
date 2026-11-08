@@ -10,10 +10,9 @@ web
 
 Independent developers, small product teams, consultants and small
 organisations who plan projects, move tasks through their workflows, and will
-record time and connect documentation in one self-hosted place. Personas in
-[docs/product/personas.md](docs/product/personas.md) are planning hypotheses,
-not validated research. They include a contributor working from a phone, who
-must be able to finish core workflows by touch on narrow screens.
+record time and connect documentation in one self-hosted place. Personas include
+a contributor working from a phone, who must be able to finish core workflows by
+touch on narrow screens.
 
 ## Product Purpose
 
@@ -31,10 +30,10 @@ service required for core work.
 ## Operating Context
 
 Shipped today: local sign-in, workspace membership and roles, ownership
-transfer, projects with keys, tasks with labels, assignees, subtasks, comments
-and activity, custom statuses mapped to five canonical categories, and list and
-board views, and project notifications to Telegram, Slack, and Discord. Planned and not yet built: milestones, cycles, time tracking,
-documents, reports, automation. See [the roadmap](docs/product/roadmap.md).
+transfer, projects with keys and image uploads, tasks with labels, assignees, subtasks, comments
+and activity, custom statuses mapped to five canonical categories, milestones with progress rollups, list,
+board, and milestone views, and project notifications to Telegram, Slack, and Discord. Planned: cycles, time tracking,
+documents, reports, and automation.
 
 ## Capabilities and Constraints
 

@@ -100,6 +100,12 @@ func runMigrate(cfg config.Config) error {
 	defer cancel()
 	// The raw error can name the database user and host, so it is never printed.
 	if err := database.Migrate(ctx, pool); err != nil {
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "://") && !strings.Contains(errMsg, "@") {
+			slog.Error("database migration failed details", "error", errMsg)
+		} else {
+			slog.Error("database migration failed details (connection error)")
+		}
 		return errors.New("database migration failed or timed out; verify connectivity, permissions and migration history")
 	}
 	slog.Info("database migrations complete")

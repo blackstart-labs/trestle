@@ -1,153 +1,180 @@
-# Development and operations
+# Operations & Deployment Guide
 
-This milestone is a development foundation, not a production release.
+This guide covers building, configuring, deploying, and maintaining Trestle in production and local environments.
 
-## Direct PostgreSQL path
+---
 
-Use PostgreSQL 18 with a dedicated local database and login role. Create these
-with your installation's administration tools, then export a PostgreSQL
-`DATABASE_URL` for that role. Never put a real credential in a committed file.
+## 1. Quickstart (Local Development)
 
-From the repository root:
+### Prerequisites:
+- Go 1.24+
+- Node.js 20+ & npm 10+
+- PostgreSQL 15+ (running locally or in a container)
 
 ```bash
+# 1. Build frontend static assets into web/dist
 npm ci --prefix web --ignore-scripts
 npm run build --prefix web
+
+# 2. Build the single static Go binary (with embedded frontend)
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o trestle .
+
+# 3. Export database connection
+export DATABASE_URL="postgres://trestle:secret@127.0.0.1:5432/trestle?sslmode=disable"
+
+# 4. Apply schema migrations
 ./trestle migrate
+
+# 5. Bootstrap initial admin account (if first time)
+./trestle bootstrap
+
+# 6. Start the server
 ./trestle
 ```
 
-The application defaults to `127.0.0.1:3000` and does not require a database
-connection to start serving liveness. Readiness reports database outages.
-The root page and compiled assets are embedded in the binary. Node/npm are only
-needed when building/testing, never on the deployed host. Missing `web/dist`
-fails the Go build (`go:embed` finds no matching files). Rebuild the frontend and binary together.
-Supply `TRESTLE_BIND_ADDR` explicitly to expose another interface. Run behind a
-TLS reverse proxy with appropriate connection, timeout, and rate limits before
-any non-local exposure. The app itself serves plaintext HTTP/1.
+Access the application in your browser at `http://127.0.0.1:3000`.
 
-The runtime pool adds `statement_timeout=5000` and `lock_timeout=5000` (milliseconds)
-and disables statement logging. For remote PostgreSQL use `sslmode=verify-full`
-and a trusted server certificate; pgx supports `sslrootcert` in the URL. The container image includes the
-Debian CA bundle for system-root verification.
+---
 
-## Podman without Compose
+## 2. Environment Variables
 
-Generate and retain a local password, then:
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | *(Required)* | PostgreSQL connection URL, e.g. `postgres://user:pass@db:5432/trestle?sslmode=verify-full`. |
+| `TRESTLE_BIND_ADDR` | `127.0.0.1:3000` | Interface and port to listen on. In containers, set to `0.0.0.0:3000`. |
+| `TRESTLE_ORIGIN` | `http://127.0.0.1:3000` | Canonical public origin for SameSite cookie handling and CSRF validation. |
+| `SESSION_TTL_HOURS` | `336` (14 days) | Absolute session duration before requiring re-authentication. |
+| `LOG_LEVEL` | `info` | Structured logging verbosity (`debug`, `info`, `warn`, `error`). |
+| `TRESTLE_BOOTSTRAP_USERNAME` | `admin` | Optional non-interactive initial admin username. |
+| `TRESTLE_BOOTSTRAP_PASSWORD` | *(None)* | Optional initial admin password for automated provisioning. |
 
-```bash
-export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
-podman volume create trestle-postgres-data
-podman run --detach --name trestle-db \
-  --env POSTGRES_DB=trestle --env POSTGRES_USER=trestle \
-  --env POSTGRES_PASSWORD --publish 127.0.0.1:5432:5432 \
-  --volume trestle-postgres-data:/var/lib/postgresql \
-  postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
-export DATABASE_URL="postgres://trestle:${POSTGRES_PASSWORD}@127.0.0.1:5432/trestle"
-podman exec trestle-db pg_isready -U trestle -d trestle
-```
+---
 
-Wait until PostgreSQL is accepting connections before migrating. Use
-`podman stop trestle-db` to stop it and `podman start trestle-db` to resume.
-Do not remove volumes to troubleshoot credentials. The development database role
-is a superuser inside this local database container; it is not suitable for
-production. Rootless Podman support depends on the host's namespace/network
-configuration and must be checked on the deployment host.
+## 3. CLI Subcommands
 
-## Application container
-
-Build with `docker build --tag trestle:local .` (or `podman build`). The image
-contains a non-root application process, license, and certificate-data notice.
-Its build stage also compiles the frontend with pinned Node/npm; only the static Go
-binary containing those assets reaches the runtime. The browser license inventory
-is available at `/assets/third-party-licenses.txt`.
-It does not contain source secrets or a PostgreSQL server. Container networking
-is distinct from the host: **do not** use a host-loopback database URL inside
-the app container. Use a private network and the database container's DNS name,
-or a database hostname reachable from the container.
-
-Given a reachable database URL, pass it without placing its value on the command
-line:
+The compiled `trestle` binary provides operational commands:
 
 ```bash
-docker run --rm --env DATABASE_URL trestle:local migrate
-docker run --rm --name trestle-app --env DATABASE_URL \
-  --publish 127.0.0.1:3000:3000 trestle:local
+# Start the HTTP server (default if no subcommand given)
+trestle
+
+# Run pending forward database migrations
+trestle migrate
+
+# Create initial administrator account (prompts for password securely)
+trestle bootstrap
+
+# Create an additional user
+trestle adduser <username>
+
+# Reset a user's password (immediately revokes all active sessions)
+trestle resetpassword <username>
+
+# Disable / enable user access
+trestle disableuser <username>
+trestle enableuser <username>
 ```
 
-Add the appropriate `--network` for your database. The image binds all interfaces
-*inside* the container; the example publishes only host loopback. Configure
-external health probes against `/health/live` and `/health/ready`; no shell,
-curl, or container healthcheck is required by the runtime image. Containers
-receive SIGTERM, with a ten-second request drain deadline. Set an orchestrator
-stop timeout longer than that deadline (for example, 15 seconds).
+---
 
-No container, release, or registry publishing is automated. The notice inventory
-must be completed before distributing release artifacts. Modified network
-deployments must offer the corresponding source required by AGPL section 13.
+## 4. Container Deployment (Docker / Podman)
 
-## Migrations and upgrades
-
-- `trestle migrate` runs embedded forward migrations (`migrations/*.sql`) and exits nonzero on
-  failure. It never prints the connection URL or raw database errors.
-- Baseline `202610150001_foundation.sql` executes `SELECT 1`. History is kept in
-  the `_sqlx_migrations` table, the same table, checksums (SHA-384) and lock as
-  the former Rust/SQLx backend, so existing databases migrate forward unchanged.
-- Serving HTTP does **not** apply or validate migrations. Readiness checks
-  connectivity only. Deployments must migrate successfully before routing users.
-- Migrations are checksum-verified, each runs in its own transaction, and the
-  run holds a PostgreSQL advisory lock. Do not change applied migration files or bypass
-  checksum errors. Add a new forward migration for schema changes.
-- A migration command is bounded to 60 seconds overall; statements and lock
-  waits to five seconds. Do not assume these bounds suit future data migrations.
-- Use a dedicated migration role and a least-privilege runtime role in
-  production. Never grant the runtime role `CREATEDB` merely to run tests.
-- Before future upgrades, take a verified backup, test migrations on a restored
-  copy, document compatibility, run the migration command once, then verify
-  readiness and the affected workflows. No automatic downgrade exists.
-
-For `go test ./...`, use a disposable test server with a `CREATEDB` role and
-set `DATABASE_URL`. Each database test creates a fresh database and drops it
-when the test ends; without `DATABASE_URL` those tests are skipped. Do not run the suite with production credentials.
-
-## Backup and restore procedure
-
-There is no product data yet. This is a starting procedure, not a claim that a
-future application's full backup requirements have been verified.
-
-For a direct deployment, configure libpq credentials securely (for example a
-mode-0600 passfile), then use matching PostgreSQL client tools. Database names
-below are operator-selected placeholders:
+### 4.1 Multi-Stage Container Build
+The root `Dockerfile` compiles the Svelte frontend and the Go backend into a minimal non-root image:
 
 ```bash
-pg_dump --format=custom --file=trestle.dump trestle
-createdb trestle_restore_check
-pg_restore --exit-on-error --no-owner --dbname=trestle_restore_check trestle.dump
+docker build -t trestle:latest .
 ```
 
-Never restore over a live database as a verification step. Restrict backup file
-permissions, encrypt backups where appropriate, store copies off-host, and
-define retention and recovery objectives. Back up role/grant definitions and
-operator configuration separately without exposing secrets. Future attachments
-will require coordinated storage backups too.
+### 4.2 Running with PostgreSQL
 
-Point a separate application instance at the restored database, verify migration
-execution/readiness and future record invariants, and record the restore result.
-Take a final consistent backup before an actual cutover; stop writes as needed.
-Binary rollback is safe only when schema compatibility has been established.
-Never automatically delete the original database or volume.
+Create a shared network and start PostgreSQL:
+```bash
+docker network create trestle-net
 
-## Troubleshooting
+docker run -d --name trestle-db \
+  --network trestle-net \
+  -e POSTGRES_DB=trestle \
+  -e POSTGRES_USER=trestle \
+  -e POSTGRES_PASSWORD=supersecret \
+  -v trestle_pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
 
-| Symptom | Check |
+Run schema migrations:
+```bash
+docker run --rm \
+  --network trestle-net \
+  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
+  trestle:latest migrate
+```
+
+Bootstrap initial admin account:
+```bash
+docker run --rm -it \
+  --network trestle-net \
+  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
+  -e TRESTLE_BOOTSTRAP_USERNAME="admin" \
+  -e TRESTLE_BOOTSTRAP_PASSWORD="ChangeMePromptly123!" \
+  trestle:latest bootstrap
+```
+
+Start the application container:
+```bash
+docker run -d --name trestle-app \
+  --network trestle-net \
+  -p 127.0.0.1:3000:3000 \
+  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
+  -e TRESTLE_BIND_ADDR="0.0.0.0:3000" \
+  -e TRESTLE_ORIGIN="https://trestle.example.com" \
+  trestle:latest
+```
+
+---
+
+## 5. Health Probes & Monitoring
+
+Trestle exposes standard health probe endpoints for Kubernetes, Docker Compose, or Nomad:
+
+- **Liveness Probe**: `GET /health/live`
+  - Returns `200 OK` immediately if the HTTP process is running.
+  - Does not query PostgreSQL.
+- **Readiness Probe**: `GET /health/ready`
+  - Pings PostgreSQL and evaluates connection pool health.
+  - Returns `200 OK` with `{"status":"ready"}` when healthy.
+  - Returns `503 Service Unavailable` with `{"status":"not_ready"}` during database outages or startup delays.
+
+### Graceful Shutdown
+Upon receiving `SIGINT` or `SIGTERM`, the HTTP server stops accepting new connections and permits a 10-second drain period for in-flight requests before terminating. Ensure orchestrator stop timeouts are configured for at least 15 seconds.
+
+---
+
+## 6. Backup & Recovery
+
+Trestle's state is stored in PostgreSQL. Standard `pg_dump` creates consistent snapshots:
+
+### Backup:
+```bash
+pg_dump --format=custom --file=trestle-$(date +%F).dump "$DATABASE_URL"
+```
+
+### Restore:
+```bash
+# 1. Restore to a staging or check database
+createdb trestle_restore_test
+pg_restore --exit-on-error --no-owner --dbname=trestle_restore_test trestle-*.dump
+
+# 2. Verify with trestle migrate and readiness probe
+DATABASE_URL="postgres://.../trestle_restore_test" ./trestle migrate
+```
+
+---
+
+## 7. Troubleshooting
+
+| Symptom | Cause & Solution |
 | --- | --- |
-| Missing/invalid configuration | Export known settings; the app does not load `.env`. Errors deliberately omit values. |
-| Bind failure | Another process may own the port; verify the IP/port and permissions. |
-| Liveness succeeds, readiness fails | Database DNS/routing, credentials, TLS certificates, pool saturation, role permissions. |
-| Migration failure | Verify database/server logs privately, permissions, migration history/checksums and timeout limits. Never bypass a checksum mismatch. |
-| Container cannot reach database | Container localhost is not host localhost; check private network and DNS name. |
-| Password changed but login fails | Container initialization settings do not reset an existing volume's password. Recover through authorized database administration. |
-| Dependency checker cannot fetch advisories | Restore network access and rerun; do not report a successful security check. |
-
-Do not paste raw database logs, URLs, credentials, or backups into public reports.
+| `database migration failed or timed out` | Check PostgreSQL connectivity and credentials. If checksum mismatch occurs, ensure migration files were not modified after application. |
+| `connection refused on port 3000` | Ensure `TRESTLE_BIND_ADDR` is set to `0.0.0.0:3000` when running inside containers. |
+| `CSRF token missing or mismatch` | Verify `TRESTLE_ORIGIN` matches the reverse proxy's public HTTPS URL, and the client passes `X-CSRF-Token` header. |
+| `401 Unauthorized after container restart` | Verify session storage in PostgreSQL was persisted across container restarts (check volume mount). |

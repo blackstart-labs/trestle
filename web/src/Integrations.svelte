@@ -20,11 +20,60 @@
     workspace,
     signedIn = false,
     initialProjectId = "",
+    onselectworkspace,
   }: {
     workspace: Workspace | null;
     signedIn?: boolean;
     initialProjectId?: string;
+    onselectworkspace?: (ws: Workspace) => void;
   } = $props();
+
+  let internalWorkspace = $state<Workspace | null>(null);
+  let availableWorkspaces = $state<Workspace[]>([]);
+  let loadingWorkspace = $state(false);
+
+  const activeWorkspace = $derived.by(() => {
+    if (workspace) return workspace;
+    return internalWorkspace;
+  });
+
+  $effect(() => {
+    if (workspace) {
+      internalWorkspace = null;
+      return;
+    }
+    if (!signedIn) return;
+    const controller = new AbortController();
+    loadingWorkspace = true;
+    fetch("/api/v1/workspaces", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || controller.signal.aborted) return;
+        availableWorkspaces = data.workspaces || [];
+        if (availableWorkspaces.length > 0) {
+          const lastId = (() => {
+            try {
+              return localStorage.getItem("trestle.workspace");
+            } catch {
+              return null;
+            }
+          })();
+          const target =
+            availableWorkspaces.find((w: Workspace) => w.id === lastId) ||
+            availableWorkspaces[0];
+          internalWorkspace = target;
+          onselectworkspace?.(target);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) loadingWorkspace = false;
+      });
+    return () => controller.abort();
+  });
   const providers = ["telegram", "slack", "discord"] as const;
   const names: Record<string, string> = {
     telegram: "Telegram",
@@ -52,11 +101,11 @@
   let busy = $state(false);
   let disconnecting = $state("");
   const canManage = $derived(
-    workspace?.role === "owner" || workspace?.role === "admin",
+    activeWorkspace?.role === "owner" || activeWorkspace?.role === "admin",
   );
   const project = $derived(projects.find((p) => p.id === projectId));
   const base = $derived(
-    `/api/v1/workspaces/${workspace?.id}/projects/${projectId}/integrations`,
+    `/api/v1/workspaces/${activeWorkspace?.id}/projects/${projectId}/integrations`,
   );
   const dirty = $derived(secret !== "" || chat !== originalChat);
 
@@ -90,7 +139,7 @@
   }
 
   $effect(() => {
-    const ws = workspace;
+    const ws = activeWorkspace;
     const preferredProjectId = initialProjectId;
     void retry;
     projects = [];
@@ -128,7 +177,7 @@
     void retry;
     connections = [];
     actionError = "";
-    if (!workspace || !canManage || !selected) return;
+    if (!activeWorkspace || !canManage || !selected) return;
     const controller = new AbortController();
     loading = true;
     loadError = "";
@@ -253,15 +302,21 @@
     <div class="panel panel-pad">
       <p><a href="#signin">Sign in</a> to manage project integrations.</p>
     </div>
-  {:else if !workspace}
-    <div class="panel panel-pad">
-      <p>
-        <a href="#workspaces">Choose a Workspace</a> to manage its project integrations.
-      </p>
-    </div>
+  {:else if !activeWorkspace}
+    {#if loadingWorkspace}
+      <Feedback tone="neutral" announcement="status"
+        >Loading workspace…</Feedback
+      >
+    {:else}
+      <div class="panel panel-pad">
+        <p>
+          <a href="#workspaces">Choose a Workspace</a> to manage its project integrations.
+        </p>
+      </div>
+    {/if}
   {:else if !canManage}
     <Feedback
-      >Only Workspace owners and admins can manage integrations for {workspace.name}.</Feedback
+      >Only Workspace owners and admins can manage integrations for {activeWorkspace.name}.</Feedback
     >
   {:else}
     {#if loadingProjects || loading}
@@ -295,9 +350,30 @@
             <span class="tile"><Icon name="folder" size={20} /></span>
             <div>
               <h3>Project connections</h3>
-              <p class="note">{workspace.name}</p>
+              <p class="note">{activeWorkspace.name}</p>
             </div>
           </div>
+          {#if availableWorkspaces.length > 1}
+            <div class="field">
+              <label for="integration-workspace">Workspace</label>
+              <Select
+                id="integration-workspace"
+                value={activeWorkspace.id}
+                options={availableWorkspaces.map((w) => ({
+                  value: w.id,
+                  label: w.name,
+                }))}
+                onchange={(id) => {
+                  const target = availableWorkspaces.find((w) => w.id === id);
+                  if (target) {
+                    internalWorkspace = target;
+                    onselectworkspace?.(target);
+                  }
+                }}
+                disabled={busy}
+              />
+            </div>
+          {/if}
           <div class="field">
             <label for="integration-project">Project</label>
             <Select

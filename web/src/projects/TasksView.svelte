@@ -17,6 +17,8 @@
   import StatusManagerModal, {
     type TaskStatus,
   } from "./StatusManagerModal.svelte";
+  import MilestoneModal, { type Milestone } from "./MilestoneModal.svelte";
+  import MilestoneTimeline from "./MilestoneTimeline.svelte";
   import type { Project } from "./ProjectsView.svelte";
   import type {
     Label,
@@ -47,6 +49,9 @@
     due_date: string | null;
     created_by: string | null;
     parent_id?: string | null;
+    milestone_id?: string | null;
+    milestone_title?: string | null;
+    milestone_color?: string | null;
     labels?: Label[];
     assignees?: TaskAssignee[];
     created_at: string;
@@ -76,7 +81,10 @@
   const BOARD_LIMIT = 100;
   const VIEW_KEY = "trestle.taskView";
 
-  let view = $state<"list" | "board">("list");
+  let view = $state<"list" | "board" | "milestones">("list");
+  let milestoneTab = $state<"all" | "open" | "closed">("all");
+  let milestoneLayout = $state<"timeline" | "cards">("timeline");
+  let editMilestoneId = $state<string | null>(null);
   let tasks = $state<Task[]>([]);
   let total = $state(0);
   let limit = $state(LIST_LIMIT);
@@ -85,24 +93,30 @@
   let statusIdFilter = $state<string>("");
   let labelFilter = $state<string>("");
   let assigneeFilter = $state<string>("");
+  let milestoneFilter = $state<string>("");
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
   let editingProject = $state(false);
 
-  // Project-wide totals per status category, for the progress rail.
+  // Project-wide totals per status category or custom status, for the progress rail.
   let categoryTotals = $state<Record<Category, number> | null>(null);
+  let statusTotals = $state<Record<string, number> | null>(null);
 
   // Available metadata for filters
   let projectStatuses = $state<TaskStatus[]>([]);
   let projectLabels = $state<Label[]>([]);
   let workspaceMembers = $state<WorkspaceMember[]>([]);
+  let projectMilestones = $state<Milestone[]>([]);
 
   // Task detail drawer
   let selectedTask = $state<Task | null>(null);
 
   // Workflow status manager modal
   let showStatusManager = $state(false);
+
+  // Milestone manager modal
+  let showMilestoneManager = $state(false);
 
   // New task modal
   let showCreate = $state(false);
@@ -112,6 +126,7 @@
   let createStatusId = $state<string>("");
   let createPriority = $state<string>("none");
   let createDueDate = $state("");
+  let createMilestoneId = $state<string>("");
   let creating = $state(false);
   let createError = $state<string | null>(null);
 
@@ -164,7 +179,8 @@
     statusFilter !== "all" ||
       statusIdFilter !== "" ||
       labelFilter !== "" ||
-      assigneeFilter !== "",
+      assigneeFilter !== "" ||
+      milestoneFilter !== "",
   );
 
   const statusCategories = [
@@ -225,35 +241,71 @@
     fallback: (node) => fadeIn(node, { duration: 160 }),
   });
 
-  const railTotal = $derived(
-    categoryTotals
-      ? categoryOrder.reduce((sum, c) => sum + categoryTotals![c], 0)
-      : 0,
+  const sortedStatuses = $derived(
+    [...projectStatuses].sort((a, b) => a.position - b.position),
   );
+
+  const hasTotals = $derived(
+    projectStatuses.length > 0
+      ? statusTotals !== null
+      : categoryTotals !== null,
+  );
+
+  const railTotal = $derived.by(() => {
+    if (projectStatuses.length > 0) {
+      const totals = statusTotals;
+      if (!totals) return 0;
+      return Object.values(totals).reduce((sum, n) => sum + n, 0);
+    }
+    const totals = categoryTotals;
+    if (!totals) return 0;
+    return categoryOrder.reduce((sum, c) => sum + (totals[c] || 0), 0);
+  });
+
+  const railCompleted = $derived.by(() => {
+    if (projectStatuses.length > 0) {
+      const totals = statusTotals;
+      if (!totals) return 0;
+      return projectStatuses
+        .filter((s) => s.category === "completed")
+        .reduce((sum, s) => sum + (totals[s.id] || 0), 0);
+    }
+    return categoryTotals ? categoryTotals.completed || 0 : 0;
+  });
+
+  const railCancelled = $derived.by(() => {
+    if (projectStatuses.length > 0) {
+      const totals = statusTotals;
+      if (!totals) return 0;
+      return projectStatuses
+        .filter((s) => s.category === "cancelled")
+        .reduce((sum, s) => sum + (totals[s.id] || 0), 0);
+    }
+    return categoryTotals ? categoryTotals.cancelled || 0 : 0;
+  });
 
   // Cancelled work is not work left to do, so it is outside the share.
   const railCounted = $derived(
-    categoryTotals ? railTotal - categoryTotals.cancelled : 0,
+    hasTotals ? Math.max(0, railTotal - railCancelled) : 0,
   );
+
   const doneShare = $derived(
-    categoryTotals && railCounted > 0
-      ? Math.round((categoryTotals.completed / railCounted) * 100)
+    hasTotals && railCounted > 0
+      ? Math.round((railCompleted / railCounted) * 100)
       : 0,
   );
 
   // Board columns: the project's own statuses in workflow order, or the
   // canonical categories when a project has none configured.
   const columns = $derived.by(() => {
-    if (projectStatuses.length > 0) {
-      return [...projectStatuses]
-        .sort((a, b) => a.position - b.position)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          color: s.color,
-          category: s.category,
-          tasks: tasks.filter((t) => t.status_id === s.id),
-        }));
+    if (sortedStatuses.length > 0) {
+      return sortedStatuses.map((s) => ({
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        category: s.category,
+        tasks: tasks.filter((t) => t.status_id === s.id),
+      }));
     }
     return categoryOrder.map((c) => ({
       id: c,
@@ -291,6 +343,9 @@
     if (assigneeFilter) {
       url += `&assignee_id=${encodeURIComponent(assigneeFilter)}`;
     }
+    if (milestoneFilter) {
+      url += `&milestone_id=${encodeURIComponent(milestoneFilter)}`;
+    }
 
     try {
       const res = await fetch(url, {
@@ -314,27 +369,50 @@
     }
   }
 
-  /** Bounded count queries (limit=1) read each category's total. */
+  /** Bounded count queries (limit=1) read each category's or status's total. */
   export async function loadCategoryTotals() {
     try {
       const base = `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks?limit=1&offset=0`;
-      const counts = await Promise.all(
-        categoryOrder.map(async (c) => {
-          const res = await fetch(`${base}&status=${c}`, {
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-          });
-          if (!res.ok) throw new Error("count unavailable");
-          const data = await res.json();
-          return typeof data.total === "number" ? data.total : 0;
-        }),
-      );
-      const next = {} as Record<Category, number>;
-      categoryOrder.forEach((c, i) => (next[c] = counts[i]));
-      categoryTotals = next;
+      if (projectStatuses.length > 0) {
+        const counts = await Promise.all(
+          projectStatuses.map(async (s) => {
+            const res = await fetch(
+              `${base}&status_id=${encodeURIComponent(s.id)}`,
+              {
+                headers: { Accept: "application/json" },
+                cache: "no-store",
+              },
+            );
+            if (!res.ok) throw new Error("count unavailable");
+            const data = await res.json();
+            return typeof data.total === "number" ? data.total : 0;
+          }),
+        );
+        const nextStatus = {} as Record<string, number>;
+        projectStatuses.forEach((s, i) => (nextStatus[s.id] = counts[i]));
+        statusTotals = nextStatus;
+        categoryTotals = null;
+      } else {
+        const counts = await Promise.all(
+          categoryOrder.map(async (c) => {
+            const res = await fetch(`${base}&status=${c}`, {
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+            });
+            if (!res.ok) throw new Error("count unavailable");
+            const data = await res.json();
+            return typeof data.total === "number" ? data.total : 0;
+          }),
+        );
+        const next = {} as Record<Category, number>;
+        categoryOrder.forEach((c, i) => (next[c] = counts[i]));
+        categoryTotals = next;
+        statusTotals = null;
+      }
     } catch {
       // The rail is a summary; the task list remains authoritative.
       categoryTotals = null;
+      statusTotals = null;
     }
   }
 
@@ -346,11 +424,14 @@
       if (res.ok) {
         const data = await res.json();
         projectStatuses = data.statuses || [];
-        if (projectStatuses.length > 0 && !createStatusId) {
-          const defaultStatus =
-            projectStatuses.find((s) => s.category === "unstarted") ||
-            projectStatuses[0];
-          createStatusId = defaultStatus.id;
+        if (projectStatuses.length > 0) {
+          if (!createStatusId) {
+            const defaultStatus =
+              projectStatuses.find((s) => s.category === "unstarted") ||
+              projectStatuses[0];
+            createStatusId = defaultStatus.id;
+          }
+          void loadCategoryTotals();
         }
       }
     } catch {
@@ -379,12 +460,60 @@
     }
   }
 
+  export async function loadProjectMilestones() {
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/milestones`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        projectMilestones = data.milestones || [];
+      }
+    } catch {
+      // safe fallback
+    }
+  }
+
   function refreshAll() {
     void loadTasks();
     void loadCategoryTotals();
+    void loadProjectMilestones();
   }
 
-  function setView(next: "list" | "board") {
+  const filteredMilestones = $derived.by(() => {
+    if (milestoneTab === "open") {
+      return projectMilestones.filter((m) => m.status === "open");
+    }
+    if (milestoneTab === "closed") {
+      return projectMilestones.filter((m) => m.status === "closed");
+    }
+    return projectMilestones;
+  });
+
+  const openMilestonesCount = $derived(
+    projectMilestones.filter((m) => m.status === "open").length,
+  );
+  const closedMilestonesCount = $derived(
+    projectMilestones.filter((m) => m.status === "closed").length,
+  );
+
+  function getMilestonePercent(m: Milestone): number {
+    if (m.total_tasks <= 0) return 0;
+    return Math.round((m.completed_tasks / m.total_tasks) * 100);
+  }
+
+  function filterTasksByMilestone(milestoneId: string) {
+    milestoneFilter = milestoneId;
+    offset = 0;
+    setView("list");
+  }
+
+  function openEditMilestone(m: Milestone) {
+    editMilestoneId = m.id;
+    showMilestoneManager = true;
+  }
+
+  function setView(next: "list" | "board" | "milestones") {
     if (view === next) return;
     view = next;
     limit = next === "board" ? BOARD_LIMIT : LIST_LIMIT;
@@ -394,7 +523,11 @@
     } catch {
       // A per-browser convenience only.
     }
-    void loadTasks();
+    if (next === "milestones") {
+      void loadProjectMilestones();
+    } else {
+      void loadTasks();
+    }
   }
 
   function handleStatusFilter(newStatus: string) {
@@ -404,11 +537,31 @@
     void loadTasks();
   }
 
+  function handleAllTasksFilter() {
+    statusFilter = "all";
+    statusIdFilter = "";
+    offset = 0;
+    void loadTasks();
+  }
+
+  function handleCustomStatusFilter(statusId: string) {
+    if (statusIdFilter === statusId) {
+      statusIdFilter = "";
+      statusFilter = "all";
+    } else {
+      statusIdFilter = statusId;
+      statusFilter = "all";
+    }
+    offset = 0;
+    void loadTasks();
+  }
+
   function handleResetFilters() {
     statusFilter = "all";
     statusIdFilter = "";
     labelFilter = "";
     assigneeFilter = "";
+    milestoneFilter = "";
     offset = 0;
     void loadTasks();
   }
@@ -435,6 +588,7 @@
         createStatus = statusId;
       }
     }
+    createMilestoneId = "";
     createError = null;
     showCreate = true;
   }
@@ -489,6 +643,9 @@
       if (createDueDate.trim()) {
         payload.due_date = createDueDate.trim();
       }
+      if (createMilestoneId) {
+        payload.milestone_id = createMilestoneId;
+      }
 
       const res = await fetch(
         `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks`,
@@ -512,6 +669,7 @@
         createStatus = "unstarted";
         createPriority = "none";
         createDueDate = "";
+        createMilestoneId = "";
         offset = 0;
         refreshAll();
       } else {
@@ -617,9 +775,12 @@
 
   onMount(() => {
     try {
-      if (localStorage.getItem(VIEW_KEY) === "board") {
+      const savedView = localStorage.getItem(VIEW_KEY);
+      if (savedView === "board") {
         view = "board";
         limit = BOARD_LIMIT;
+      } else if (savedView === "milestones") {
+        view = "milestones";
       }
     } catch {
       // Default to the list.
@@ -627,6 +788,7 @@
     void loadTasks();
     void loadLabelsAndMembers();
     void loadProjectStatuses();
+    void loadProjectMilestones();
     void loadCategoryTotals();
     if (openTaskId) void openTaskById(openTaskId);
   });
@@ -652,7 +814,7 @@
       ? task.status_id || task.status
       : task.status}
     options={statusOptions}
-    align="end"
+    align="start"
     onchange={(v) => handleStatusChange(task, v)}
   />
 {/snippet}
@@ -699,11 +861,19 @@
       >
         <Icon name="arrow-left" size={18} />
       </button>
-      <span
-        class="project-key"
-        style:--project-hue={identityHue(project.key)}
-        aria-hidden="true">{project.key}</span
-      >
+      {#if project.image_url}
+        <img
+          src={project.image_url}
+          alt="{project.name} icon"
+          class="project-header-avatar"
+        />
+      {:else}
+        <span
+          class="project-key"
+          style:--project-hue={identityHue(project.key)}
+          aria-hidden="true">{project.key}</span
+        >
+      {/if}
       <div class="title-text">
         <h2 id="tasks-heading" tabindex="-1">
           <span class="visually-hidden">Tasks for </span>{project.name}
@@ -729,6 +899,13 @@
           <span class="label-short" aria-hidden="true">Statuses</span>
         {/snippet}
       </Button>
+      <Button onclick={() => (showMilestoneManager = true)} label="Milestones">
+        {#snippet children()}
+          <Icon name="flag" size={16} />
+          <span class="label-long">Milestones</span>
+          <span class="label-short" aria-hidden="true">Milestones</span>
+        {/snippet}
+      </Button>
       <Button variant="primary" onclick={() => openCreate()}>
         {#snippet children()}
           <Icon name="plus" size={16} />
@@ -739,51 +916,89 @@
     </div>
   </div>
 
-  {#if categoryTotals && railTotal > 0}
+  {#if hasTotals && railTotal > 0 && view !== "milestones"}
     <div class="rail panel" role="group" aria-label="Filter by status">
       <div class="rail-head">
         <span class="rail-summary">
           <strong class="num">{doneShare}%</strong> complete
           <span class="note num"
-            >· {categoryTotals.completed} of {railCounted} tasks done</span
+            >· {railCompleted} of {railCounted} tasks done</span
           >
         </span>
       </div>
       <div class="rail-track" aria-hidden="true">
-        {#each categoryOrder as c (c)}
-          {#if categoryTotals[c] > 0}
-            <span
-              class="rail-span"
-              class:dim={statusFilter !== "all" && statusFilter !== c}
-              style:--span-color="var(--cat-{c})"
-              style:flex-grow={categoryTotals[c]}
-            ></span>
-          {/if}
-        {/each}
+        {#if sortedStatuses.length > 0 && statusTotals}
+          {#each sortedStatuses as s (s.id)}
+            {#if (statusTotals[s.id] || 0) > 0}
+              <span
+                class="rail-span"
+                class:dim={statusIdFilter !== "" && statusIdFilter !== s.id}
+                style:--span-color={s.color}
+                style:flex-grow={statusTotals[s.id]}
+              ></span>
+            {/if}
+          {/each}
+        {:else if categoryTotals}
+          {#each categoryOrder as c (c)}
+            {#if categoryTotals[c] > 0}
+              <span
+                class="rail-span"
+                class:dim={statusFilter !== "all" && statusFilter !== c}
+                style:--span-color="var(--cat-{c})"
+                style:flex-grow={categoryTotals[c]}
+              ></span>
+            {/if}
+          {/each}
+        {/if}
       </div>
       <div class="rail-legend">
-        {#each statusCategories as cat (cat.value)}
+        {#if sortedStatuses.length > 0 && statusTotals}
           <button
             type="button"
             class="legend-btn"
-            aria-pressed={statusFilter === cat.value && !statusIdFilter}
-            onclick={() => handleStatusFilter(cat.value)}
+            aria-pressed={!statusIdFilter && statusFilter === "all"}
+            onclick={handleAllTasksFilter}
           >
-            {#if cat.value !== "all"}
-              <span
-                class="dot"
-                style:background="var(--cat-{cat.value})"
-                aria-hidden="true"
-              ></span>
-            {/if}
-            <span>{cat.label}</span>
-            <span class="legend-count num"
-              >{cat.value === "all"
-                ? railTotal
-                : categoryTotals[cat.value as Category]}</span
-            >
+            <span>All tasks</span>
+            <span class="legend-count num">{railTotal}</span>
           </button>
-        {/each}
+          {#each sortedStatuses as s (s.id)}
+            <button
+              type="button"
+              class="legend-btn"
+              aria-pressed={statusIdFilter === s.id}
+              onclick={() => handleCustomStatusFilter(s.id)}
+            >
+              <span class="dot" style:background={s.color} aria-hidden="true"
+              ></span>
+              <span>{s.name}</span>
+              <span class="legend-count num">{statusTotals[s.id] || 0}</span>
+            </button>
+          {/each}
+        {:else if categoryTotals}
+          {#each statusCategories as cat (cat.value)}
+            <button
+              type="button"
+              class="legend-btn"
+              aria-pressed={statusFilter === cat.value && !statusIdFilter}
+              onclick={() => handleStatusFilter(cat.value)}
+            >
+              {#if cat.value !== "all"}
+                <span
+                  class="dot"
+                  style:background="var(--cat-{cat.value})"
+                  aria-hidden="true"
+                ></span>
+              {/if}
+              <span>{cat.label}</span>
+              <span class="legend-count num"
+                >{cat.value === "all"
+                  ? railTotal
+                  : categoryTotals[cat.value as Category]}</span
+              >
+            </button>
+          {/each}
+        {/if}
       </div>
     </div>
   {/if}
@@ -806,91 +1021,225 @@
         <Icon name="board" size={16} />
         Board
       </button>
+      <button
+        type="button"
+        aria-pressed={view === "milestones"}
+        onclick={() => setView("milestones")}
+      >
+        <Icon name="flag" size={16} />
+        Milestones
+      </button>
     </div>
 
-    {#if !categoryTotals || railTotal === 0}
-      <div class="filter-pills" role="group" aria-label="Filter by status">
-        {#each statusCategories as cat (cat.value)}
+    {#if view === "milestones"}
+      <div
+        class="filter-pills"
+        role="group"
+        aria-label="Filter milestones by status"
+      >
+        <button
+          type="button"
+          class="legend-btn"
+          aria-pressed={milestoneTab === "all"}
+          onclick={() => (milestoneTab = "all")}
+        >
+          <span>All milestones</span>
+          <span class="legend-count num">{projectMilestones.length}</span>
+        </button>
+        <button
+          type="button"
+          class="legend-btn"
+          aria-pressed={milestoneTab === "open"}
+          onclick={() => (milestoneTab = "open")}
+        >
+          <span
+            class="dot"
+            style:background="var(--cat-unstarted)"
+            aria-hidden="true"
+          ></span>
+          <span>Open</span>
+          <span class="legend-count num">{openMilestonesCount}</span>
+        </button>
+        <button
+          type="button"
+          class="legend-btn"
+          aria-pressed={milestoneTab === "closed"}
+          onclick={() => (milestoneTab = "closed")}
+        >
+          <span
+            class="dot"
+            style:background="var(--cat-completed)"
+            aria-hidden="true"
+          ></span>
+          <span>Closed</span>
+          <span class="legend-count num">{closedMilestonesCount}</span>
+        </button>
+      </div>
+
+      <div class="milestone-toolbar-actions">
+        <div class="segmented" role="group" aria-label="Milestone view layout">
           <button
             type="button"
-            class="legend-btn"
-            aria-pressed={statusFilter === cat.value && !statusIdFilter}
-            onclick={() => handleStatusFilter(cat.value)}
+            aria-pressed={milestoneLayout === "timeline"}
+            onclick={() => (milestoneLayout = "timeline")}
           >
-            {cat.label}
+            <Icon name="trend" size={15} />
+            Timeline
           </button>
-        {/each}
+          <button
+            type="button"
+            aria-pressed={milestoneLayout === "cards"}
+            onclick={() => (milestoneLayout = "cards")}
+          >
+            <Icon name="grid" size={15} />
+            Cards
+          </button>
+        </div>
+
+        <Button
+          variant="primary"
+          onclick={() => {
+            editMilestoneId = null;
+            showMilestoneManager = true;
+          }}
+        >
+          {#snippet children()}
+            <Icon name="plus" size={14} />New milestone
+          {/snippet}
+        </Button>
+      </div>
+    {:else}
+      {#if !hasTotals || railTotal === 0}
+        <div class="filter-pills" role="group" aria-label="Filter by status">
+          {#if sortedStatuses.length > 0}
+            <button
+              type="button"
+              class="legend-btn"
+              aria-pressed={!statusIdFilter && statusFilter === "all"}
+              onclick={handleAllTasksFilter}
+            >
+              All tasks
+            </button>
+            {#each sortedStatuses as s (s.id)}
+              <button
+                type="button"
+                class="legend-btn"
+                aria-pressed={statusIdFilter === s.id}
+                onclick={() => handleCustomStatusFilter(s.id)}
+              >
+                <span class="dot" style:background={s.color} aria-hidden="true"
+                ></span>
+                <span>{s.name}</span>
+              </button>
+            {/each}
+          {:else}
+            {#each statusCategories as cat (cat.value)}
+              <button
+                type="button"
+                class="legend-btn"
+                aria-pressed={statusFilter === cat.value && !statusIdFilter}
+                onclick={() => handleStatusFilter(cat.value)}
+              >
+                {cat.label}
+              </button>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+
+      <div class="filter-dropdowns">
+        {#if projectStatuses.length > 0}
+          <Select
+            variant="ghost"
+            label="Filter tasks by custom status"
+            value={statusIdFilter}
+            options={[
+              { value: "", label: "All statuses", icon: "layers" },
+              ...statusOptions,
+            ]}
+            onchange={(v) => {
+              statusIdFilter = v;
+              statusFilter = "all";
+              offset = 0;
+              void loadTasks();
+            }}
+          />
+        {/if}
+
+        {#if projectLabels.length > 0}
+          <Select
+            variant="ghost"
+            label="Filter tasks by label"
+            value={labelFilter}
+            options={[
+              { value: "", label: "All labels", icon: "tag" },
+              ...projectLabels.map((l) => ({
+                value: l.id,
+                label: l.name,
+                color: l.color,
+              })),
+            ]}
+            onchange={(v) => {
+              labelFilter = v;
+              offset = 0;
+              void loadTasks();
+            }}
+          />
+        {/if}
+
+        {#if workspaceMembers.length > 0}
+          <Select
+            variant="ghost"
+            label="Filter tasks by assignee"
+            value={assigneeFilter}
+            align="end"
+            options={[
+              { value: "", label: "All assignees", icon: "users" },
+              ...workspaceMembers.map((m) => ({
+                value: m.user_id,
+                label: m.display_name,
+                hint: `@${m.username}`,
+              })),
+            ]}
+            onchange={(v) => {
+              assigneeFilter = v;
+              offset = 0;
+              void loadTasks();
+            }}
+          />
+        {/if}
+
+        {#if projectMilestones.length > 0}
+          <Select
+            variant="ghost"
+            label="Filter tasks by milestone"
+            value={milestoneFilter}
+            align="end"
+            options={[
+              { value: "", label: "All milestones", icon: "flag" },
+              ...projectMilestones.map((m) => ({
+                value: m.id,
+                label: m.title,
+                icon: "flag" as const,
+                color: m.color,
+                hint: m.status === "closed" ? "Closed" : undefined,
+              })),
+            ]}
+            onchange={(v) => {
+              milestoneFilter = v;
+              offset = 0;
+              void loadTasks();
+            }}
+          />
+        {/if}
+
+        {#if hasActiveFilters}
+          <button type="button" class="btn-link" onclick={handleResetFilters}>
+            Reset filters
+          </button>
+        {/if}
       </div>
     {/if}
-
-    <div class="filter-dropdowns">
-      {#if projectStatuses.length > 0}
-        <Select
-          variant="ghost"
-          label="Filter tasks by custom status"
-          value={statusIdFilter}
-          options={[
-            { value: "", label: "All statuses", icon: "layers" },
-            ...statusOptions,
-          ]}
-          onchange={(v) => {
-            statusIdFilter = v;
-            statusFilter = "all";
-            offset = 0;
-            void loadTasks();
-          }}
-        />
-      {/if}
-
-      {#if projectLabels.length > 0}
-        <Select
-          variant="ghost"
-          label="Filter tasks by label"
-          value={labelFilter}
-          options={[
-            { value: "", label: "All labels", icon: "tag" },
-            ...projectLabels.map((l) => ({
-              value: l.id,
-              label: l.name,
-              color: l.color,
-            })),
-          ]}
-          onchange={(v) => {
-            labelFilter = v;
-            offset = 0;
-            void loadTasks();
-          }}
-        />
-      {/if}
-
-      {#if workspaceMembers.length > 0}
-        <Select
-          variant="ghost"
-          label="Filter tasks by assignee"
-          value={assigneeFilter}
-          align="end"
-          options={[
-            { value: "", label: "All assignees", icon: "users" },
-            ...workspaceMembers.map((m) => ({
-              value: m.user_id,
-              label: m.display_name,
-              hint: `@${m.username}`,
-            })),
-          ]}
-          onchange={(v) => {
-            assigneeFilter = v;
-            offset = 0;
-            void loadTasks();
-          }}
-        />
-      {/if}
-
-      {#if hasActiveFilters}
-        <button type="button" class="btn-link" onclick={handleResetFilters}>
-          Reset filters
-        </button>
-      {/if}
-    </div>
   </div>
 
   <div class="stack messages">
@@ -955,6 +1304,28 @@
           </div>
         </div>
 
+        {#if projectMilestones.length > 0}
+          <div class="field">
+            <label for="task-milestone">Milestone</label>
+            <Select
+              id="task-milestone"
+              value={createMilestoneId}
+              options={[
+                { value: "", label: "No milestone", icon: "flag" },
+                ...projectMilestones
+                  .filter((m) => m.status === "open")
+                  .map((m) => ({
+                    value: m.id,
+                    label: m.title,
+                    icon: "flag" as const,
+                    color: m.color,
+                  })),
+              ]}
+              onchange={(v) => (createMilestoneId = v)}
+            />
+          </div>
+        {/if}
+
         <div class="dialog-actions">
           <Button variant="quiet" onclick={closeCreate} disabled={creating}>
             {#snippet children()}Cancel{/snippet}
@@ -967,7 +1338,151 @@
     </Modal>
   {/if}
 
-  {#if loading && tasks.length === 0}
+  {#if view === "milestones"}
+    {#if projectMilestones.length === 0}
+      <div class="empty">
+        <span class="empty-mark"><Icon name="flag" size={22} /></span>
+        <h3>No milestones yet</h3>
+        <p>
+          Group tasks toward key targets, releases, or calendar dates for {project.name}.
+        </p>
+        <Button
+          variant="primary"
+          onclick={() => {
+            editMilestoneId = null;
+            showMilestoneManager = true;
+          }}
+        >
+          {#snippet children()}
+            <Icon name="plus" size={14} />Create milestone
+          {/snippet}
+        </Button>
+      </div>
+    {:else if filteredMilestones.length === 0}
+      <div class="empty">
+        <span class="empty-mark"><Icon name="flag" size={22} /></span>
+        <h3>No {milestoneTab} milestones</h3>
+        <p>No milestones match the selected filter.</p>
+        <Button variant="quiet" onclick={() => (milestoneTab = "all")}>
+          {#snippet children()}View all milestones{/snippet}
+        </Button>
+      </div>
+    {:else if milestoneLayout === "timeline"}
+      <MilestoneTimeline
+        milestones={filteredMilestones}
+        oneditmilestone={openEditMilestone}
+        onfiltertasks={filterTasksByMilestone}
+        oncreatemilestone={() => {
+          editMilestoneId = null;
+          showMilestoneManager = true;
+        }}
+      />
+    {:else}
+      <div class="milestones-grid" role="list" aria-label="Project milestones">
+        {#each filteredMilestones as m (m.id)}
+          <article
+            class="milestone-card panel"
+            role="listitem"
+            style:--milestone-color={m.color || "#6366f1"}
+          >
+            <div class="card-head">
+              <div class="title-group">
+                <span
+                  class="color-dot"
+                  style:background={m.color || "var(--accent)"}
+                  aria-hidden="true"
+                ></span>
+                <span
+                  class="status-chip"
+                  class:chip-open={m.status === "open"}
+                  class:chip-closed={m.status === "closed"}
+                >
+                  {m.status === "open" ? "Open" : "Closed"}
+                </span>
+                <h3 class="milestone-title">{m.title}</h3>
+              </div>
+              <div class="card-actions">
+                <Button
+                  variant="quiet"
+                  label={`View tasks for milestone ${m.title}`}
+                  onclick={() => filterTasksByMilestone(m.id)}
+                >
+                  {#snippet children()}
+                    <Icon name="list" size={14} />
+                    <span>Tasks ({m.total_tasks})</span>
+                  {/snippet}
+                </Button>
+                <Button
+                  variant="quiet"
+                  label={`Edit milestone ${m.title}`}
+                  onclick={() => openEditMilestone(m)}
+                >
+                  {#snippet children()}
+                    <Icon name="pencil" size={14} />Edit
+                  {/snippet}
+                </Button>
+              </div>
+            </div>
+
+            {#if m.description}
+              <p class="milestone-description">{m.description}</p>
+            {/if}
+
+            <div class="meta-row">
+              <div class="due-pill">
+                <Icon name="calendar" size={14} />
+                <span>
+                  {#if m.start_date && (m.due_date || m.end_date)}
+                    {formatDueDate(m.start_date)} – {formatDueDate(
+                      m.due_date || m.end_date || "",
+                    )}
+                  {:else if m.start_date}
+                    From {formatDueDate(m.start_date)}
+                  {:else if m.due_date || m.end_date}
+                    Target: {formatDueDate(m.due_date || m.end_date || "")}
+                  {:else}
+                    No target dates
+                  {/if}
+                </span>
+                {#if m.status === "open" && (m.due_date || m.end_date) && isOverdue(m.due_date || m.end_date || null)}
+                  <span class="overdue-tag">Overdue</span>
+                {/if}
+              </div>
+
+              <div class="task-stats">
+                {#if m.total_tasks > 0}
+                  <span>
+                    <strong class="num">{m.completed_tasks}</strong> of
+                    <span class="num">{m.total_tasks}</span>
+                    completed ({getMilestonePercent(m)}%)
+                  </span>
+                {:else}
+                  <span class="muted">0 tasks assigned</span>
+                {/if}
+              </div>
+            </div>
+
+            {#if m.total_tasks > 0}
+              <div
+                class="progress-rail"
+                role="progressbar"
+                aria-label={`Milestone progress: ${getMilestonePercent(m)}%`}
+                aria-valuenow={getMilestonePercent(m)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  class="progress-fill"
+                  style:inline-size={`${getMilestonePercent(m)}%`}
+                  style:background={m.color || "var(--accent)"}
+                ></div>
+              </div>
+            {/if}
+          </article>
+        {/each}
+      </div>
+    {/if}
+  {:else if loading && tasks.length === 0}
     <div class="skeleton-list" aria-hidden="true">
       {#each [0, 1, 2, 3] as i (i)}
         <div class="skeleton-row"></div>
@@ -983,6 +1498,7 @@
           ? "No tasks found matching the active filter criteria. Clear your filters or create a new task."
           : "This project does not have any tasks yet. Create one to begin."}
       </p>
+
       {#if hasActiveFilters}
         <Button onclick={handleResetFilters}>
           {#snippet children()}Reset filters{/snippet}
@@ -1017,6 +1533,16 @@
               </span>
               {#if task.description}
                 <span class="task-snippet">{task.description}</span>
+              {/if}
+              {#if task.milestone_title}
+                <span
+                  class="milestone-badge"
+                  style:--milestone-color={task.milestone_color}
+                  title={`Milestone: ${task.milestone_title}`}
+                >
+                  <Icon name="flag" size={11} />
+                  <span>{task.milestone_title}</span>
+                </span>
               {/if}
               {#if task.labels && task.labels.length > 0}
                 <span class="row-labels" aria-label="Task labels">
@@ -1171,6 +1697,16 @@
                     {/if}
                   </span>
                   <span class="card-title">{task.title}</span>
+                  {#if task.milestone_title}
+                    <span
+                      class="milestone-badge"
+                      style:--milestone-color={task.milestone_color}
+                      title={`Milestone: ${task.milestone_title}`}
+                    >
+                      <Icon name="flag" size={11} />
+                      <span>{task.milestone_title}</span>
+                    </span>
+                  {/if}
                   {#if task.labels && task.labels.length > 0}
                     <span class="row-labels">
                       {#each task.labels as l (l.id)}
@@ -1221,6 +1757,7 @@
     {project}
     {currentUserId}
     statuses={projectStatuses}
+    milestones={projectMilestones}
     ondelete={canDelete ? handleDeleteTask : undefined}
     siblings={tasks}
     onnavigate={(t) => (selectedTask = t)}
@@ -1229,6 +1766,7 @@
       tasks = tasks.map((t) => (t.id === updated.id ? updated : t));
       selectedTask = updated;
       void loadCategoryTotals();
+      void loadProjectMilestones();
     }}
   />
 {/if}
@@ -1242,6 +1780,22 @@
     onstatusesupdated={(updated) => {
       projectStatuses = updated;
       refreshAll();
+    }}
+  />
+{/if}
+
+{#if showMilestoneManager}
+  <MilestoneModal
+    {workspace}
+    {project}
+    initialMilestoneId={editMilestoneId}
+    onclose={() => {
+      showMilestoneManager = false;
+      editMilestoneId = null;
+    }}
+    onmilestonesupdated={() => {
+      void loadProjectMilestones();
+      void loadTasks();
     }}
   />
 {/if}
@@ -1291,6 +1845,16 @@
 
   .back-btn {
     margin-left: calc(var(--space-2) * -1);
+  }
+
+  .project-header-avatar {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius);
+    object-fit: cover;
+    border: var(--border-width) solid var(--line);
+    background: var(--surface-sunken);
+    flex-shrink: 0;
   }
 
   .project-key {
@@ -1608,12 +2172,13 @@
   }
 
   .cell-controls {
-    gap: var(--space-1);
-    justify-content: flex-end;
+    gap: var(--space-2);
+    justify-content: flex-start;
   }
 
   .delete-btn {
     color: var(--text-muted);
+    margin-left: auto;
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -1863,6 +2428,146 @@
   .card-foot :global(.select) {
     margin-left: auto;
     max-width: 9.5rem;
+  }
+
+  /* ── Milestones view ────────────────────────────────────────── */
+  .milestones-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
+    gap: var(--space-4);
+  }
+
+  .milestone-card {
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+  }
+
+  .milestone-card .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .milestone-card .title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .milestone-card .color-dot {
+    inline-size: 0.65rem;
+    block-size: 0.65rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .milestone-card .status-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border);
+  }
+
+  .milestone-card .chip-open {
+    color: var(--cat-unstarted);
+    border-color: var(--cat-unstarted);
+    background: var(--surface-panel);
+  }
+
+  .milestone-card .chip-closed {
+    color: var(--cat-completed);
+    border-color: var(--cat-completed);
+    background: var(--surface-panel);
+  }
+
+  .milestone-card .milestone-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .milestone-card .card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .milestone-card .milestone-description {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+
+  .milestone-card .meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .milestone-card .due-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .milestone-card .overdue-tag {
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-xs);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .milestone-card .task-stats {
+    font-weight: 500;
+  }
+
+  .milestone-card .muted {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .milestone-card .progress-rail {
+    inline-size: 100%;
+    block-size: 6px;
+    background: var(--surface-panel);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+
+  .milestone-card .progress-fill {
+    block-size: 100%;
+    border-radius: var(--radius-full);
+    transition: inline-size var(--duration-normal) var(--ease-out);
+  }
+
+  .milestone-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-inline-start: auto;
   }
 
   /* ── Responsive list ─────────────────────────────────────────── */

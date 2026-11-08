@@ -551,11 +551,19 @@
               class="project-row"
               onclick={() => onopenproject(row.project)}
             >
-              <span
-                class="key-chip"
-                style:--project-hue={identityHue(row.project.key)}
-                >{row.project.key}</span
-              >
+              {#if row.project.image_url}
+                <img
+                  src={row.project.image_url}
+                  alt="{row.project.name} icon"
+                  class="project-img"
+                />
+              {:else}
+                <span
+                  class="key-chip"
+                  style:--project-hue={identityHue(row.project.key)}
+                  >{row.project.key}</span
+                >
+              {/if}
               <span class="pr-name">
                 <span class="pr-title">{row.project.name}</span>
                 <span class="pr-sub"
@@ -705,6 +713,17 @@
   .key-chip.more {
     background: var(--selected);
     color: var(--text-muted);
+  }
+
+  .project-img {
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-xs);
+    object-fit: cover;
+    border: var(--border-width) solid var(--line);
+    background: var(--surface-sunken);
+    flex-shrink: 0;
+    justify-self: start;
   }
 
   .mini-rail {
