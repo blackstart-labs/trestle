@@ -74,19 +74,104 @@ func (s *Server) auth(h authedHandler) http.HandlerFunc {
 }
 
 type userResponse struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Locale      string `json:"locale"`
-	Timezone    string `json:"timezone"`
+	ID          string  `json:"id"`
+	Username    string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	Locale      string  `json:"locale"`
+	Timezone    string  `json:"timezone"`
+	AvatarURL   *string `json:"avatar_url,omitempty"`
 }
 
 func toUserResponse(u identity.UserProjection) userResponse {
-	return userResponse{u.ID.String(), u.Username, u.DisplayName, u.Locale, u.Timezone}
+	resp := userResponse{ID: u.ID.String(), Username: u.Username, DisplayName: u.DisplayName, Locale: u.Locale, Timezone: u.Timezone}
+	if u.HasAvatar {
+		url := "/api/v1/users/" + u.ID.String() + "/avatar"
+		resp.AvatarURL = &url
+	}
+	return resp
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
 	writeJSON(w, http.StatusOK, toUserResponse(session.User))
+}
+
+func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	var req struct {
+		DisplayName *string `json:"display_name"`
+		Timezone    *string `json:"timezone"`
+		Locale      *string `json:"locale"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	name := session.User.DisplayName
+	if req.DisplayName != nil && *req.DisplayName != "" {
+		name = *req.DisplayName
+	}
+	tz := session.User.Timezone
+	if req.Timezone != nil {
+		tz = *req.Timezone
+	}
+	loc := session.User.Locale
+	if req.Locale != nil {
+		loc = *req.Locale
+	}
+	u, err := identity.UpdateUserProfile(r.Context(), s.Pool, session.User.ID, name, tz, loc)
+	if err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserResponse(u))
+}
+
+func (s *Server) getUserAvatar(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.PathValue("user_id")
+	var userID uuid.UUID
+	var err error
+	if userIDStr == "" || userIDStr == "me" {
+		sess := sessionFrom(r)
+		if sess == nil {
+			unauthorized(w)
+			return
+		}
+		userID = sess.User.ID
+	} else {
+		userID, err = uuid.Parse(userIDStr)
+		if err != nil {
+			badRequest(w, "invalid user id")
+			return
+		}
+	}
+	data, mime, updated, err := identity.GetUserAvatar(r.Context(), s.Pool, userID)
+	if err != nil || len(data) == 0 {
+		notFound(w)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Last-Modified", updated.Format(http.TimeFormat))
+	_, _ = w.Write(data)
+}
+
+func (s *Server) setUserAvatar(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	data, mime, ok := extractUploadedImage(w, r)
+	if !ok {
+		return
+	}
+	if err := identity.SetUserAvatar(r.Context(), s.Pool, session.User.ID, data, mime); err != nil {
+		internal(w, "failed to save avatar", err)
+		return
+	}
+	url := "/api/v1/users/" + session.User.ID.String() + "/avatar"
+	writeJSON(w, http.StatusOK, map[string]string{"avatar_url": url})
+}
+
+func (s *Server) deleteUserAvatar(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	if err := identity.DeleteUserAvatar(r.Context(), s.Pool, session.User.ID); err != nil {
+		internal(w, "failed to delete avatar", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func invalidCredentials(w http.ResponseWriter) {
@@ -128,7 +213,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		invalidCredentials(w)
 		return
 	}
-	if ok, err := s.Hasher.Verify([]byte(*req.Password), hash); err != nil || !ok {
+	ok, err := s.Hasher.Verify([]byte(*req.Password), hash)
+	if err != nil || !ok {
 		s.Limiter.RecordFailure(ip, username)
 		invalidCredentials(w)
 		return

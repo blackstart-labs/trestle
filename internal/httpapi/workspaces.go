@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -10,21 +11,37 @@ import (
 )
 
 type workspaceItem struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-	Role string `json:"role"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Slug      string  `json:"slug"`
+	Role      string  `json:"role"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
 }
 
 type memberItem struct {
-	UserID      string `json:"user_id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
+	UserID      string  `json:"user_id"`
+	Username    string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	Role        string  `json:"role"`
+	AvatarURL   *string `json:"avatar_url,omitempty"`
+}
+
+func toWorkspaceItem(ws identity.WorkspaceProjection) workspaceItem {
+	item := workspaceItem{ID: ws.ID.String(), Name: ws.Name, Slug: ws.Slug, Role: ws.Role}
+	if ws.HasAvatar {
+		u := "/api/v1/workspaces/" + ws.ID.String() + "/image"
+		item.AvatarURL = &u
+	}
+	return item
 }
 
 func toMember(m identity.MemberProjection) memberItem {
-	return memberItem{m.UserID.String(), m.Username, m.DisplayName, m.Role}
+	item := memberItem{UserID: m.UserID.String(), Username: m.Username, DisplayName: m.DisplayName, Role: m.Role}
+	if m.HasAvatar {
+		u := "/api/v1/users/" + m.UserID.String() + "/avatar"
+		item.AvatarURL = &u
+	}
+	return item
 }
 
 // membership returns the caller's role, answering 404 (concealing the workspace) when not a member.
@@ -53,7 +70,7 @@ func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request, session 
 	}
 	items := make([]workspaceItem, len(list))
 	for i, ws := range list {
-		items[i] = workspaceItem{ws.ID.String(), ws.Name, ws.Slug, ws.Role}
+		items[i] = toWorkspaceItem(ws)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workspaces": items})
 }
@@ -263,4 +280,104 @@ func (s *Server) transferOwnership(w http.ResponseWriter, r *http.Request, sessi
 	default:
 		internal(w, "failed to transfer ownership", err)
 	}
+}
+
+func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, ok := pathIDs(w, r, "workspace_id")
+	if !ok {
+		return
+	}
+	role, ok := s.membership(w, r, ids[0], session.User.ID)
+	if !ok {
+		return
+	}
+	if !isManager(role) {
+		forbidden(w)
+		return
+	}
+	var req struct {
+		Name *string `json:"name"`
+		Slug *string `json:"slug"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+	}
+	slug := ""
+	if req.Slug != nil {
+		slug = *req.Slug
+	}
+	ws, err := identity.UpdateWorkspace(r.Context(), s.Pool, ids[0], name, slug)
+	if err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toWorkspaceItem(ws))
+}
+
+func (s *Server) getWorkspaceImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, ok := pathIDs(w, r, "workspace_id")
+	if !ok {
+		return
+	}
+	if _, ok := s.membership(w, r, ids[0], session.User.ID); !ok {
+		return
+	}
+	data, mime, updated, err := identity.GetWorkspaceAvatar(r.Context(), s.Pool, ids[0])
+	if err != nil || len(data) == 0 {
+		notFound(w)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Last-Modified", updated.Format(http.TimeFormat))
+	_, _ = w.Write(data)
+}
+
+func (s *Server) setWorkspaceImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, ok := pathIDs(w, r, "workspace_id")
+	if !ok {
+		return
+	}
+	role, ok := s.membership(w, r, ids[0], session.User.ID)
+	if !ok {
+		return
+	}
+	if !isManager(role) {
+		forbidden(w)
+		return
+	}
+	data, mime, ok := extractUploadedImage(w, r)
+	if !ok {
+		return
+	}
+	if err := identity.SetWorkspaceAvatar(r.Context(), s.Pool, ids[0], data, mime); err != nil {
+		internal(w, "failed to save workspace image", err)
+		return
+	}
+	url := fmt.Sprintf("/api/v1/workspaces/%s/image", ids[0])
+	writeJSON(w, http.StatusOK, map[string]string{"image_url": url})
+}
+
+func (s *Server) deleteWorkspaceImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, ok := pathIDs(w, r, "workspace_id")
+	if !ok {
+		return
+	}
+	role, ok := s.membership(w, r, ids[0], session.User.ID)
+	if !ok {
+		return
+	}
+	if !isManager(role) {
+		forbidden(w)
+		return
+	}
+	if err := identity.DeleteWorkspaceAvatar(r.Context(), s.Pool, ids[0]); err != nil {
+		internal(w, "failed to delete workspace image", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

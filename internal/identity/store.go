@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,26 +46,32 @@ func MapErr(err error) error {
 
 // UserProjection never includes password_hash or other credential fields.
 type UserProjection struct {
-	ID          uuid.UUID
-	Username    string
-	DisplayName string
-	Locale      string
-	Timezone    string
-	Disabled    bool
+	ID              uuid.UUID
+	Username        string
+	DisplayName     string
+	Locale          string
+	Timezone        string
+	Disabled        bool
+	HasAvatar       bool
+	AvatarUpdatedAt *time.Time
 }
 
 type MemberProjection struct {
-	UserID      uuid.UUID
-	Username    string
-	DisplayName string
-	Role        string
+	UserID          uuid.UUID
+	Username        string
+	DisplayName     string
+	Role            string
+	HasAvatar       bool
+	AvatarUpdatedAt *time.Time
 }
 
 type WorkspaceProjection struct {
-	ID   uuid.UUID
-	Name string
-	Slug string
-	Role string
+	ID              uuid.UUID
+	Name            string
+	Slug            string
+	Role            string
+	HasAvatar       bool
+	AvatarUpdatedAt *time.Time
 }
 
 type ResolvedSession struct {
@@ -77,12 +84,12 @@ func newUser(id uuid.UUID, username, displayName string) UserProjection {
 	return UserProjection{ID: id, Username: username, DisplayName: displayName, Locale: "en", Timezone: "UTC"}
 }
 
-const userColumns = "id, username, display_name, locale, timezone, disabled_at"
+const userColumns = "id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at"
 
 func scanUser(row pgx.Row) (UserProjection, error) {
 	var u UserProjection
 	var disabledAt *time.Time
-	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt)
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt)
 	u.Disabled = disabledAt != nil
 	return u, err
 }
@@ -293,14 +300,14 @@ func ResolveSession(ctx context.Context, db Querier, rawToken string) (*Resolved
 	var s ResolvedSession
 	var disabledAt *time.Time
 	var lastActive time.Time
-	err = db.QueryRow(ctx, `SELECT s.id, s.csrf_token_hash, s.last_active_at, u.id, u.username, u.display_name, u.locale, u.timezone, u.disabled_at
+	err = db.QueryRow(ctx, `SELECT s.id, s.csrf_token_hash, s.last_active_at, u.id, u.username, u.display_name, u.locale, u.timezone, u.disabled_at, (u.avatar_data IS NOT NULL), u.avatar_updated_at
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
 		  AND s.revoked_at IS NULL
 		  AND s.expires_at > $2
 		  AND s.last_active_at > $3`, hash, now, now.Add(-SessionIdle)).
-		Scan(&s.SessionID, &s.CSRFTokenHash, &lastActive, &s.User.ID, &s.User.Username, &s.User.DisplayName, &s.User.Locale, &s.User.Timezone, &disabledAt)
+		Scan(&s.SessionID, &s.CSRFTokenHash, &lastActive, &s.User.ID, &s.User.Username, &s.User.DisplayName, &s.User.Locale, &s.User.Timezone, &disabledAt, &s.User.HasAvatar, &s.User.AvatarUpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) || disabledAt != nil {
 		return nil, nil
 	}
@@ -326,7 +333,7 @@ func RevokeSession(ctx context.Context, db Querier, sessionID uuid.UUID) error {
 // ---------------------------------------------------------------------------
 
 func ListUserWorkspaces(ctx context.Context, db Querier, userID uuid.UUID) ([]WorkspaceProjection, error) {
-	rows, err := db.Query(ctx, `SELECT w.id, w.name, w.slug, wm.role
+	rows, err := db.Query(ctx, `SELECT w.id, w.name, w.slug, wm.role, (w.avatar_data IS NOT NULL), w.avatar_updated_at
 		FROM workspaces w
 		JOIN workspace_memberships wm ON wm.workspace_id = w.id
 		WHERE wm.user_id = $1
@@ -336,7 +343,7 @@ func ListUserWorkspaces(ctx context.Context, db Querier, userID uuid.UUID) ([]Wo
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (WorkspaceProjection, error) {
 		var w WorkspaceProjection
-		return w, r.Scan(&w.ID, &w.Name, &w.Slug, &w.Role)
+		return w, r.Scan(&w.ID, &w.Name, &w.Slug, &w.Role, &w.HasAvatar, &w.AvatarUpdatedAt)
 	})
 }
 
@@ -354,7 +361,7 @@ func GetUserMembership(ctx context.Context, db Querier, workspaceID, userID uuid
 }
 
 func ListWorkspaceMembers(ctx context.Context, db Querier, workspaceID uuid.UUID) ([]MemberProjection, error) {
-	rows, err := db.Query(ctx, `SELECT u.id, u.username, u.display_name, wm.role
+	rows, err := db.Query(ctx, `SELECT u.id, u.username, u.display_name, wm.role, (u.avatar_data IS NOT NULL), u.avatar_updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.workspace_id = $1 AND u.disabled_at IS NULL
@@ -372,7 +379,7 @@ func ListWorkspaceMembers(ctx context.Context, db Querier, workspaceID uuid.UUID
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (MemberProjection, error) {
 		var m MemberProjection
-		return m, r.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role)
+		return m, r.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role, &m.HasAvatar, &m.AvatarUpdatedAt)
 	})
 }
 
@@ -558,5 +565,94 @@ func RecordAuditEvent(ctx context.Context, db Querier, actorID *uuid.UUID, event
 	}
 	_, err = db.Exec(ctx, "INSERT INTO security_audit_events (actor_id, event_type, metadata) VALUES ($1, $2, $3)",
 		actorID, eventType, b)
+	return err
+}
+
+func UpdateWorkspace(ctx context.Context, db Querier, workspaceID uuid.UUID, name, slug string) (WorkspaceProjection, error) {
+	name = strings.TrimSpace(name)
+	slug = strings.TrimSpace(strings.ToLower(slug))
+	if len(name) < 1 || len(name) > 120 {
+		return WorkspaceProjection{}, errors.New("Enter a workspace name of up to 120 characters")
+	}
+	if len(slug) < 2 || len(slug) > 48 {
+		return WorkspaceProjection{}, errors.New("Enter a workspace slug of 2 to 48 characters")
+	}
+	now := time.Now().UTC()
+	var w WorkspaceProjection
+	err := db.QueryRow(ctx, `UPDATE workspaces
+		SET name = $1, slug = $2, updated_at = $3
+		WHERE id = $4
+		RETURNING id, name, slug, (avatar_data IS NOT NULL), avatar_updated_at`,
+		name, slug, now, workspaceID).Scan(&w.ID, &w.Name, &w.Slug, &w.HasAvatar, &w.AvatarUpdatedAt)
+	return w, err
+}
+
+func SetWorkspaceAvatar(ctx context.Context, db Querier, workspaceID uuid.UUID, data []byte, mime string) error {
+	now := time.Now().UTC()
+	_, err := db.Exec(ctx, `UPDATE workspaces
+		SET avatar_data = $1, avatar_mime = $2, avatar_updated_at = $3, updated_at = $3
+		WHERE id = $4`, data, mime, now, workspaceID)
+	return err
+}
+
+func GetWorkspaceAvatar(ctx context.Context, db Querier, workspaceID uuid.UUID) ([]byte, string, time.Time, error) {
+	var data []byte
+	var mime string
+	var updated time.Time
+	err := db.QueryRow(ctx, "SELECT avatar_data, avatar_mime, COALESCE(avatar_updated_at, updated_at) FROM workspaces WHERE id = $1 AND avatar_data IS NOT NULL", workspaceID).
+		Scan(&data, &mime, &updated)
+	return data, mime, updated, err
+}
+
+func DeleteWorkspaceAvatar(ctx context.Context, db Querier, workspaceID uuid.UUID) error {
+	now := time.Now().UTC()
+	_, err := db.Exec(ctx, `UPDATE workspaces
+		SET avatar_data = NULL, avatar_mime = NULL, avatar_updated_at = $1, updated_at = $1
+		WHERE id = $2`, now, workspaceID)
+	return err
+}
+
+func UpdateUserProfile(ctx context.Context, db Querier, userID uuid.UUID, displayName, timezone, locale string) (UserProjection, error) {
+	displayName = strings.TrimSpace(displayName)
+	if len(displayName) < 1 || len(displayName) > 120 {
+		return UserProjection{}, errors.New("Enter a display name of up to 120 characters")
+	}
+	now := time.Now().UTC()
+	var u UserProjection
+	var disabledAt *time.Time
+	err := db.QueryRow(ctx, `UPDATE users
+		SET display_name = $1,
+		    timezone = CASE WHEN $2 <> '' THEN $2 ELSE timezone END,
+		    locale = CASE WHEN $3 <> '' THEN $3 ELSE locale END,
+		    updated_at = $4
+		WHERE id = $5
+		RETURNING id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at`,
+		displayName, timezone, locale, now, userID).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt)
+	u.Disabled = disabledAt != nil
+	return u, err
+}
+
+func SetUserAvatar(ctx context.Context, db Querier, userID uuid.UUID, data []byte, mime string) error {
+	now := time.Now().UTC()
+	_, err := db.Exec(ctx, `UPDATE users
+		SET avatar_data = $1, avatar_mime = $2, avatar_updated_at = $3, updated_at = $3
+		WHERE id = $4`, data, mime, now, userID)
+	return err
+}
+
+func GetUserAvatar(ctx context.Context, db Querier, userID uuid.UUID) ([]byte, string, time.Time, error) {
+	var data []byte
+	var mime string
+	var updated time.Time
+	err := db.QueryRow(ctx, "SELECT avatar_data, avatar_mime, COALESCE(avatar_updated_at, updated_at) FROM users WHERE id = $1 AND avatar_data IS NOT NULL", userID).
+		Scan(&data, &mime, &updated)
+	return data, mime, updated, err
+}
+
+func DeleteUserAvatar(ctx context.Context, db Querier, userID uuid.UUID) error {
+	now := time.Now().UTC()
+	_, err := db.Exec(ctx, `UPDATE users
+		SET avatar_data = NULL, avatar_mime = NULL, avatar_updated_at = $1, updated_at = $1
+		WHERE id = $2`, now, userID)
 	return err
 }

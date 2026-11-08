@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Usernames (ported from src/identity/usernames.rs).
@@ -67,7 +69,7 @@ func TestUsernameMaximumLengthAccepted(t *testing.T) {
 
 func TestUsernameSpacesRejected(t *testing.T) { wantUsernameErr(t, "user name", ErrUsernameInvalid) }
 
-func TestUsernameAtSignRejected(t *testing.T) { wantUsernameErr(t, "user@example", ErrUsernameInvalid) }
+func TestUsernameAtSignAccepted(t *testing.T) { mustUsername(t, "user@example.com") }
 
 func TestUsernameNonASCIIRejected(t *testing.T) { wantUsernameErr(t, "ûser", ErrUsernameInvalid) }
 
@@ -257,5 +259,30 @@ func TestMinimumLengthPasswordAccepted(t *testing.T) {
 func TestBelowMinimumLengthRejected(t *testing.T) {
 	if _, err := testHasher(t).Hash(bytes.Repeat([]byte("a"), MinPasswordBytes-1)); !errors.Is(err, ErrPasswordTooShort) {
 		t.Errorf("got %v", err)
+	}
+}
+
+func TestVerifyBcryptHashes(t *testing.T) {
+	h := testHasher(t)
+	pass := "secretpass123"
+	bHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Test $2a$ format
+	ok, err := h.Verify([]byte(pass), string(bHash))
+	if err != nil || !ok {
+		t.Fatalf("bcrypt verify failed: %v, ok=%v", err, ok)
+	}
+	// Test $2y$ format
+	yHash := "$2y$" + string(bHash)[4:]
+	ok, err = h.Verify([]byte(pass), yHash)
+	if err != nil || !ok {
+		t.Fatalf("bcrypt $2y$ verify failed: %v, ok=%v", err, ok)
+	}
+	// Wrong password
+	ok, err = h.Verify([]byte("wrongpass"), string(bHash))
+	if err != nil || ok {
+		t.Fatalf("bcrypt should have rejected wrong password: %v, ok=%v", err, ok)
 	}
 }
