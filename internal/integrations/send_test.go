@@ -20,6 +20,8 @@ func TestValidateDestinations(t *testing.T) {
 		valid                  bool
 	}{
 		{"telegram", "123456:abcdefghijklmnopqrstuvwxyz_123456789", "-100123456", true},
+		{"telegram", "123456:abcdefghijklmnopqrstuvwxyz_123456789", "-100123456:42", true},
+		{"telegram", "123456:abcdefghijklmnopqrstuvwxyz_123456789", "-100123456/42", true},
 		{"telegram", "123456:abcdefghijklmnopqrstuvwxyz_123456789", "@channel_name", true},
 		{"slack", "https://hooks.slack.com/services/TEAM/BOT/TOKEN", "", true},
 		{"slack", "https://hooks.slack-gov.com/services/TEAM/BOT/TOKEN", "", true},
@@ -113,5 +115,37 @@ func TestPrivateConnectionsAreBlocked(t *testing.T) {
 			conn.Close()
 			t.Fatalf("private address allowed: %s", address)
 		}
+	}
+}
+
+func TestValidateWithTopic(t *testing.T) {
+	const secret = "123456:abcdefghijklmnopqrstuvwxyz_123456789"
+	if err := ValidateWithTopic("telegram", secret, "-100123456", "42"); err != nil {
+		t.Fatalf("valid topic failed: %v", err)
+	}
+	if err := ValidateWithTopic("telegram", secret, "-100123456", "invalid_topic"); err == nil {
+		t.Fatal("invalid topic was accepted")
+	}
+}
+
+func TestTelegramTopicPayload(t *testing.T) {
+	called := false
+	c := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		called = true
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["chat_id"] != "-100123456" {
+			t.Fatalf("got chat_id %v, want -100123456", body["chat_id"])
+		}
+		if threadID, ok := body["message_thread_id"].(float64); !ok || int64(threadID) != 42 {
+			t.Fatalf("got message_thread_id %v, want 42", body["message_thread_id"])
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Header: http.Header{}}, nil
+	})}
+	err := send(context.Background(), c, "telegram", "123456:abcdefghijklmnopqrstuvwxyz_123456789", "-100123456", "42", "Test topic message")
+	if err != nil || !called {
+		t.Fatalf("send with topic failed: %v", err)
 	}
 }

@@ -13,6 +13,7 @@
   type Connection = {
     provider: string;
     chat_id: string;
+    topic_id?: string;
     last_attempt_at: string | null;
     last_error: string;
   };
@@ -97,7 +98,9 @@
   let editing = $state("");
   let secret = $state("");
   let chat = $state("");
+  let topic = $state("");
   let originalChat = $state("");
+  let originalTopic = $state("");
   let busy = $state(false);
   let disconnecting = $state("");
   const canManage = $derived(
@@ -107,7 +110,9 @@
   const base = $derived(
     `/api/v1/workspaces/${activeWorkspace?.id}/projects/${projectId}/integrations`,
   );
-  const dirty = $derived(secret !== "" || chat !== originalChat);
+  const dirty = $derived(
+    secret !== "" || chat !== originalChat || topic !== originalTopic,
+  );
 
   async function request(
     url: string,
@@ -196,9 +201,12 @@
   });
 
   function edit(provider: string) {
+    const existing = connections.find((c) => c.provider === provider);
     secret = "";
-    chat = connections.find((c) => c.provider === provider)?.chat_id || "";
+    chat = existing?.chat_id || "";
+    topic = existing?.topic_id || "";
     originalChat = chat;
+    originalTopic = topic;
     actionError = "";
     editing = provider;
   }
@@ -212,6 +220,8 @@
     }
     editing = "";
     secret = "";
+    chat = "";
+    topic = "";
     actionError = "";
   }
 
@@ -224,6 +234,7 @@
       const saved = await request(`${base}/${editing}`, "PUT", {
         secret,
         chat_id: chat,
+        topic_id: topic.trim(),
       });
       connections = [
         ...connections.filter((c) => c.provider !== editing),
@@ -232,6 +243,8 @@
       message = `${names[editing]} integration saved.`;
       editing = "";
       secret = "";
+      chat = "";
+      topic = "";
     } catch (error) {
       actionError =
         error instanceof Error
@@ -445,7 +458,8 @@
                         : "Not connected"}
                     </span>
                     {#if connection?.chat_id}<span class="note"
-                        >{connection.chat_id}</span
+                        >{connection.chat_id}{#if connection?.topic_id}
+                          · Topic {connection.topic_id}{/if}</span
                       >{/if}
                   </div>
                   {#if connection?.last_attempt_at}
@@ -539,6 +553,23 @@
           <p id="integration-chat-hint" class="note">
             A numeric chat ID (including the minus sign for groups), or an
             @channel username.
+          </p>
+        </div>
+        <div class="field">
+          <label for="integration-topic"
+            >Topic ID <span class="field-hint">(optional)</span></label
+          >
+          <input
+            id="integration-topic"
+            bind:value={topic}
+            maxlength="20"
+            disabled={busy}
+            placeholder="e.g. 42"
+            aria-describedby="integration-topic-hint integration-form-error"
+          />
+          <p id="integration-topic-hint" class="note">
+            For supergroups with topics/forums enabled, enter the topic's thread
+            ID.
           </p>
         </div>
       {/if}

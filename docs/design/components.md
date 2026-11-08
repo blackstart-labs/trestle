@@ -31,7 +31,7 @@ them through real application interactions, not private internals.
 ## Work surfaces
 
 - **Settings → Integration** selects an active Project in the current Workspace.
-  Workspace owners/admins can save, replace, test, and disconnect Telegram, Slack,
+  Workspace owners/admins can save, replace, test, and disconnect Telegram (including optional Topic ID for forum supergroups), Slack,
   and Discord connections. It uses Select, Modal, Feedback, and Toast; credentials
   are password fields, never returned after saving. Dirty forms guard closing,
   failures preserve inputs, and disconnect explicitly confirms credential removal.

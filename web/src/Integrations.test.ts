@@ -134,3 +134,36 @@ test("loading failure offers retry and an empty Workspace offers the next action
   );
   await screen.findByRole("button", { name: "Connect Telegram" });
 });
+
+test("saves a Telegram connection with optional topic ID", async () => {
+  const fetch = mockAPI();
+  document.cookie = "trestle-csrf=csrf-token";
+  render(Integrations, { workspace, signedIn: true, initialProjectId: "beta" });
+  await fireEvent.click(
+    await screen.findByRole("button", { name: "Connect Telegram" }),
+  );
+  await fireEvent.input(screen.getByLabelText("Bot token"), {
+    target: { value: "123456:abcdefghijklmnopqrstuvwxyz_123456789" },
+  });
+  await fireEvent.input(screen.getByLabelText("Chat ID"), {
+    target: { value: "-100123456" },
+  });
+  await fireEvent.input(screen.getByLabelText(/Topic ID/), {
+    target: { value: "42" },
+  });
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Save integration" }),
+  );
+  await screen.findByRole("button", { name: "Replace Telegram" });
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/v1/workspaces/ws/projects/beta/integrations/telegram",
+    expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({
+        secret: "123456:abcdefghijklmnopqrstuvwxyz_123456789",
+        chat_id: "-100123456",
+        topic_id: "42",
+      }),
+    }),
+  );
+});
