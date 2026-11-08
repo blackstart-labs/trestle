@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/svelte";
 import { expect, test, vi } from "vitest";
 import TasksView from "./TasksView.svelte";
 
@@ -251,5 +257,238 @@ test("clicking a task opens the task detail drawer", async () => {
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+test("renders custom project statuses in top progress rail and allows filtering", async () => {
+  const customStatuses = [
+    {
+      id: "s-1",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "Backlog",
+      category: "backlog",
+      color: "#4c544c",
+      position: 0,
+    },
+    {
+      id: "s-2",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "To Do",
+      category: "unstarted",
+      color: "#1e4d79",
+      position: 1,
+    },
+    {
+      id: "s-3",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "In Progress",
+      category: "started",
+      color: "#775300",
+      position: 2,
+    },
+    {
+      id: "s-4",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "Done",
+      category: "completed",
+      color: "#26633b",
+      position: 3,
+    },
+    {
+      id: "s-5",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "In Review",
+      category: "started",
+      color: "#6366f1",
+      position: 4,
+    },
+    {
+      id: "s-6",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "Cancelled",
+      category: "cancelled",
+      color: "#9f302b",
+      position: 5,
+    },
+  ];
+
+  const tasks = [
+    {
+      id: "task-100",
+      workspace_id: "ws-1",
+      project_id: "proj-1",
+      project_key: "CORE",
+      task_number: 100,
+      human_key: "CORE-100",
+      title: "Review PR",
+      status: "started",
+      status_id: "s-5",
+      status_name: "In Review",
+      status_color: "#6366f1",
+      priority: "medium",
+      due_date: null,
+      created_by: "user-1",
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-01T00:00:00Z",
+    },
+  ];
+
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/statuses")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ statuses: customStatuses }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("status_id=s-5")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tasks, total: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("&status_id=")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tasks: [], total: 0 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/tasks?")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ tasks, total: 1, limit: 20, offset: 0 }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(TasksView, {
+    workspace: {
+      id: "ws-1",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+    project: mockProject,
+  });
+
+  await waitFor(() => {
+    const rail = screen.getByRole("group", { name: /filter by status/i });
+    expect(
+      within(rail).getByRole("button", { name: /in review/i }),
+    ).toBeTruthy();
+    expect(
+      within(rail).getByRole("button", { name: /all tasks/i }),
+    ).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: /backlog/i })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: /to do/i })).toBeTruthy();
+    expect(within(rail).getByRole("button", { name: /done/i })).toBeTruthy();
+    expect(
+      within(rail).getByRole("button", { name: /cancelled/i }),
+    ).toBeTruthy();
+    expect(within(rail).getByText(/0 of 1 tasks done/i)).toBeTruthy();
+  });
+
+  const rail = screen.getByRole("group", { name: /filter by status/i });
+  const inReviewBtn = within(rail).getByRole("button", { name: /in review/i });
+  await fireEvent.click(inReviewBtn);
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("status_id=s-5"),
+      expect.anything(),
+    );
+  });
+});
+
+test("allows switching to Milestones view and displays project milestones with progress", async () => {
+  const milestones = [
+    {
+      id: "m-1",
+      workspace_id: "ws-1",
+      project_id: "proj-1",
+      title: "Q4 Launch",
+      description: "Q4 public beta deliverables",
+      start_date: "2026-10-01",
+      due_date: "2026-12-31",
+      end_date: "2026-12-31",
+      color: "#6366f1",
+      status: "open",
+      total_tasks: 4,
+      completed_tasks: 2,
+      open_tasks: 2,
+      created_at: "2026-10-01T00:00:00Z",
+      updated_at: "2026-10-01T00:00:00Z",
+    },
+  ];
+
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/milestones")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ milestones }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/tasks?")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tasks: [], total: 0 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(TasksView, {
+    workspace: {
+      id: "ws-1",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+    project: mockProject,
+  });
+
+  const layoutGroup = screen.getByRole("group", { name: /task layout/i });
+  const milestoneTabBtn = within(layoutGroup).getByRole("button", {
+    name: /milestones/i,
+  });
+  await fireEvent.click(milestoneTabBtn);
+
+  await waitFor(() => {
+    expect(screen.getByText("Q4 Launch")).toBeTruthy();
+    expect(screen.getByText("Q4 public beta deliverables")).toBeTruthy();
+    expect(screen.getByText(/\(50%\)/)).toBeTruthy();
   });
 });

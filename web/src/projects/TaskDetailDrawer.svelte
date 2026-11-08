@@ -8,6 +8,7 @@
   import type { Task } from "./TasksView.svelte";
   import type { Project } from "./ProjectsView.svelte";
   import type { TaskStatus } from "./StatusManagerModal.svelte";
+  import type { Milestone } from "./MilestoneModal.svelte";
   import { identityHue } from "../lib/identity";
   import Toast from "../ui/Toast.svelte";
   import Select, { type SelectOption } from "../ui/Select.svelte";
@@ -70,6 +71,7 @@
     workspace,
     project,
     statuses = [],
+    milestones = [],
     currentUserId,
     onclose,
     ontaskupdated,
@@ -81,6 +83,7 @@
     workspace: { id: string; name: string; slug: string; role: string };
     project: Project;
     statuses?: TaskStatus[];
+    milestones?: Milestone[];
     currentUserId?: string;
     onclose: () => void;
     ontaskupdated?: (task: Task) => void;
@@ -1211,6 +1214,30 @@
             </dd>
           </div>
 
+          <div class="prop">
+            <dt><label for="detail-milestone">Milestone</label></dt>
+            <dd>
+              <Select
+                id="detail-milestone"
+                variant="chip"
+                value={currentTask.milestone_id || ""}
+                disabled={savingDetails || !canManage}
+                options={[
+                  { value: "", label: "No milestone", icon: "flag" },
+                  ...milestones.map((m) => ({
+                    value: m.id,
+                    label: m.title,
+                    icon: "flag" as const,
+                    hint: m.status === "closed" ? "Closed" : undefined,
+                  })),
+                ]}
+                onchange={(v) => {
+                  void saveTask({ milestone_id: v || null });
+                }}
+              />
+            </dd>
+          </div>
+
           <div class="prop prop-stack" aria-labelledby="assignees-heading">
             <dt><span id="assignees-heading">Assignees</span></dt>
             <dd class="chips">
@@ -1340,6 +1367,12 @@
                       {:else if act.action === "task.priority_changed"}
                         set priority to {act.details?.priority ||
                           "new priority"}
+                      {:else if act.action === "task.milestone_changed"}
+                        {#if act.details?.milestone_id}
+                          updated milestone
+                        {:else}
+                          cleared milestone
+                        {/if}
                       {:else if act.action === "label.attached"}
                         attached label "{act.details?.name || ""}"
                       {:else if act.action === "label.detached"}
