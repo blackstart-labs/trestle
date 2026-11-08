@@ -113,7 +113,7 @@ func TestFormatTaskNotification(t *testing.T) {
 		StatusName:     &statusName,
 		Priority:       "medium",
 		MilestoneTitle: &msTitle,
-		Assignees:      []projects.TaskAssignee{{DisplayName: "Maruf Sarker"}},
+		Assignees:      []projects.TaskAssignee{{DisplayName: "Alex Morgan"}},
 	}
 	link := "http://localhost:3000/#task/ws/proj/task-1"
 
@@ -130,7 +130,7 @@ func TestFormatTaskNotification(t *testing.T) {
 	if !strings.Contains(msg, "⚡ Priority: Medium") {
 		t.Errorf("priority line mismatch: %s", msg)
 	}
-	if !strings.Contains(msg, "👤 Assigned To: Maruf Sarker") {
+	if !strings.Contains(msg, "👤 Assigned To: Alex Morgan") {
 		t.Errorf("assignee mismatch: %s", msg)
 	}
 	if !strings.Contains(msg, "📝 Description:\n"+desc) {

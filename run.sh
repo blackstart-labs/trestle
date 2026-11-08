@@ -388,7 +388,10 @@ if [ -z "${POSTGRES_PASSWORD:-}" ]; then
     fi
 fi
 
-DATABASE_URL="postgres://trestle:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/trestle"
+if [ -z "${DATABASE_URL:-}" ]; then
+    ENCODED_PASS=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$POSTGRES_PASSWORD" 2>/dev/null || echo "$POSTGRES_PASSWORD")
+    DATABASE_URL="postgres://trestle:${ENCODED_PASS}@127.0.0.1:${POSTGRES_PORT}/trestle?sslmode=disable"
+fi
 TRESTLE_DEV_MODE="true"
 
 # Write / update .env
