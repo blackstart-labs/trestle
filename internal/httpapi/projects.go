@@ -770,7 +770,7 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 		storeError(w, err, "failed to create "+lower, "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "created", t.HumanKey, t.Title, t.Status)
+	s.notifyTask(r, ids[0], ids[1], "created", t)
 	writeJSON(w, http.StatusCreated, toTask(t))
 }
 
@@ -867,7 +867,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to update task", "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "updated", t.HumanKey, t.Title, t.Status)
+	s.notifyTask(r, ids[0], ids[1], "updated", t)
 	writeJSON(w, http.StatusOK, toTask(t))
 }
 
@@ -885,7 +885,7 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to delete task", "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "deleted", t.HumanKey, "", "")
+	s.notifyTask(r, ids[0], ids[1], "deleted", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 

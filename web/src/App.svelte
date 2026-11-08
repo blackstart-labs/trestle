@@ -93,6 +93,13 @@
             activeTab = "workspaces";
           }
           void ensureWorkspaceSelected();
+          const currentHash = window.location.hash.replace(/^#/, "");
+          if (
+            currentHash.startsWith("task/") ||
+            currentHash.startsWith("workspaces/")
+          ) {
+            route(currentHash);
+          }
         } else {
           user = null;
         }
@@ -137,6 +144,13 @@
       autoOpenWorkspace = true;
       activeTab = "workspaces";
       void ensureWorkspaceSelected();
+      const currentHash = window.location.hash.replace(/^#/, "");
+      if (
+        currentHash.startsWith("task/") ||
+        currentHash.startsWith("workspaces/")
+      ) {
+        route(currentHash);
+      }
     });
   }
 
@@ -212,7 +226,55 @@
     target?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
 
+  async function openTaskFromRoute(
+    wsId: string,
+    projId: string,
+    taskId: string,
+  ) {
+    activeTab = "workspaces";
+    workspaceTab = "projects";
+    openTaskId = taskId;
+
+    try {
+      const res = await fetch("/api/v1/workspaces", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const foundWs = (data.workspaces || []).find(
+          (w: Workspace) => w.id === wsId,
+        );
+        if (foundWs) selectedWorkspace = foundWs;
+      }
+    } catch {
+      // safe fallback
+    }
+
+    try {
+      const res = await fetch(`/api/v1/workspaces/${wsId}/projects/${projId}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const proj = await res.json();
+        selectedProject = proj;
+      }
+    } catch {
+      // safe fallback
+    }
+  }
+
   function route(hash: string) {
+    const taskMatch =
+      hash.match(
+        /^(?:task|workspaces)\/([^/]+)\/projects\/([^/]+)\/tasks\/([^/]+)$/,
+      ) || hash.match(/^task\/([^/]+)\/([^/]+)\/([^/]+)$/);
+    if (taskMatch) {
+      void openTaskFromRoute(taskMatch[1], taskMatch[2], taskMatch[3]);
+      return;
+    }
+
     if (hash === "settings") {
       settingsSection = "";
       activeTab = "settings";

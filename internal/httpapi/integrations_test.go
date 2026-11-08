@@ -32,7 +32,7 @@ func TestProjectIntegrationsLifecycleAndIsolation(t *testing.T) {
 	for _, provider := range []string{"telegram", "slack", "discord"} {
 		config := payload
 		if provider == "telegram" {
-			config = map[string]any{"secret": "123456:abcdefghijklmnopqrstuvwxyz_123456789", "chat_id": "-100123"}
+			config = map[string]any{"secret": "123456:abcdefghijklmnopqrstuvwxyz_123456789", "chat_id": "-100123", "topic_id": "42"}
 		}
 		if provider == "discord" {
 			config = map[string]any{"secret": "https://discord.com/api/webhooks/123/secret"}
@@ -97,4 +97,78 @@ func TestProjectIntegrationsLifecycleAndIsolation(t *testing.T) {
 	ptExpect(t, c.do("POST", base+"/"+project+"/archive", nil), http.StatusOK)
 	ptExpect(t, c.do("PUT", endpoint+"/slack", payload), http.StatusNotFound)
 	ptExpect(t, c.do("POST", endpoint+"/slack/test", nil), http.StatusConflict)
+}
+
+func TestFormatTaskNotification(t *testing.T) {
+	proj := projects.Project{Name: "System Setup"}
+	msTitle := "RustDesk Installation"
+	desc := "- Installed RustDesk 1.5.1 using the Debian package.\n- Resolved missing dependency."
+	statusName := "In Progress"
+	taskWithMilestone := projects.Task{
+		HumanKey:       "SYS-1",
+		Title:          "Install and Configure RustDesk 1.5.1 on Kubuntu",
+		Description:    desc,
+		Status:         "started",
+		StatusName:     &statusName,
+		Priority:       "medium",
+		MilestoneTitle: &msTitle,
+		Assignees:      []projects.TaskAssignee{{DisplayName: "Maruf Sarker"}},
+	}
+	link := "http://localhost:3000/#task/ws/proj/task-1"
+
+	msg := formatTaskNotification("discord", proj, taskWithMilestone, "created", link)
+	if !strings.Contains(msg, "📋 System Setup - RustDesk Installation") {
+		t.Errorf("header missing milestone: %s", msg)
+	}
+	if !strings.Contains(msg, "📌 Title: Install and Configure RustDesk 1.5.1 on Kubuntu") {
+		t.Errorf("title line mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "🏷 Status: In Progress") {
+		t.Errorf("status line mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "⚡ Priority: Medium") {
+		t.Errorf("priority line mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "👤 Assigned To: Maruf Sarker") {
+		t.Errorf("assignee mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "📝 Description:\n"+desc) {
+		t.Errorf("description mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "👉 [Open in Trestle]("+link+")") {
+		t.Errorf("link mismatch: %s", msg)
+	}
+
+	// Telegram HTML formatting
+	tgMsg := formatTaskNotification("telegram", proj, taskWithMilestone, "created", link)
+	if !strings.Contains(tgMsg, "👉 <a href=\""+link+"\">Open in Trestle</a>") {
+		t.Errorf("telegram html link mismatch: %s", tgMsg)
+	}
+
+	// Slack mrkdwn formatting
+	slackMsg := formatTaskNotification("slack", proj, taskWithMilestone, "created", link)
+	if !strings.Contains(slackMsg, "👉 <"+link+"|Open in Trestle>") {
+		t.Errorf("slack link mismatch: %s", slackMsg)
+	}
+
+	// Without milestone or description
+	taskNoMilestoneNoDesc := projects.Task{
+		HumanKey: "SYS-2",
+		Title:    "Quick Task",
+		Status:   "started",
+		Priority: "none",
+	}
+	msg2 := formatTaskNotification("discord", proj, taskNoMilestoneNoDesc, "created", link)
+	if !strings.Contains(msg2, "📋 System Setup\n") {
+		t.Errorf("header should not have milestone: %s", msg2)
+	}
+	if strings.Contains(msg2, "📝 Description") {
+		t.Errorf("empty description should be omitted: %s", msg2)
+	}
+	if !strings.Contains(msg2, "⚡ Priority: None") {
+		t.Errorf("none priority should show None: %s", msg2)
+	}
+	if !strings.Contains(msg2, "👤 Assigned To: Unassigned") {
+		t.Errorf("unassigned should show Unassigned: %s", msg2)
+	}
 }

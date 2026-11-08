@@ -340,6 +340,7 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 		}
 	}
 
+	var milestoneTitle *string
 	if params.MilestoneID != nil {
 		var title string
 		if err := tx.QueryRow(ctx, "SELECT title FROM milestones WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
@@ -349,11 +350,12 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 			}
 			return Task{}, err
 		}
+		milestoneTitle = &title
 	}
 
 	t := Task{ID: uuid.New(), WorkspaceID: workspaceID, ProjectID: projectID, Title: params.Title, Description: params.Description,
 		Priority: params.Priority, DueDate: params.DueDate, CreatedBy: actorID, ParentID: params.ParentID,
-		MilestoneID: params.MilestoneID,
+		MilestoneID: params.MilestoneID, MilestoneTitle: milestoneTitle,
 		Labels: []Label{}, Assignees: []TaskAssignee{}}
 
 	// Increment the project's task counter atomically.
