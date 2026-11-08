@@ -51,6 +51,34 @@
     return null;
   }
 
+  const LAST_WS_KEY = "trestle.workspace";
+
+  async function ensureWorkspaceSelected() {
+    if (selectedWorkspace) return;
+    try {
+      const res = await fetch("/api/v1/workspaces", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const workspaces: Workspace[] = data.workspaces || [];
+        if (workspaces.length === 0) return;
+        const lastId = (() => {
+          try {
+            return localStorage.getItem(LAST_WS_KEY);
+          } catch {
+            return null;
+          }
+        })();
+        const match = workspaces.find((w) => w.id === lastId);
+        selectedWorkspace = match || workspaces[0];
+      }
+    } catch {
+      // safe fallback
+    }
+  }
+
   async function checkSession() {
     try {
       const response = await fetch("/api/v1/me", {
@@ -64,6 +92,7 @@
           if (activeTab === "signin" || activeTab === "overview") {
             activeTab = "workspaces";
           }
+          void ensureWorkspaceSelected();
         } else {
           user = null;
         }
@@ -107,6 +136,7 @@
       user = authenticatedUser;
       autoOpenWorkspace = true;
       activeTab = "workspaces";
+      void ensureWorkspaceSelected();
     });
   }
 
@@ -310,16 +340,8 @@
         group: "Go to",
         label: "Settings: Appearance",
         icon: "palette",
-        keywords: "theme accent dark light",
+        keywords: "theme accent dark light instance status health readiness",
         run: () => void navigateHash("appearance"),
-      },
-      {
-        id: "go-status",
-        group: "Go to",
-        label: "Settings: Instance status",
-        icon: "pulse",
-        keywords: "health database readiness",
-        run: () => void navigateHash("instance-status"),
       },
       {
         id: "go-integration",
@@ -755,6 +777,7 @@
           workspace={selectedWorkspace}
           signedIn={!!user}
           initialProjectId={selectedProject?.id || ""}
+          onselectworkspace={(ws) => (selectedWorkspace = ws)}
         />
       {:else}
         <Overview
@@ -764,13 +787,6 @@
         />
       {/if}
     </main>
-
-    <footer class="site-footer">
-      <span>Trestle · a self-hosted workspace, under development.</span>
-      <a href="/assets/third-party-licenses.txt"
-        >Frontend third-party licenses</a
-      >
-    </footer>
   </div>
 </div>
 
@@ -1241,30 +1257,6 @@
     overflow-wrap: anywhere;
   }
 
-  .site-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-4);
-    padding: var(--space-2) var(--gutter);
-    padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
-    border-top: var(--border-width) solid var(--line);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-
-  .site-footer a {
-    min-height: var(--control-height);
-    display: inline-flex;
-    align-items: center;
-    color: var(--text-muted);
-  }
-
-  .site-footer a:hover {
-    color: var(--text);
-  }
-
   /* ── Tablet: tighter search, drop the handle ─────────────────── */
   @media (max-width: 72rem) {
     .user-badge {
@@ -1381,10 +1373,6 @@
     main {
       order: 3;
       padding-top: var(--space-6);
-    }
-
-    .site-footer {
-      order: 4;
     }
   }
 
