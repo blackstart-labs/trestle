@@ -21,6 +21,7 @@ export const SECTIONS: DocSection[] = [
   { id: "list-and-board", title: "List & Kanban Views", category: "Tasks & Workflows", badge: "Dual View", summary: "Switching between dense tabular list and visual Kanban board with inline editing." },
   { id: "custom-statuses", title: "Workflow Statuses", category: "Tasks & Workflows", summary: "Custom status pipelines mapped to 5 canonical categories with delete remap safeguards." },
   { id: "task-details", title: "Task Drawer & Subtasks", category: "Tasks & Workflows", summary: "Side drawer details, checklist subtasks, multi-assignees, and tag labels." },
+  { id: "time-tracking", title: "Live Time Tracking", category: "Tasks & Workflows", badge: "Live", summary: "Live timer and timesheet logging with persistent background state and board indicators." },
   { id: "collaboration", title: "Comments & Activity Stream", category: "Tasks & Workflows", summary: "Real-time task discussions, change history audit trail, and team updates." },
 
   { id: "command-palette", title: "Command Palette & Search", category: "Productivity", badge: "⌘K", summary: "Instant keyboard navigation, global search, and keyboard shortcuts." },
