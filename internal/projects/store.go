@@ -27,16 +27,18 @@ var (
 type Querier = identity.Querier
 
 type Project struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	Name        string
-	Slug        string
-	Key         string
-	Description string
-	TaskCounter int64
-	Archived    bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	Name            string
+	Slug            string
+	Key             string
+	Description     string
+	TaskCounter     int64
+	Archived        bool
+	HasAvatar       bool
+	AvatarUpdatedAt *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Label struct {
@@ -82,26 +84,29 @@ type TaskActivity struct {
 }
 
 type Task struct {
-	ID          uuid.UUID
-	WorkspaceID uuid.UUID
-	ProjectID   uuid.UUID
-	ProjectKey  string
-	TaskNumber  int64
-	HumanKey    string
-	Title       string
-	Description string
-	Status      string
-	StatusID    *uuid.UUID
-	StatusName  *string
-	StatusColor *string
-	Priority    string
-	DueDate     *time.Time
-	CreatedBy   *uuid.UUID
-	ParentID    *uuid.UUID
-	Labels      []Label
-	Assignees   []TaskAssignee
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	ProjectID      uuid.UUID
+	ProjectKey     string
+	TaskNumber     int64
+	HumanKey       string
+	Title          string
+	Description    string
+	Status         string
+	StatusID       *uuid.UUID
+	StatusName     *string
+	StatusColor    *string
+	Priority       string
+	DueDate        *time.Time
+	CreatedBy      *uuid.UUID
+	ParentID       *uuid.UUID
+	MilestoneID    *uuid.UUID
+	MilestoneTitle *string
+	MilestoneColor *string
+	Labels         []Label
+	Assignees      []TaskAssignee
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type PaginatedTasks struct {
@@ -113,10 +118,15 @@ type PaginatedTasks struct {
 
 type CreateProjectParams struct {
 	Name, Slug, Key, Description string
+	AvatarData                  []byte
+	AvatarMIME                  string
 }
 
 type UpdateProjectParams struct {
 	Name, Slug, Description *string
+	AvatarData              *[]byte
+	AvatarMIME              *string
+	RemoveAvatar            bool
 }
 
 type CreateTaskParams struct {
@@ -127,26 +137,30 @@ type CreateTaskParams struct {
 	DueDate     *time.Time
 	ParentID    *uuid.UUID
 	StatusID    *uuid.UUID
+	MilestoneID *uuid.UUID
 }
 
 // UpdateTaskParams: nil means "leave unchanged". SetDueDate with a nil DueDate clears it.
 type UpdateTaskParams struct {
-	Title       *string
-	Description *string
-	Status      *string
-	StatusID    *uuid.UUID
-	Priority    *string
-	SetDueDate  bool
-	DueDate     *time.Time
+	Title          *string
+	Description    *string
+	Status         *string
+	StatusID       *uuid.UUID
+	Priority       *string
+	SetDueDate     bool
+	DueDate        *time.Time
+	SetMilestoneID bool
+	MilestoneID    *uuid.UUID
 }
 
 type ListTasksParams struct {
-	Status     *string
-	StatusID   *uuid.UUID
-	LabelID    *uuid.UUID
-	AssigneeID *uuid.UUID
-	Limit      int64
-	Offset     int64
+	Status      *string
+	StatusID    *uuid.UUID
+	LabelID     *uuid.UUID
+	AssigneeID  *uuid.UUID
+	MilestoneID *uuid.UUID
+	Limit       int64
+	Offset      int64
 }
 
 func humanKey(key string, n int64) string { return fmt.Sprintf("%s-%d", key, n) }
@@ -155,12 +169,14 @@ func humanKey(key string, n int64) string { return fmt.Sprintf("%s-%d", key, n) 
 // Projects
 // ---------------------------------------------------------------------------
 
-const projectColumns = "id, workspace_id, name, slug, key, description, task_counter, archived_at, created_at, updated_at"
+const projectColumns = "id, workspace_id, name, slug, key, description, task_counter, archived_at, created_at, updated_at, (avatar_data IS NOT NULL), avatar_updated_at"
 
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
 	var archivedAt *time.Time
-	err := row.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Slug, &p.Key, &p.Description, &p.TaskCounter, &archivedAt, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Slug, &p.Key, &p.Description,
+		&p.TaskCounter, &archivedAt, &p.CreatedAt, &p.UpdatedAt,
+		&p.HasAvatar, &p.AvatarUpdatedAt)
 	p.Archived = archivedAt != nil
 	return p, err
 }
@@ -173,9 +189,20 @@ func CreateProject(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, 
 		return Project{}, err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `INSERT INTO projects (id, workspace_id, name, slug, key, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-		projectID, workspaceID, params.Name, params.Slug, params.Key, params.Description, now); err != nil {
+
+	var avatarData any = nil
+	var avatarMIME any = nil
+	var avatarUpdatedAt any = nil
+	if len(params.AvatarData) > 0 {
+		avatarData = params.AvatarData
+		avatarMIME = params.AvatarMIME
+		avatarUpdatedAt = now
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO projects (id, workspace_id, name, slug, key, description, avatar_data, avatar_mime, avatar_updated_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+		projectID, workspaceID, params.Name, params.Slug, params.Key, params.Description,
+		avatarData, avatarMIME, avatarUpdatedAt, now); err != nil {
 		return Project{}, mapErr(err)
 	}
 	if err := audit(ctx, tx, actorID, "project.created", map[string]any{
@@ -187,18 +214,24 @@ func CreateProject(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, 
 	if _, err := tx.Exec(ctx, `INSERT INTO task_statuses (id, workspace_id, project_id, name, category, color, position, created_at, updated_at)
 		VALUES
 		   (gen_random_uuid(), $1, $2, 'Backlog', 'backlog', '#4c544c', 0, $3, $3),
-		   (gen_random_uuid(), $1, $2, 'To Do', 'unstarted', '#1e4d79', 1, $3, $3),
+		   (gen_random_uuid(), $1, $2, 'Todo', 'unstarted', '#1e4d79', 1, $3, $3),
 		   (gen_random_uuid(), $1, $2, 'In Progress', 'started', '#775300', 2, $3, $3),
-		   (gen_random_uuid(), $1, $2, 'Done', 'completed', '#26633b', 3, $3, $3),
-		   (gen_random_uuid(), $1, $2, 'Cancelled', 'cancelled', '#9f302b', 4, $3, $3)`,
+		   (gen_random_uuid(), $1, $2, 'In Review', 'started', '#6366f1', 3, $3, $3),
+		   (gen_random_uuid(), $1, $2, 'Done', 'completed', '#26633b', 4, $3, $3),
+		   (gen_random_uuid(), $1, $2, 'Cancelled', 'cancelled', '#9f302b', 5, $3, $3)`,
 		workspaceID, projectID, now); err != nil {
 		return Project{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Project{}, err
 	}
+	var avatarUpdatedTime *time.Time
+	if len(params.AvatarData) > 0 {
+		avatarUpdatedTime = &now
+	}
 	return Project{ID: projectID, WorkspaceID: workspaceID, Name: params.Name, Slug: params.Slug, Key: params.Key,
-		Description: params.Description, CreatedAt: now, UpdatedAt: now}, nil
+		Description: params.Description, HasAvatar: len(params.AvatarData) > 0, AvatarUpdatedAt: avatarUpdatedTime,
+		CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func ListProjects(ctx context.Context, db Querier, workspaceID uuid.UUID, includeArchived bool) ([]Project, error) {
@@ -223,11 +256,29 @@ func UpdateProject(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, 
 		return Project{}, err
 	}
 	defer tx.Rollback(ctx)
-	p, err := scanProject(tx.QueryRow(ctx, `UPDATE projects
+
+	now := time.Now().UTC()
+	query := `UPDATE projects
 		SET name = COALESCE($1, name), slug = COALESCE($2, slug),
-		    description = COALESCE($3, description), updated_at = now()
-		WHERE id = $4 AND workspace_id = $5 RETURNING `+projectColumns,
-		params.Name, params.Slug, params.Description, projectID, workspaceID))
+		    description = COALESCE($3, description)`
+	args := []any{params.Name, params.Slug, params.Description}
+
+	if params.RemoveAvatar {
+		args = append(args, nil, nil, nil)
+		query += fmt.Sprintf(`, avatar_data = $%d, avatar_mime = $%d, avatar_updated_at = $%d`, len(args)-2, len(args)-1, len(args))
+	} else if params.AvatarData != nil {
+		var mime any
+		if params.AvatarMIME != nil {
+			mime = *params.AvatarMIME
+		}
+		args = append(args, *params.AvatarData, mime, now)
+		query += fmt.Sprintf(`, avatar_data = $%d, avatar_mime = $%d, avatar_updated_at = $%d`, len(args)-2, len(args)-1, len(args))
+	}
+
+	args = append(args, projectID, workspaceID)
+	query += fmt.Sprintf(`, updated_at = now() WHERE id = $%d AND workspace_id = $%d RETURNING `+projectColumns, len(args)-1, len(args))
+
+	p, err := scanProject(tx.QueryRow(ctx, query, args...))
 	if err != nil {
 		return Project{}, mapErr(err)
 	}
@@ -237,6 +288,23 @@ func UpdateProject(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, 
 		return Project{}, err
 	}
 	return p, tx.Commit(ctx)
+}
+
+// GetProjectAvatar returns the raw avatar data, MIME type, and update timestamp.
+func GetProjectAvatar(ctx context.Context, db Querier, workspaceID, projectID uuid.UUID) ([]byte, string, time.Time, error) {
+	var data []byte
+	var mime string
+	var updatedAt *time.Time
+	err := db.QueryRow(ctx, "SELECT avatar_data, avatar_mime, avatar_updated_at FROM projects WHERE id = $1 AND workspace_id = $2 AND avatar_data IS NOT NULL",
+		projectID, workspaceID).Scan(&data, &mime, &updatedAt)
+	if err != nil {
+		return nil, "", time.Time{}, mapErr(err)
+	}
+	t := time.Time{}
+	if updatedAt != nil {
+		t = *updatedAt
+	}
+	return data, mime, t, nil
 }
 
 func ArchiveProject(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID, projectID uuid.UUID) (Project, error) {
@@ -272,8 +340,20 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 		}
 	}
 
+	if params.MilestoneID != nil {
+		var title string
+		if err := tx.QueryRow(ctx, "SELECT title FROM milestones WHERE id = $1 AND project_id = $2 AND workspace_id = $3",
+			*params.MilestoneID, projectID, workspaceID).Scan(&title); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Task{}, ErrNotFound
+			}
+			return Task{}, err
+		}
+	}
+
 	t := Task{ID: uuid.New(), WorkspaceID: workspaceID, ProjectID: projectID, Title: params.Title, Description: params.Description,
 		Priority: params.Priority, DueDate: params.DueDate, CreatedBy: actorID, ParentID: params.ParentID,
+		MilestoneID: params.MilestoneID,
 		Labels: []Label{}, Assignees: []TaskAssignee{}}
 
 	// Increment the project's task counter atomically.
@@ -307,21 +387,22 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 	}
 
 	if _, err := tx.Exec(ctx, `INSERT INTO tasks
-		   (id, workspace_id, project_id, task_number, title, description, status, priority, due_date, created_by, parent_id, status_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`,
-		t.ID, workspaceID, projectID, t.TaskNumber, t.Title, t.Description, t.Status, t.Priority, t.DueDate, actorID, t.ParentID, t.StatusID, now); err != nil {
+		   (id, workspace_id, project_id, task_number, title, description, status, priority, due_date, created_by, parent_id, status_id, milestone_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+		t.ID, workspaceID, projectID, t.TaskNumber, t.Title, t.Description, t.Status, t.Priority, t.DueDate, actorID, t.ParentID, t.StatusID, t.MilestoneID, now); err != nil {
 		return Task{}, mapErr(err)
 	}
 	t.HumanKey = humanKey(t.ProjectKey, t.TaskNumber)
 
 	if err := audit(ctx, tx, actorID, "task.created", map[string]any{
 		"workspace_id": workspaceID, "project_id": projectID, "task_id": t.ID, "human_key": t.HumanKey,
-		"parent_id": t.ParentID, "status_id": t.StatusID,
+		"parent_id": t.ParentID, "status_id": t.StatusID, "milestone_id": t.MilestoneID,
 	}); err != nil {
 		return Task{}, err
 	}
 	if err := RecordTaskActivity(ctx, tx, workspaceID, t.ID, actorID, "task.created", map[string]any{
 		"human_key": t.HumanKey, "title": t.Title, "status": t.Status, "status_id": t.StatusID, "priority": t.Priority,
+		"milestone_id": t.MilestoneID,
 	}); err != nil {
 		return Task{}, err
 	}
@@ -386,10 +467,12 @@ func fetchAssignees(ctx context.Context, db Querier, taskIDs []uuid.UUID) (map[u
 
 const taskColumns = `t.id, t.workspace_id, t.project_id, p.key, t.task_number, t.title, t.description,
 	t.status, t.priority, t.due_date, t.created_by, t.parent_id,
-	t.status_id, ts.name, ts.color, t.created_at, t.updated_at
+	t.status_id, ts.name, ts.color, t.created_at, t.updated_at,
+	t.milestone_id, m.title, m.color
 	FROM tasks t
 	JOIN projects p ON p.id = t.project_id
-	LEFT JOIN task_statuses ts ON ts.id = t.status_id`
+	LEFT JOIN task_statuses ts ON ts.id = t.status_id
+	LEFT JOIN milestones m ON m.id = t.milestone_id`
 
 // queryTasks runs a task query and attaches labels and assignees.
 func queryTasks(ctx context.Context, db Querier, sql string, args ...any) ([]Task, error) {
@@ -401,7 +484,8 @@ func queryTasks(ctx context.Context, db Querier, sql string, args ...any) ([]Tas
 		var t Task
 		err := r.Scan(&t.ID, &t.WorkspaceID, &t.ProjectID, &t.ProjectKey, &t.TaskNumber, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.CreatedBy, &t.ParentID,
-			&t.StatusID, &t.StatusName, &t.StatusColor, &t.CreatedAt, &t.UpdatedAt)
+			&t.StatusID, &t.StatusName, &t.StatusColor, &t.CreatedAt, &t.UpdatedAt,
+			&t.MilestoneID, &t.MilestoneTitle, &t.MilestoneColor)
 		t.HumanKey = humanKey(t.ProjectKey, t.TaskNumber)
 		return t, err
 	})
@@ -435,7 +519,8 @@ const taskFilter = `WHERE t.project_id = $1 AND t.workspace_id = $2
 	  ))
 	  AND ($6::UUID IS NULL OR EXISTS (
 	      SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $6
-	  ))`
+	  ))
+	  AND ($7::UUID IS NULL OR t.milestone_id = $7)`
 
 func ListTasks(ctx context.Context, db Querier, workspaceID, projectID uuid.UUID, params ListTasksParams) (PaginatedTasks, error) {
 	if _, err := GetProject(ctx, db, workspaceID, projectID); err != nil {
@@ -443,13 +528,13 @@ func ListTasks(ctx context.Context, db Querier, workspaceID, projectID uuid.UUID
 	}
 	limit := min(max(params.Limit, 1), 100)
 	offset := max(params.Offset, 0)
-	args := []any{projectID, workspaceID, params.Status, params.StatusID, params.LabelID, params.AssigneeID}
+	args := []any{projectID, workspaceID, params.Status, params.StatusID, params.LabelID, params.AssigneeID, params.MilestoneID}
 
 	var total int64
 	if err := db.QueryRow(ctx, "SELECT COUNT(*) FROM tasks t "+taskFilter, args...).Scan(&total); err != nil {
 		return PaginatedTasks{}, err
 	}
-	tasks, err := queryTasks(ctx, db, taskFilter+" ORDER BY t.task_number DESC LIMIT $7 OFFSET $8", append(args, limit, offset)...)
+	tasks, err := queryTasks(ctx, db, taskFilter+" ORDER BY t.task_number DESC LIMIT $8 OFFSET $9", append(args, limit, offset)...)
 	if err != nil {
 		return PaginatedTasks{}, err
 	}
@@ -485,11 +570,21 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 	defer tx.Rollback(ctx)
 	// Compare under a row lock so concurrent identical writes log one change.
 	var previousStatus, previousPriority string
-	var previousStatusID *uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT status, status_id, priority FROM tasks
+	var previousStatusID, previousMilestoneID *uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT status, status_id, priority, milestone_id FROM tasks
 		WHERE id = $1 AND project_id = $2 AND workspace_id = $3 FOR UPDATE`, taskID, projectID, workspaceID).
-		Scan(&previousStatus, &previousStatusID, &previousPriority); err != nil {
+		Scan(&previousStatus, &previousStatusID, &previousPriority, &previousMilestoneID); err != nil {
 		return Task{}, mapErr(err)
+	}
+	if params.SetMilestoneID && params.MilestoneID != nil {
+		var exists bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM milestones WHERE id = $1 AND project_id = $2 AND workspace_id = $3)",
+			*params.MilestoneID, projectID, workspaceID).Scan(&exists); err != nil {
+			return Task{}, err
+		}
+		if !exists {
+			return Task{}, ErrNotFound
+		}
 	}
 	var targetStatusID *uuid.UUID
 	var targetCategory *string
@@ -523,10 +618,12 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 		     status = CASE WHEN $4 THEN $5 ELSE status END,
 		     status_id = CASE WHEN $6 THEN $7 ELSE status_id END,
 		     priority = COALESCE($8, priority),
-		     due_date = CASE WHEN $9 THEN $10 ELSE due_date END
-		WHERE id = $11 AND project_id = $12 AND workspace_id = $13`,
+		     due_date = CASE WHEN $9 THEN $10 ELSE due_date END,
+		     milestone_id = CASE WHEN $11 THEN $12 ELSE milestone_id END
+		WHERE id = $13 AND project_id = $14 AND workspace_id = $15`,
 		time.Now().UTC(), params.Title, params.Description, targetCategory != nil, targetCategory,
 		targetStatusID != nil, targetStatusID, params.Priority, params.SetDueDate, params.DueDate,
+		params.SetMilestoneID, params.MilestoneID,
 		taskID, projectID, workspaceID)
 	if err != nil {
 		return Task{}, mapErr(err)
@@ -549,6 +646,17 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 	}
 	if params.Priority != nil && *params.Priority != previousPriority {
 		if err := RecordTaskActivity(ctx, tx, workspaceID, taskID, actorID, "task.priority_changed", map[string]any{"priority": *params.Priority}); err != nil {
+			return Task{}, err
+		}
+	}
+	milestoneChanged := params.SetMilestoneID && (
+		(previousMilestoneID == nil && params.MilestoneID != nil) ||
+		(previousMilestoneID != nil && params.MilestoneID == nil) ||
+		(previousMilestoneID != nil && params.MilestoneID != nil && *previousMilestoneID != *params.MilestoneID))
+	if milestoneChanged {
+		if err := RecordTaskActivity(ctx, tx, workspaceID, taskID, actorID, "task.milestone_changed", map[string]any{
+			"milestone_id": params.MilestoneID,
+		}); err != nil {
 			return Task{}, err
 		}
 	}

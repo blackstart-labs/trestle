@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from "../ui/Button.svelte";
   import Feedback from "../ui/Feedback.svelte";
+  import Icon from "../ui/Icon.svelte";
   import Modal from "../ui/Modal.svelte";
   import type { Project } from "./ProjectsView.svelte";
 
@@ -23,6 +24,10 @@
   let slug = $state(project.slug);
   // svelte-ignore state_referenced_locally
   let description = $state(project.description);
+  let newImage = $state("");
+  // svelte-ignore state_referenced_locally
+  let newImagePreview = $state(project.image_url || "");
+  let removeImage = $state(false);
   let saving = $state(false);
   let error = $state<string | null>(null);
   const canManage = $derived(
@@ -31,13 +36,48 @@
   const dirty = $derived(
     name.trim() !== project.name ||
       slug.trim().toLowerCase() !== project.slug ||
-      description !== project.description,
+      description !== project.description ||
+      newImage !== "" ||
+      (removeImage && Boolean(project.image_url)),
   );
+
+  function handleImageFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      error = "Image must be 5 MB or smaller.";
+      return;
+    }
+    removeImage = false;
+    if (newImagePreview && newImagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(newImagePreview);
+    }
+    const blobUrl = URL.createObjectURL(file);
+    newImagePreview = blobUrl;
+    const reader = new FileReader();
+    reader.onload = () => {
+      newImage = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveImage() {
+    newImage = "";
+    if (newImagePreview && newImagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(newImagePreview);
+    }
+    newImagePreview = "";
+    removeImage = true;
+  }
 
   function requestClose() {
     if (saving) return;
     if (dirty && !confirm("Discard your unsaved changes to this project?"))
       return;
+    if (newImagePreview && newImagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(newImagePreview);
+    }
     onclose();
   }
 
@@ -78,6 +118,11 @@
     if (trimmedName !== project.name) payload.name = trimmedName;
     if (normalizedSlug !== project.slug) payload.slug = normalizedSlug;
     if (description !== project.description) payload.description = description;
+    if (removeImage && project.image_url) {
+      payload.image = "";
+    } else if (newImage) {
+      payload.image = newImage;
+    }
     saving = true;
     try {
       const res = await fetch(
@@ -93,6 +138,9 @@
         },
       );
       if (res.ok) {
+        if (newImagePreview && newImagePreview.startsWith("blob:")) {
+          URL.revokeObjectURL(newImagePreview);
+        }
         onupdated(await res.json());
       } else {
         const data = await res.json().catch(() => null);
@@ -163,6 +211,51 @@
       </div>
     </div>
     <div class="field">
+      <label for="edit-project-image">Project icon (optional)</label>
+      <div class="image-uploader">
+        <div class="avatar-preview">
+          {#if newImagePreview}
+            <img
+              src={newImagePreview}
+              alt="Project icon preview"
+              class="preview-img"
+            />
+          {:else}
+            <span class="preview-empty" aria-hidden="true">
+              <Icon name="image" size={20} />
+            </span>
+          {/if}
+        </div>
+        <div class="uploader-actions">
+          <label class="btn btn-secondary file-picker-label">
+            <Icon name="upload" size={16} />
+            <span>{newImagePreview ? "Change image" : "Upload image"}</span>
+            <input
+              id="edit-project-image"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+              onchange={handleImageFile}
+              disabled={saving || !canManage}
+              class="visually-hidden"
+            />
+          </label>
+          {#if newImagePreview}
+            <button
+              type="button"
+              class="btn-quiet btn-icon"
+              onclick={handleRemoveImage}
+              disabled={saving || !canManage}
+              aria-label="Remove image"
+              title="Remove image"
+            >
+              <Icon name="trash" size={16} />
+            </button>
+          {/if}
+        </div>
+      </div>
+      <p class="note">PNG, JPEG, WebP, GIF or SVG up to 5 MB.</p>
+    </div>
+    <div class="field">
       <label for="edit-project-description">Description</label>
       <textarea
         id="edit-project-description"
@@ -191,5 +284,45 @@
 <style>
   .form-row {
     align-items: start;
+  }
+
+  .image-uploader {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .avatar-preview {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius);
+    border: var(--border-width) solid var(--line);
+    background: var(--surface-sunken);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .preview-empty {
+    color: var(--text-muted);
+    display: grid;
+    place-items: center;
+  }
+
+  .uploader-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .file-picker-label {
+    cursor: pointer;
   }
 </style>

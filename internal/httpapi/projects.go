@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,21 +31,82 @@ func idPtr(id *uuid.UUID) *string {
 }
 
 type projectItem struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Key         string `json:"key"`
-	Description string `json:"description"`
-	TaskCounter int64  `json:"task_counter"`
-	Archived    bool   `json:"archived"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID          string  `json:"id"`
+	WorkspaceID string  `json:"workspace_id"`
+	Name        string  `json:"name"`
+	Slug        string  `json:"slug"`
+	Key         string  `json:"key"`
+	Description string  `json:"description"`
+	TaskCounter int64   `json:"task_counter"`
+	Archived    bool    `json:"archived"`
+	ImageURL    *string `json:"image_url"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }
 
 func toProject(p projects.Project) projectItem {
-	return projectItem{p.ID.String(), p.WorkspaceID.String(), p.Name, p.Slug, p.Key, p.Description,
-		p.TaskCounter, p.Archived, ts(p.CreatedAt), ts(p.UpdatedAt)}
+	var imageURL *string
+	if p.HasAvatar {
+		t := ""
+		if p.AvatarUpdatedAt != nil {
+			t = fmt.Sprintf("?t=%d", p.AvatarUpdatedAt.Unix())
+		}
+		url := fmt.Sprintf("/api/v1/workspaces/%s/projects/%s/image%s", p.WorkspaceID, p.ID, t)
+		imageURL = &url
+	}
+	return projectItem{
+		ID:          p.ID.String(),
+		WorkspaceID: p.WorkspaceID.String(),
+		Name:        p.Name,
+		Slug:        p.Slug,
+		Key:         p.Key,
+		Description: p.Description,
+		TaskCounter: p.TaskCounter,
+		Archived:    p.Archived,
+		ImageURL:    imageURL,
+		CreatedAt:   ts(p.CreatedAt),
+		UpdatedAt:   ts(p.UpdatedAt),
+	}
+}
+
+func parseImageData(raw string) ([]byte, string, error) {
+	mimeType := "image/png"
+	b64 := raw
+	if idx := strings.Index(raw, ","); idx != -1 {
+		header := raw[:idx]
+		b64 = raw[idx+1:]
+		if strings.HasPrefix(header, "data:") {
+			mimeType = strings.TrimPrefix(header, "data:")
+			if semi := strings.Index(mimeType, ";"); semi != -1 {
+				mimeType = mimeType[:semi]
+			}
+		}
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, "", errors.New("invalid base64 image data")
+	}
+	if len(data) > 5*1024*1024 {
+		return nil, "", errors.New("image size exceeds 5MB")
+	}
+	validMimes := map[string]bool{
+		"image/png":     true,
+		"image/jpeg":    true,
+		"image/jpg":     true,
+		"image/webp":    true,
+		"image/gif":     true,
+		"image/svg+xml": true,
+	}
+	detected := http.DetectContentType(data)
+	if detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || detected == "image/webp" {
+		mimeType = detected
+	} else if strings.HasPrefix(strings.TrimSpace(string(data)), "<svg") || strings.HasPrefix(strings.TrimSpace(string(data)), "<?xml") {
+		mimeType = "image/svg+xml"
+	}
+	if !validMimes[mimeType] {
+		return nil, "", errors.New("unsupported image format. Allowed: PNG, JPEG, WebP, GIF, SVG")
+	}
+	return data, mimeType, nil
 }
 
 type labelItem struct {
@@ -114,13 +178,16 @@ type taskItem struct {
 	DueDate     *string        `json:"due_date"`
 	CreatedBy   *string        `json:"created_by"`
 	ParentID    *string        `json:"parent_id"`
-	StatusID    *string        `json:"status_id"`
-	StatusName  *string        `json:"status_name"`
-	StatusColor *string        `json:"status_color"`
-	Labels      []labelItem    `json:"labels"`
-	Assignees   []assigneeItem `json:"assignees"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
+	StatusID       *string        `json:"status_id"`
+	StatusName     *string        `json:"status_name"`
+	StatusColor    *string        `json:"status_color"`
+	MilestoneID    *string        `json:"milestone_id"`
+	MilestoneTitle *string        `json:"milestone_title"`
+	MilestoneColor *string        `json:"milestone_color"`
+	Labels         []labelItem    `json:"labels"`
+	Assignees      []assigneeItem `json:"assignees"`
+	CreatedAt      string         `json:"created_at"`
+	UpdatedAt      string         `json:"updated_at"`
 }
 
 func toTask(t projects.Task) taskItem {
@@ -130,6 +197,7 @@ func toTask(t projects.Task) taskItem {
 		Description: t.Description, Status: t.Status, Priority: t.Priority,
 		CreatedBy: idPtr(t.CreatedBy), ParentID: idPtr(t.ParentID), StatusID: idPtr(t.StatusID),
 		StatusName: t.StatusName, StatusColor: t.StatusColor,
+		MilestoneID: idPtr(t.MilestoneID), MilestoneTitle: t.MilestoneTitle, MilestoneColor: t.MilestoneColor,
 		Labels: mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
 		CreatedAt: ts(t.CreatedAt), UpdatedAt: ts(t.UpdatedAt),
 	}
@@ -296,6 +364,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, session *
 		Slug        *string `json:"slug"`
 		Key         *string `json:"key"`
 		Description *string `json:"description"`
+		Image       *string `json:"image"`
 	}
 	if _, ok := pathIDs(w, r, "workspace_id"); !ok {
 		return
@@ -330,8 +399,22 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, session *
 		badRequest(w, "Project description cannot exceed 2000 characters")
 		return
 	}
+
+	var avatarData []byte
+	var avatarMIME string
+	if req.Image != nil && strings.TrimSpace(*req.Image) != "" {
+		data, mime, err := parseImageData(*req.Image)
+		if err != nil {
+			badRequest(w, err.Error())
+			return
+		}
+		avatarData = data
+		avatarMIME = mime
+	}
+
 	p, err := projects.CreateProject(r.Context(), s.Pool, &session.User.ID, ids[0], projects.CreateProjectParams{
 		Name: name, Slug: slug, Key: key, Description: description,
+		AvatarData: avatarData, AvatarMIME: avatarMIME,
 	})
 	if err != nil {
 		storeError(w, err, "failed to create project", "A project with this slug or key already exists in the workspace")
@@ -363,6 +446,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request, session *
 		Slug        *string `json:"slug"`
 		Description *string `json:"description"`
 		Key         *string `json:"key"`
+		Image       *string `json:"image"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -371,8 +455,8 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request, session *
 		badRequest(w, "Project key cannot be changed because existing task keys use it")
 		return
 	}
-	if req.Name == nil && req.Slug == nil && req.Description == nil {
-		badRequest(w, "Provide a project name, slug, or description to update")
+	if req.Name == nil && req.Slug == nil && req.Description == nil && req.Image == nil {
+		badRequest(w, "Provide a project name, slug, description, or image to update")
 		return
 	}
 	if req.Name != nil {
@@ -395,11 +479,146 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request, session *
 		badRequest(w, "Project description cannot exceed 2000 characters")
 		return
 	}
+
+	var avatarData *[]byte
+	var avatarMIME *string
+	removeAvatar := false
+	if req.Image != nil {
+		if strings.TrimSpace(*req.Image) == "" {
+			removeAvatar = true
+		} else {
+			data, mime, err := parseImageData(*req.Image)
+			if err != nil {
+				badRequest(w, err.Error())
+				return
+			}
+			avatarData = &data
+			avatarMIME = &mime
+		}
+	}
+
 	p, err := projects.UpdateProject(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.UpdateProjectParams{
 		Name: req.Name, Slug: req.Slug, Description: req.Description,
+		AvatarData: avatarData, AvatarMIME: avatarMIME, RemoveAvatar: removeAvatar,
 	})
 	if err != nil {
 		storeError(w, err, "failed to update project", "A project with this slug already exists in the workspace")
+		return
+	}
+	writeJSON(w, http.StatusOK, toProject(p))
+}
+
+func (s *Server) getProjectImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, _, ok := s.scope(w, r, session, false, "project_id")
+	if !ok {
+		return
+	}
+	data, mime, updatedAt, err := projects.GetProjectAvatar(r.Context(), s.Pool, ids[0], ids[1])
+	if err != nil {
+		notFound(w)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("ETag", fmt.Sprintf("\"%s-%d\"", ids[1].String(), updatedAt.UnixNano()))
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (s *Server) setProjectImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, _, ok := s.scope(w, r, session, true, "project_id")
+	if !ok {
+		return
+	}
+	ct := r.Header.Get("Content-Type")
+	var data []byte
+	var mime string
+	var err error
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(5 << 20); err != nil {
+			badRequest(w, "Failed to parse upload form")
+			return
+		}
+		file, header, ferr := r.FormFile("file")
+		if ferr != nil {
+			file, header, ferr = r.FormFile("image")
+		}
+		if ferr != nil {
+			badRequest(w, "No image file provided in upload")
+			return
+		}
+		defer file.Close()
+		data, err = io.ReadAll(file)
+		if err != nil {
+			badRequest(w, "Failed to read uploaded image")
+			return
+		}
+		mime = header.Header.Get("Content-Type")
+	} else if strings.HasPrefix(ct, "application/json") {
+		var req struct {
+			Image string `json:"image"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		data, mime, err = parseImageData(req.Image)
+		if err != nil {
+			badRequest(w, err.Error())
+			return
+		}
+	} else {
+		data, err = io.ReadAll(http.MaxBytesReader(w, r.Body, 5<<20))
+		if err != nil {
+			badRequest(w, "Image size exceeds 5MB")
+			return
+		}
+		mime = ct
+	}
+
+	if len(data) == 0 {
+		badRequest(w, "Image cannot be empty")
+		return
+	}
+
+	validMimes := map[string]bool{
+		"image/png":     true,
+		"image/jpeg":    true,
+		"image/jpg":     true,
+		"image/webp":    true,
+		"image/gif":     true,
+		"image/svg+xml": true,
+	}
+	detected := http.DetectContentType(data)
+	if detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || detected == "image/webp" {
+		mime = detected
+	} else if strings.HasPrefix(strings.TrimSpace(string(data)), "<svg") || strings.HasPrefix(strings.TrimSpace(string(data)), "<?xml") {
+		mime = "image/svg+xml"
+	}
+	if !validMimes[mime] {
+		badRequest(w, "Unsupported image format. Allowed: PNG, JPEG, WebP, GIF, SVG")
+		return
+	}
+
+	p, err := projects.UpdateProject(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.UpdateProjectParams{
+		AvatarData: &data, AvatarMIME: &mime,
+	})
+	if err != nil {
+		storeError(w, err, "failed to set project image", "")
+		return
+	}
+	writeJSON(w, http.StatusOK, toProject(p))
+}
+
+func (s *Server) deleteProjectImage(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, _, ok := s.scope(w, r, session, true, "project_id")
+	if !ok {
+		return
+	}
+	p, err := projects.UpdateProject(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.UpdateProjectParams{
+		RemoveAvatar: true,
+	})
+	if err != nil {
+		storeError(w, err, "failed to delete project image", "")
 		return
 	}
 	writeJSON(w, http.StatusOK, toProject(p))
@@ -436,6 +655,9 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request, session *Auth
 		return
 	}
 	if params.AssigneeID, ok = queryUUID(w, r, "assignee_id"); !ok {
+		return
+	}
+	if params.MilestoneID, ok = queryUUID(w, r, "milestone_id"); !ok {
 		return
 	}
 	for name, dst := range map[string]*int64{"limit": &params.Limit, "offset": &params.Offset} {
@@ -477,6 +699,7 @@ type createTaskRequest struct {
 	StatusID    *uuid.UUID `json:"status_id"`
 	Priority    *string    `json:"priority"`
 	DueDate     *string    `json:"due_date"`
+	MilestoneID *uuid.UUID `json:"milestone_id"`
 	ParentID    *uuid.UUID `json:"parent_id"`
 }
 
@@ -541,7 +764,7 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 	}
 	t, err := projects.CreateTask(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.CreateTaskParams{
 		Title: title, Description: description, Status: status, Priority: priority, DueDate: due,
-		ParentID: parent, StatusID: req.StatusID,
+		ParentID: parent, StatusID: req.StatusID, MilestoneID: req.MilestoneID,
 	})
 	if err != nil {
 		storeError(w, err, "failed to create "+lower, "")
@@ -582,13 +805,19 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		Status      *string         `json:"status"`
 		StatusID    *uuid.UUID      `json:"status_id"`
 		Priority    *string         `json:"priority"`
-		DueDate     json.RawMessage `json:"due_date"` // absent: unchanged; null or "": clear
+		DueDate     json.RawMessage `json:"due_date"`     // absent: unchanged; null or "": clear
+		MilestoneID json.RawMessage `json:"milestone_id"` // absent: unchanged; null or "": clear
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	var dueDate *string
 	if len(req.DueDate) > 0 && json.Unmarshal(req.DueDate, &dueDate) != nil {
+		unprocessable(w)
+		return
+	}
+	var rawMilestoneID *string
+	if len(req.MilestoneID) > 0 && json.Unmarshal(req.MilestoneID, &rawMilestoneID) != nil {
 		unprocessable(w)
 		return
 	}
@@ -617,12 +846,21 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		return
 	}
 	params := projects.UpdateTaskParams{Title: req.Title, Description: req.Description, Status: req.Status,
-		StatusID: req.StatusID, Priority: req.Priority, SetDueDate: len(req.DueDate) > 0}
+		StatusID: req.StatusID, Priority: req.Priority, SetDueDate: len(req.DueDate) > 0,
+		SetMilestoneID: len(req.MilestoneID) > 0}
 	if dueDate != nil && strings.TrimSpace(*dueDate) != "" {
 		if params.DueDate, ok = parseDueDate(*dueDate); !ok {
 			badRequest(w, "Invalid due_date format, expected YYYY-MM-DD")
 			return
 		}
+	}
+	if rawMilestoneID != nil && strings.TrimSpace(*rawMilestoneID) != "" {
+		mid, err := uuid.Parse(strings.TrimSpace(*rawMilestoneID))
+		if err != nil {
+			badRequest(w, "Invalid milestone_id format")
+			return
+		}
+		params.MilestoneID = &mid
 	}
 	t, err := projects.UpdateTask(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2], params)
 	if err != nil {
