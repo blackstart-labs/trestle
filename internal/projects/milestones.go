@@ -205,4 +205,3 @@ func DeleteMilestone(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID
 
 	return tx.Commit(ctx)
 }
-

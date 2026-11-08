@@ -16,6 +16,7 @@
   import MultiPicker from "../ui/MultiPicker.svelte";
   import { appear, drawerIn, drawerOut, fadeIn } from "../lib/motion";
   import { relativeTime } from "../lib/identity";
+  import { liveTimer } from "../lib/timer.svelte";
 
   export interface Label {
     id: string;
@@ -57,6 +58,20 @@
     action: string;
     details: Record<string, unknown>;
     created_at: string;
+  }
+
+  export interface TimeLog {
+    id: string;
+    workspace_id: string;
+    project_id: string;
+    task_id: string;
+    user_id: string | null;
+    user_name: string;
+    hours: number;
+    logged_date: string;
+    description: string;
+    created_at: string;
+    updated_at: string;
   }
 
   export interface WorkspaceMember {
@@ -134,6 +149,14 @@
   // Activities
   let activities = $state<TaskActivity[]>([]);
   let loadingActivities = $state(false);
+
+  // Time tracking
+  let timeLogs = $state<TimeLog[]>([]);
+  let loadingTimeLogs = $state(false);
+  let newLogHours = $state("");
+  let newLogDate = $state(new Date().toISOString().slice(0, 10));
+  let newLogDesc = $state("");
+  let loggingTime = $state(false);
 
   // Labels & Assignees
   let projectLabels = $state<Label[]>([]);
@@ -287,6 +310,124 @@
       // ignore
     } finally {
       loadingActivities = false;
+    }
+  }
+
+  export async function loadTimeLogs() {
+    if (!currentTask?.id) return;
+    loadingTimeLogs = true;
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/time-logs`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        timeLogs = data.time_logs || [];
+      }
+    } catch {
+      // ignore
+    } finally {
+      loadingTimeLogs = false;
+    }
+  }
+
+  async function handleLogTime(e: SubmitEvent) {
+    e.preventDefault();
+    const hrs = parseFloat(newLogHours);
+    if (isNaN(hrs) || hrs <= 0) {
+      showNotice("Please enter a valid number of hours.", "danger");
+      return;
+    }
+    loggingTime = true;
+    const csrf = getCsrfToken();
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/time-logs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          },
+          body: JSON.stringify({
+            hours: hrs,
+            logged_date: newLogDate || undefined,
+            description: newLogDesc.trim() || undefined,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        showNotice(err?.error?.message || "Failed to log time.", "danger");
+        return;
+      }
+      const data = await res.json();
+      if (data.time_log) {
+        timeLogs = [data.time_log, ...timeLogs];
+        currentTask = { ...currentTask, spent_hours: data.spent_hours };
+        ontaskupdated?.(currentTask);
+        newLogHours = "";
+        newLogDesc = "";
+        showNotice("Logged time.", "success");
+      }
+    } catch {
+      showNotice("Network error logging time.", "danger");
+    } finally {
+      loggingTime = false;
+    }
+  }
+
+  async function handleDeleteTimeLog(logId: string) {
+    if (!confirm("Delete this time log entry?")) return;
+    const csrf = getCsrfToken();
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/time-logs/${logId}`,
+        {
+          method: "DELETE",
+          headers: csrf ? { "X-CSRF-Token": csrf } : {},
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        timeLogs = timeLogs.filter((l) => l.id !== logId);
+        currentTask = { ...currentTask, spent_hours: data.spent_hours };
+        ontaskupdated?.(currentTask);
+        showNotice("Time log removed.", "success");
+      } else {
+        showNotice("Failed to delete time log.", "danger");
+      }
+    } catch {
+      showNotice("Network error deleting time log.", "danger");
+    }
+  }
+
+  let stoppingLiveTimer = $state(false);
+
+  function handleStartLiveTimer() {
+    if (!currentTask?.id) return;
+    liveTimer.start({
+      id: currentTask.id,
+      human_key: currentTask.human_key,
+      title: currentTask.title,
+      project_id: project.id,
+      workspace_id: workspace.id,
+    });
+  }
+
+  async function handleStopLiveTimer() {
+    stoppingLiveTimer = true;
+    const csrf = getCsrfToken();
+    const res = await liveTimer.stopAndLog(csrf || "");
+    stoppingLiveTimer = false;
+    if (res.ok) {
+      showNotice("Logged time to task.", "success");
+      void loadTimeLogs();
+      currentTask = { ...currentTask, spent_hours: res.spentHours };
+      ontaskupdated?.(currentTask);
+    } else {
+      showNotice(res.error || "Failed to log time.", "danger");
     }
   }
 
@@ -734,6 +875,7 @@
       void loadSubtasks();
       void loadComments();
       void loadActivities();
+      void loadTimeLogs();
     });
   });
 
@@ -822,10 +964,18 @@
     void loadProjectLabels();
     void loadWorkspaceMembers();
 
+    const unregTimer = liveTimer.onLog((taskId, spent) => {
+      if (currentTask?.id === taskId) {
+        currentTask = { ...currentTask, spent_hours: spent };
+        void loadTimeLogs();
+      }
+    });
+
     // Move focus into the drawer, and give it back to the opener on close.
     const opener = document.activeElement as HTMLElement | null;
     drawerElement?.focus();
     return () => {
+      unregTimer();
       if (opener && document.contains(opener)) opener.focus();
     };
   });
@@ -1075,6 +1225,188 @@
           </div>
         </section>
 
+        <section class="block" aria-labelledby="time-tracking-heading">
+          <div class="block-head">
+            <h3 id="time-tracking-heading">Time Tracking</h3>
+            {#if (currentTask.spent_hours ?? 0) > 0}
+              <span class="count-pill num"
+                >{(currentTask.spent_hours ?? 0).toFixed(2)}h</span
+              >
+            {/if}
+          </div>
+
+          <div class="time-tracking-block inset">
+            {#if canManage}
+              <div
+                class="live-timer-card {liveTimer.active?.taskId ===
+                currentTask.id
+                  ? 'active'
+                  : ''}"
+              >
+                {#if liveTimer.active?.taskId === currentTask.id}
+                  <div class="live-timer-header">
+                    <div class="live-timer-badge">
+                      <span class="live-pulse-dot" aria-hidden="true"></span>
+                      <span>Live timer running</span>
+                    </div>
+                    <div class="live-timer-display num">
+                      {liveTimer.formattedDuration}
+                    </div>
+                  </div>
+                  <div class="live-timer-actions">
+                    <input
+                      type="text"
+                      class="live-timer-note"
+                      placeholder="What are you working on? (optional)"
+                      value={liveTimer.active.description}
+                      oninput={(e) =>
+                        liveTimer.setDescription(e.currentTarget.value)}
+                      aria-label="Timer note"
+                    />
+                    <div class="live-timer-btns">
+                      <Button
+                        variant="primary"
+                        onclick={handleStopLiveTimer}
+                        disabled={stoppingLiveTimer}
+                      >
+                        {#snippet children()}
+                          <Icon name="stop" size={14} />
+                          <span
+                            >{stoppingLiveTimer
+                              ? "Saving…"
+                              : "Stop & Log time"}</span
+                          >
+                        {/snippet}
+                      </Button>
+                      <Button
+                        variant="quiet"
+                        onclick={() => liveTimer.discard()}
+                        disabled={stoppingLiveTimer}
+                      >
+                        {#snippet children()}
+                          <span>Discard</span>
+                        {/snippet}
+                      </Button>
+                    </div>
+                  </div>
+                {:else if liveTimer.active}
+                  <div class="live-timer-running-other">
+                    <span class="other-note">
+                      Timer running on <strong
+                        >{liveTimer.active.taskHumanKey}</strong
+                      >
+                      ({liveTimer.formattedDuration})
+                    </span>
+                    <Button variant="quiet" onclick={handleStartLiveTimer}>
+                      {#snippet children()}
+                        <Icon name="play" size={14} />
+                        <span>Switch timer here</span>
+                      {/snippet}
+                    </Button>
+                  </div>
+                {:else}
+                  <div class="live-timer-idle">
+                    <Button variant="secondary" onclick={handleStartLiveTimer}>
+                      {#snippet children()}
+                        <Icon name="play" size={14} />
+                        <span>Start live timer</span>
+                      {/snippet}
+                    </Button>
+                    <span class="idle-hint"
+                      >Tracks elapsed time live until stopped.</span
+                    >
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            {#if timeLogs.length > 0}
+              <ul class="time-log-list" role="list">
+                {#each timeLogs as log (log.id)}
+                  <li class="time-log-row" in:appear>
+                    <div class="time-log-meta">
+                      <span class="time-log-user"
+                        >{log.user_name || "Member"}</span
+                      >
+                      <span class="time-log-date">{log.logged_date}</span>
+                    </div>
+                    {#if log.description}
+                      <span class="time-log-desc">{log.description}</span>
+                    {/if}
+                    <div class="time-log-right">
+                      <span class="time-log-hours num"
+                        >{Number(log.hours).toFixed(2)}h</span
+                      >
+                      {#if canManage}
+                        <button
+                          type="button"
+                          class="chip-remove"
+                          onclick={() => handleDeleteTimeLog(log.id)}
+                          aria-label="Delete time entry"
+                          title="Delete entry"
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {:else if !loadingTimeLogs}
+              <p class="empty-note">
+                No time logged on this task yet. Record hours spent below.
+              </p>
+            {/if}
+
+            {#if canManage}
+              <form onsubmit={handleLogTime} class="add-time-form">
+                <div class="time-inputs">
+                  <div class="time-field-hours">
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0.01"
+                      max="240"
+                      bind:value={newLogHours}
+                      placeholder="Hours (e.g. 1.5)"
+                      aria-label="Hours spent"
+                      required
+                    />
+                  </div>
+                  <div class="time-field-date">
+                    <DatePicker
+                      id="log-time-date"
+                      variant="chip"
+                      label="Date"
+                      value={newLogDate}
+                      onchange={(v) =>
+                        (newLogDate =
+                          v || new Date().toISOString().slice(0, 10))}
+                    />
+                  </div>
+                  <div class="time-field-desc">
+                    <input
+                      type="text"
+                      bind:value={newLogDesc}
+                      placeholder="Work description (optional)…"
+                      aria-label="Work description"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  variant="quiet"
+                  disabled={loggingTime || !newLogHours}
+                >
+                  {#snippet children()}{loggingTime
+                      ? "Logging…"
+                      : "Log time"}{/snippet}
+                </Button>
+              </form>
+            {/if}
+          </div>
+        </section>
+
         <section class="block" aria-labelledby="comments-heading">
           <div class="block-head">
             <h3 id="comments-heading">Discussion</h3>
@@ -1235,6 +1567,19 @@
                   void saveTask({ milestone_id: v || null });
                 }}
               />
+            </dd>
+          </div>
+
+          <div class="prop">
+            <dt><span id="detail-time-spent-label">Logged time</span></dt>
+            <dd>
+              <span
+                class="time-spent-chip"
+                aria-labelledby="detail-time-spent-label"
+              >
+                <Icon name="clock" size={13} />
+                <span>{(currentTask.spent_hours ?? 0).toFixed(2)}h</span>
+              </span>
             </dd>
           </div>
 
@@ -2094,6 +2439,105 @@
   .timeline-date {
     font-size: var(--text-xs);
     color: var(--text-muted);
+  }
+
+  .time-tracking-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .time-log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .time-log-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border);
+    font-size: var(--text-sm);
+  }
+
+  .time-log-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 9rem;
+  }
+
+  .time-log-user {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .time-log-date {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .time-log-desc {
+    flex: 1;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .time-log-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .time-log-hours {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .add-time-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: var(--border-width) solid var(--line);
+  }
+
+  .time-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .time-field-hours input {
+    width: 7.5rem;
+  }
+
+  .time-field-desc {
+    flex: 1;
+    min-width: 10rem;
+  }
+
+  .time-spent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+    background: var(--surface-muted);
+    color: var(--text);
+    font-weight: 500;
+    font-size: var(--text-xs);
   }
 
   @media (max-width: 52rem) {

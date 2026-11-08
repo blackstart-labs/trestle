@@ -284,4 +284,3 @@ func (s *Server) deleteMilestone(w http.ResponseWriter, r *http.Request, session
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-

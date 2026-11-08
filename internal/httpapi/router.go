@@ -4,6 +4,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -61,8 +62,18 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("POST /api/v1/session", s.login)
 	mux.HandleFunc("DELETE /api/v1/session", s.auth(s.logout))
 	mux.HandleFunc("GET /api/v1/me", s.auth(s.me))
+	mux.HandleFunc("PATCH /api/v1/me", s.auth(s.updateProfile))
+	mux.HandleFunc("GET /api/v1/me/avatar", s.getUserAvatar)
+	mux.HandleFunc("PUT /api/v1/me/avatar", s.auth(s.setUserAvatar))
+	mux.HandleFunc("DELETE /api/v1/me/avatar", s.auth(s.deleteUserAvatar))
+	mux.HandleFunc("GET /api/v1/users/{user_id}/avatar", s.getUserAvatar)
 	mux.HandleFunc("GET /api/v1/workspaces", s.auth(s.listWorkspaces))
 	const ws = "/api/v1/workspaces/{workspace_id}"
+	mux.HandleFunc("PATCH "+ws, s.auth(s.updateWorkspace))
+	mux.HandleFunc("GET "+ws+"/image", s.auth(s.getWorkspaceImage))
+	mux.HandleFunc("PUT "+ws+"/image", s.auth(s.setWorkspaceImage))
+	mux.HandleFunc("DELETE "+ws+"/image", s.auth(s.deleteWorkspaceImage))
+	mux.HandleFunc("GET "+ws+"/export", s.auth(s.exportWorkspace))
 	mux.HandleFunc("GET "+ws+"/members", s.auth(s.listMembers))
 	mux.HandleFunc("POST "+ws+"/members", s.auth(s.addMember))
 	mux.HandleFunc("PATCH "+ws+"/members/{user_id}", s.auth(s.updateMemberRole))
@@ -80,6 +91,7 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET "+p+"/image", s.auth(s.getProjectImage))
 	mux.HandleFunc("PUT "+p+"/image", s.auth(s.setProjectImage))
 	mux.HandleFunc("DELETE "+p+"/image", s.auth(s.deleteProjectImage))
+	mux.HandleFunc("GET "+p+"/export", s.auth(s.exportProject))
 	mux.HandleFunc("GET "+p+"/integrations", s.auth(s.listIntegrations))
 	mux.HandleFunc("PUT "+p+"/integrations/{provider}", s.auth(s.saveIntegration))
 	mux.HandleFunc("DELETE "+p+"/integrations/{provider}", s.auth(s.deleteIntegration))
@@ -89,6 +101,9 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET "+t, s.auth(s.getTask))
 	mux.HandleFunc("PATCH "+t, s.auth(s.updateTask))
 	mux.HandleFunc("DELETE "+t, s.auth(s.deleteTask))
+	mux.HandleFunc("GET "+t+"/time-logs", s.auth(s.listTaskTimeLogs))
+	mux.HandleFunc("POST "+t+"/time-logs", s.auth(s.createTaskTimeLog))
+	mux.HandleFunc("DELETE "+t+"/time-logs/{log_id}", s.auth(s.deleteTaskTimeLog))
 
 	// Custom statuses
 	mux.HandleFunc("GET "+p+"/statuses", s.auth(s.listStatuses))
@@ -336,6 +351,86 @@ func (w *fallbackWriter) Write(b []byte) (int, error) {
 		w.WriteHeader(http.StatusNotFound)
 	}
 	return len(b), nil
+}
+
+func unauthorized(w http.ResponseWriter) {
+	writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+}
+
+func extractUploadedImage(w http.ResponseWriter, r *http.Request) ([]byte, string, bool) {
+	ct := r.Header.Get("Content-Type")
+	var data []byte
+	var mime string
+	var err error
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(5 << 20); err != nil {
+			badRequest(w, "Failed to parse upload form")
+			return nil, "", false
+		}
+		file, header, ferr := r.FormFile("file")
+		if ferr != nil {
+			file, header, ferr = r.FormFile("image")
+		}
+		if ferr != nil {
+			badRequest(w, "No image file provided in upload")
+			return nil, "", false
+		}
+		defer file.Close()
+		data, err = io.ReadAll(file)
+		if err != nil {
+			badRequest(w, "Failed to read uploaded image")
+			return nil, "", false
+		}
+		mime = header.Header.Get("Content-Type")
+	} else if strings.HasPrefix(ct, "application/json") {
+		var req struct {
+			Image string `json:"image"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return nil, "", false
+		}
+		raw := req.Image
+		if idx := strings.Index(raw, ";base64,"); idx != -1 {
+			if strings.HasPrefix(raw, "data:") {
+				mime = raw[5:idx]
+			}
+			raw = raw[idx+8:]
+		}
+		b, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			badRequest(w, "Invalid base64 image data")
+			return nil, "", false
+		}
+		data = b
+	} else if ct != "" && r.Body != nil {
+		b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 5<<20))
+		if err != nil {
+			badRequest(w, "Failed to read image payload")
+			return nil, "", false
+		}
+		data = b
+		mime = ct
+	} else {
+		badRequest(w, "Unsupported upload Content-Type")
+		return nil, "", false
+	}
+
+	if len(data) == 0 {
+		badRequest(w, "Empty image uploaded")
+		return nil, "", false
+	}
+	if len(data) > 5<<20 {
+		badRequest(w, "Image exceeds maximum allowed size of 5MB")
+		return nil, "", false
+	}
+	if mime == "" || mime == "application/octet-stream" {
+		mime = http.DetectContentType(data)
+	}
+	if !strings.HasPrefix(mime, "image/") {
+		badRequest(w, "Uploaded file is not a supported image")
+		return nil, "", false
+	}
+	return data, mime, true
 }
 
 func jsonFallbacks(mux *http.ServeMux) http.Handler {

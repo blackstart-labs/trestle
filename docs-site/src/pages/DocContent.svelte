@@ -317,6 +317,34 @@
       <li>Subtask creations and completions.</li>
     </ul>
 
+  {:else if sectionId === "time-tracking"}
+    <h1>Live Time Tracking & Timesheets</h1>
+    <p class="lead">Accurately record and monitor time spent on individual tasks with persistent live timers and flexible manual logging.</p>
+
+    <h2>Live Tracking Engine</h2>
+    <p>Track work in real-time as you do it:</p>
+    <ul>
+      <li><strong>1-Click Start:</strong> Start tracking from the Task Detail Drawer, Kanban Board cards, or List view rows.</li>
+      <li><strong>Global Header Indicator:</strong> An active live indicator in the top header displays your live ticking timer (<code>HH:MM:SS</code>), task key, and 1-click stop or discard controls across the whole app.</li>
+      <li><strong>Persistent State:</strong> Active timers survive browser refreshes and page navigation via safe local storage.</li>
+      <li><strong>Automatic Calculation:</strong> Stopping a timer calculates exact elapsed hours and records the entry immediately.</li>
+    </ul>
+
+    <h2>Timesheet History & Manual Entry</h2>
+    <p>In the Task Detail Drawer under Time Tracking:</p>
+    <ul>
+      <li>Log past work sessions with hours, custom dates, and work notes.</li>
+      <li>Inspect the chronological list of all logged time entries on the task.</li>
+      <li>Total spent hours update automatically and display on cards in both List and Kanban views.</li>
+    </ul>
+
+    <h2>Data Portability & Export</h2>
+    <p>Export your records anytime without lock-in:</p>
+    <ul>
+      <li><strong>Workspace Export:</strong> Full JSON snapshot including all projects, tasks, milestones, and members under <em>Settings → Workspace</em>.</li>
+      <li><strong>Project Export:</strong> Individual project JSON exports available directly in the <em>Edit Project</em> modal.</li>
+    </ul>
+
   {:else if sectionId === "command-palette"}
     <h1>Command Palette & Search</h1>
     <p class="lead">Move through your workspace at the speed of thought with global keyboard navigation and instant search.</p>

@@ -14,7 +14,9 @@
   import Icon from "./ui/Icon.svelte";
   import BrandMark from "./ui/BrandMark.svelte";
   import CommandPalette, { type Command } from "./ui/CommandPalette.svelte";
+  import Toast from "./ui/Toast.svelte";
   import { accents, preferences } from "./lib/preferences.svelte";
+  import { liveTimer } from "./lib/timer.svelte";
   import { identityHue, initials } from "./lib/identity";
 
   let user = $state<User | null>(null);
@@ -35,6 +37,24 @@
   let paletteProjects = $state<Project[]>([]);
   let paletteLoading = $state(false);
   let paletteReturnFocus: HTMLElement | null = null;
+  let toastMessage = $state<string | null>(null);
+
+  function navigateToActiveTask() {
+    if (!liveTimer.active) return;
+    route(
+      `task/${liveTimer.active.workspaceId}/${liveTimer.active.projectId}/${liveTimer.active.taskId}`,
+    );
+  }
+
+  async function stopActiveTimer() {
+    const token = getCookie("trestle-csrf");
+    const res = await liveTimer.stopAndLog(token || "");
+    if (res.ok) {
+      toastMessage = `Logged ${res.spentHours}h to task`;
+    } else {
+      toastMessage = res.error || "Failed to log time";
+    }
+  }
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -93,6 +113,13 @@
             activeTab = "workspaces";
           }
           void ensureWorkspaceSelected();
+          const currentHash = window.location.hash.replace(/^#/, "");
+          if (
+            currentHash.startsWith("task/") ||
+            currentHash.startsWith("workspaces/")
+          ) {
+            route(currentHash);
+          }
         } else {
           user = null;
         }
@@ -137,6 +164,13 @@
       autoOpenWorkspace = true;
       activeTab = "workspaces";
       void ensureWorkspaceSelected();
+      const currentHash = window.location.hash.replace(/^#/, "");
+      if (
+        currentHash.startsWith("task/") ||
+        currentHash.startsWith("workspaces/")
+      ) {
+        route(currentHash);
+      }
     });
   }
 
@@ -203,16 +237,69 @@
 
   // Settings sections (#appearance, #instance-status) are deep links into
   // the one Settings page: render it, then focus the section's heading.
-  const SETTINGS_SECTIONS = ["appearance", "instance-status", "integration"];
+  const SETTINGS_SECTIONS = [
+    "appearance",
+    "instance-status",
+    "integration",
+    "workspace",
+    "profile",
+  ];
 
   async function focusSection(id: string) {
     await tick();
     const target = document.getElementById(id);
     target?.focus({ preventScroll: true });
-    target?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }
+
+  async function openTaskFromRoute(
+    wsId: string,
+    projId: string,
+    taskId: string,
+  ) {
+    activeTab = "workspaces";
+    workspaceTab = "projects";
+    openTaskId = taskId;
+
+    try {
+      const res = await fetch("/api/v1/workspaces", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const foundWs = (data.workspaces || []).find(
+          (w: Workspace) => w.id === wsId,
+        );
+        if (foundWs) selectedWorkspace = foundWs;
+      }
+    } catch {
+      // safe fallback
+    }
+
+    try {
+      const res = await fetch(`/api/v1/workspaces/${wsId}/projects/${projId}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const proj = await res.json();
+        selectedProject = proj;
+      }
+    } catch {
+      // safe fallback
+    }
   }
 
   function route(hash: string) {
+    const taskMatch =
+      hash.match(
+        /^(?:task|workspaces)\/([^/]+)\/projects\/([^/]+)\/tasks\/([^/]+)$/,
+      ) || hash.match(/^task\/([^/]+)\/([^/]+)\/([^/]+)$/);
+    if (taskMatch) {
+      void openTaskFromRoute(taskMatch[1], taskMatch[2], taskMatch[3]);
+      return;
+    }
+
     if (hash === "settings") {
       settingsSection = "";
       activeTab = "settings";
@@ -473,6 +560,7 @@
 
   onMount(() => {
     preferences.init();
+    liveTimer.init();
 
     if (getCookie("trestle-csrf")) {
       void checkSession();
@@ -661,6 +749,44 @@
       {/if}
 
       <div class="topbar-actions">
+        {#if liveTimer.active}
+          <div class="live-timer-banner" aria-label="Active live timer">
+            <span class="live-pulse-dot" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="live-timer-task"
+              onclick={navigateToActiveTask}
+              title="{liveTimer.active.taskHumanKey}: {liveTimer.active
+                .taskTitle}"
+            >
+              <span class="live-timer-key">{liveTimer.active.taskHumanKey}</span
+              >
+              <span class="live-timer-time num"
+                >{liveTimer.formattedDuration}</span
+              >
+            </button>
+            <button
+              type="button"
+              class="live-timer-btn live-timer-stop"
+              onclick={stopActiveTimer}
+              title="Stop and log time"
+              aria-label="Stop timer"
+            >
+              <Icon name="stop" size={12} />
+              <span>Stop</span>
+            </button>
+            <button
+              type="button"
+              class="live-timer-btn live-timer-discard"
+              onclick={() => liveTimer.discard()}
+              title="Discard timer"
+              aria-label="Discard timer"
+            >
+              <Icon name="close" size={12} />
+            </button>
+          </div>
+        {/if}
+
         <button
           type="button"
           class="search-trigger"
@@ -775,9 +901,15 @@
         <Settings
           section={settingsSection}
           workspace={selectedWorkspace}
+          {user}
           signedIn={!!user}
           initialProjectId={selectedProject?.id || ""}
+          onselectsection={(sec) => (settingsSection = sec)}
           onselectworkspace={(ws) => (selectedWorkspace = ws)}
+          onworkspaceupdated={(ws) => {
+            selectedWorkspace = ws;
+          }}
+          onuserupdated={(u) => (user = u)}
         />
       {:else}
         <Overview
@@ -792,6 +924,10 @@
 
 {#if paletteOpen}
   <CommandPalette {commands} loading={paletteLoading} onclose={closePalette} />
+{/if}
+
+{#if toastMessage}
+  <Toast message={toastMessage} onclear={() => (toastMessage = null)} />
 {/if}
 
 <style>

@@ -13,10 +13,11 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ---------------------------------------------------------------------------
-// Usernames: 3–64 ASCII letters, digits, '.', '_', '-'; canonical form is lowercase.
+// Usernames: 3–64 ASCII letters, digits, '.', '_', '-', '@', '+'; canonical form is lowercase.
 // ---------------------------------------------------------------------------
 
 const (
@@ -27,7 +28,7 @@ const (
 var (
 	ErrUsernameTooShort = fmt.Errorf("username must be at least %d characters", MinUsernameLen)
 	ErrUsernameTooLong  = fmt.Errorf("username must be at most %d characters", MaxUsernameLen)
-	ErrUsernameInvalid  = errors.New("username may only contain letters, digits, '.', '_', and '-'")
+	ErrUsernameInvalid  = errors.New("username may only contain letters, digits, '.', '_', '-', '@', and '+'")
 )
 
 // ParseUsername validates and normalizes a raw username to lowercase.
@@ -40,7 +41,7 @@ func ParseUsername(raw string) (string, error) {
 	}
 	for i := 0; i < len(raw); i++ {
 		b := raw[i]
-		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '.' || b == '_' || b == '-') {
+		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '.' || b == '_' || b == '-' || b == '@' || b == '+') {
 			return "", ErrUsernameInvalid
 		}
 	}
@@ -131,6 +132,21 @@ func (h Hasher) Hash(password []byte) (string, error) {
 func (h Hasher) Verify(password []byte, stored string) (bool, error) {
 	if len(password) > MaxPasswordBytes {
 		return false, ErrPasswordTooLong
+	}
+	// Support bcrypt for imported hashes starting with $2a$, $2b$, or $2y$ (e.g. from Leantime migration)
+	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
+		normalized := stored
+		if strings.HasPrefix(stored, "$2y$") {
+			normalized = "$2a$" + stored[4:]
+		}
+		err := bcrypt.CompareHashAndPassword([]byte(normalized), password)
+		if err == nil {
+			return true, nil
+		}
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			return false, nil
+		}
+		return false, err
 	}
 	parts := strings.Split(stored, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {

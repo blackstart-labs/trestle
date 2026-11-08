@@ -62,6 +62,24 @@ Trestle couples a high-performance **Go (`net/http`) backend** with a reactive *
 * **Multi-Assignees & Colored Labels:** Tag tasks with customizable labels and assign one or more team members.
 * **Threaded Comments & Audit Log:** Write Markdown comments and inspect an immutable audit activity stream detailing all status transitions and property updates.
 
+### ⏱️ Live & Manual Task Time Tracking
+* **Persistent Live Timer:** Track time live across the workbench with a 1-click timer that survives navigation, tab changes, and browser restarts.
+* **Global Header Readout:** Persistent topbar pill displays running time (`HH:MM:SS`), active task key, and 1-click stop or discard.
+* **Visual Workload Badges:** Real-time spent hours and active live indicators displayed directly on cards in both List and Kanban views.
+* **Comprehensive Timesheets:** Log hours with custom dates and work notes; view full historical logs per task.
+
+### 🖼️ Workspace & User Customization
+* **Profile Avatars & Names:** Upload custom user avatars and update display names from account settings.
+* **Workspace Icons & Slugs:** Personalize workspaces with custom icon uploads, workspace names, and url slugs.
+
+### 📦 Data Portability & Complete JSON Export
+* **Workspace Backup:** Full JSON export of all projects, milestones, custom statuses, tasks, comments, and members under *Settings → Workspace*.
+* **Project Snapshots:** Individual project JSON exports available on demand from the project edit modal.
+
+### 🤖 Smart Chat Integrations (Telegram, Discord, Slack)
+* **Telegram Topic Support:** Direct notifications into specific forum supergroup topics using Telegram topic IDs.
+* **Rich Notification Cards:** Clean task update templates featuring milestone context, assignee info, and direct links to Trestle tasks.
+
 ### 🎨 Executive-Tier UI & Accessibility
 * **Themeable Workbench:** Dark-first aesthetic powered by modern OKLCH tokens, with 5 accent presets (*Iris, Sky, Tide, Moss, Ember*).
 * **Apple-Fluid Motion:** Spring-based motion (`web/src/lib/motion.ts`), symmetric exits, and view transitions.
@@ -148,7 +166,7 @@ The official production container image is hosted on Docker Hub:
 docker pull marufsarker/trestle:latest
 
 # Or pull a specific release tag
-docker pull marufsarker/trestle:0.1.0
+docker pull marufsarker/trestle:0.2.0
 ```
 
 ### Option A: Docker Compose (Recommended)

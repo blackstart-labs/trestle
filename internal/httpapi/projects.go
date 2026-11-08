@@ -165,25 +165,26 @@ type activityItem struct {
 }
 
 type taskItem struct {
-	ID          string         `json:"id"`
-	WorkspaceID string         `json:"workspace_id"`
-	ProjectID   string         `json:"project_id"`
-	ProjectKey  string         `json:"project_key"`
-	TaskNumber  int64          `json:"task_number"`
-	HumanKey    string         `json:"human_key"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	Status      string         `json:"status"`
-	Priority    string         `json:"priority"`
-	DueDate     *string        `json:"due_date"`
-	CreatedBy   *string        `json:"created_by"`
-	ParentID    *string        `json:"parent_id"`
+	ID             string         `json:"id"`
+	WorkspaceID    string         `json:"workspace_id"`
+	ProjectID      string         `json:"project_id"`
+	ProjectKey     string         `json:"project_key"`
+	TaskNumber     int64          `json:"task_number"`
+	HumanKey       string         `json:"human_key"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	Status         string         `json:"status"`
+	Priority       string         `json:"priority"`
+	DueDate        *string        `json:"due_date"`
+	CreatedBy      *string        `json:"created_by"`
+	ParentID       *string        `json:"parent_id"`
 	StatusID       *string        `json:"status_id"`
 	StatusName     *string        `json:"status_name"`
 	StatusColor    *string        `json:"status_color"`
 	MilestoneID    *string        `json:"milestone_id"`
 	MilestoneTitle *string        `json:"milestone_title"`
 	MilestoneColor *string        `json:"milestone_color"`
+	SpentHours     float64        `json:"spent_hours"`
 	Labels         []labelItem    `json:"labels"`
 	Assignees      []assigneeItem `json:"assignees"`
 	CreatedAt      string         `json:"created_at"`
@@ -198,7 +199,8 @@ func toTask(t projects.Task) taskItem {
 		CreatedBy: idPtr(t.CreatedBy), ParentID: idPtr(t.ParentID), StatusID: idPtr(t.StatusID),
 		StatusName: t.StatusName, StatusColor: t.StatusColor,
 		MilestoneID: idPtr(t.MilestoneID), MilestoneTitle: t.MilestoneTitle, MilestoneColor: t.MilestoneColor,
-		Labels: mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
+		SpentHours: t.SpentHours,
+		Labels:     mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
 		CreatedAt: ts(t.CreatedAt), UpdatedAt: ts(t.UpdatedAt),
 	}
 	if t.DueDate != nil {
@@ -770,7 +772,7 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 		storeError(w, err, "failed to create "+lower, "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "created", t.HumanKey, t.Title, t.Status)
+	s.notifyTask(r, ids[0], ids[1], "created", t)
 	writeJSON(w, http.StatusCreated, toTask(t))
 }
 
@@ -867,7 +869,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to update task", "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "updated", t.HumanKey, t.Title, t.Status)
+	s.notifyTask(r, ids[0], ids[1], "updated", t)
 	writeJSON(w, http.StatusOK, toTask(t))
 }
 
@@ -885,7 +887,7 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to delete task", "")
 		return
 	}
-	s.notifyTask(r, ids[0], ids[1], "deleted", t.HumanKey, "", "")
+	s.notifyTask(r, ids[0], ids[1], "deleted", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 
