@@ -6,6 +6,7 @@
   import Icon from "../ui/Icon.svelte";
   import Modal from "../ui/Modal.svelte";
   import Toast from "../ui/Toast.svelte";
+  import EditProjectModal from "./EditProjectModal.svelte";
   import { identityHue, relativeTime } from "../lib/identity";
 
   export interface Project {
@@ -34,6 +35,7 @@
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
   let query = $state("");
+  let editingProject = $state<Project | null>(null);
 
   // Live progress per project, read with bounded limit=1 count queries.
   let stats = $state<
@@ -499,6 +501,16 @@
               </span>
               <div class="card-actions">
                 {#if canManageProjects}
+                  <Button
+                    variant="quiet"
+                    label="Edit project {proj.name}"
+                    onclick={() => (editingProject = proj)}
+                  >
+                    {#snippet children()}<Icon
+                        name="pencil"
+                        size={17}
+                      />Edit{/snippet}
+                  </Button>
                   <button
                     type="button"
                     class="btn-quiet btn-icon"
@@ -525,6 +537,21 @@
 </section>
 
 <Toast message={successMessage} onclear={() => (successMessage = null)} />
+
+{#if editingProject}
+  <EditProjectModal
+    project={editingProject}
+    {workspace}
+    onclose={() => (editingProject = null)}
+    onupdated={(updated) => {
+      projects = projects
+        .map((project) => (project.id === updated.id ? updated : project))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      editingProject = null;
+      successMessage = "Project updated.";
+    }}
+  />
+{/if}
 
 <style>
   .messages:empty {
@@ -768,9 +795,10 @@
     align-items: center;
     gap: var(--space-1);
     margin-left: auto;
+    flex-wrap: wrap;
   }
 
-  .card-actions :global(.btn-quiet:hover) {
+  .card-actions :global(.btn-icon:hover) {
     color: var(--danger);
   }
 

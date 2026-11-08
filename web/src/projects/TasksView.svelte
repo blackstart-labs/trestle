@@ -3,6 +3,7 @@
   import Button from "../ui/Button.svelte";
   import InputField from "../ui/InputField.svelte";
   import MarkdownEditor from "../ui/MarkdownEditor.svelte";
+  import EditProjectModal from "./EditProjectModal.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
   import Modal from "../ui/Modal.svelte";
@@ -60,6 +61,7 @@
     currentUserId,
     openTaskId,
     onback,
+    onprojectupdated,
   }: {
     workspace: { id: string; name: string; slug: string; role: string };
     project: Project;
@@ -67,6 +69,7 @@
     /** A task to open in the drawer on arrival (from the dashboard). */
     openTaskId?: string | null;
     onback?: () => void;
+    onprojectupdated?: (project: Project) => void;
   } = $props();
 
   const LIST_LIMIT = 20;
@@ -85,6 +88,7 @@
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
   let successMessage = $state<string | null>(null);
+  let editingProject = $state(false);
 
   // Project-wide totals per status category, for the progress rail.
   let categoryTotals = $state<Record<Category, number> | null>(null);
@@ -710,6 +714,11 @@
       </div>
     </div>
     <div class="page-actions">
+      {#if canDelete}
+        <Button onclick={() => (editingProject = true)}>
+          {#snippet children()}<Icon name="pencil" size={16} />Edit project{/snippet}
+        </Button>
+      {/if}
       <Button
         onclick={() => (showStatusManager = true)}
         label="Workflow statuses"
@@ -1191,6 +1200,19 @@
 <svelte:window onkeydown={handleShortcut} />
 
 <Toast message={successMessage} onclear={() => (successMessage = null)} />
+
+{#if editingProject}
+  <EditProjectModal
+    {project}
+    {workspace}
+    onclose={() => (editingProject = false)}
+    onupdated={(updated) => {
+      onprojectupdated?.(updated);
+      editingProject = false;
+      successMessage = "Project updated.";
+    }}
+  />
+{/if}
 
 {#if selectedTask}
   <TaskDetailDrawer

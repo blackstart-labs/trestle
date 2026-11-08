@@ -729,6 +729,7 @@
                 currentUserId={user.id}
                 {openTaskId}
                 onback={closeProject}
+                onprojectupdated={(updated) => (selectedProject = updated)}
               />
             {/key}
           {:else}
