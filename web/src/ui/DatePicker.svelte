@@ -168,7 +168,7 @@
   type="button"
   class="date date-{variant}"
   class:open
-  class:empty={!selected}
+  class:placeholder={!selected}
   class:overdue
   aria-haspopup="dialog"
   aria-expanded={open}
@@ -298,7 +298,7 @@
     flex-shrink: 0;
   }
 
-  .date.empty .date-text {
+  .date.placeholder .date-text {
     color: var(--text-muted);
   }
 

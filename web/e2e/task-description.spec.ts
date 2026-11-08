@@ -203,7 +203,7 @@ test("description preview is local; property changes preserve drafts and failed 
 test.describe("touch task creation", () => {
   test.use({ hasTouch: true });
   for (const theme of ["light", "dark"] as const) {
-    for (const width of [390, 1440]) {
+    for (const width of [390, 555, 768, 1440]) {
       test(`${theme} new task supports Markdown at ${width}px`, async ({
         page,
       }, testInfo) => {
@@ -216,7 +216,31 @@ test.describe("touch task creation", () => {
         await page.getByRole("button", { name: "Close task details" }).tap();
         await expect(page.getByRole("dialog")).toHaveCount(0);
         await page.getByRole("button", { name: "New task", exact: true }).tap();
-        const dialog = page.getByRole("dialog");
+        const dialog = page.getByRole("dialog", {
+          name: "New task in FRES",
+          exact: true,
+        });
+        const dueDate = dialog.getByRole("button", {
+          name: "Due date",
+          exact: true,
+        });
+        const expectDateAlignment = async () => {
+          const geometry = await dueDate.evaluate((button) => ({
+            height: button.getBoundingClientRect().height,
+            centers: [...button.children].map((child) => {
+              const rect = child.getBoundingClientRect();
+              return rect.top + rect.height / 2;
+            }),
+          }));
+          expect(
+            Math.max(...geometry.centers) - Math.min(...geometry.centers),
+          ).toBeLessThanOrEqual(1);
+          const status = await dialog
+            .getByLabel("Status", { exact: true })
+            .boundingBox();
+          expect(geometry.height).toBeCloseTo(status!.height, 0);
+        };
+        await expectDateAlignment();
         await dialog
           .getByLabel("Title", { exact: true })
           .fill("Plan next steps");
@@ -244,6 +268,26 @@ test.describe("touch task creation", () => {
         await expect(
           dialog.getByLabel("Description", { exact: true }),
         ).toHaveValue(source);
+        await dueDate.tap();
+        const picker = page.getByRole("dialog", {
+          name: "Choose a date",
+          exact: true,
+        });
+        await expect(picker).toBeVisible();
+        const bounds = (await picker.boundingBox())!;
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        await picker
+          .getByRole("button", { name: "Tomorrow", exact: true })
+          .tap();
+        await expect(dueDate).toContainText("Tomorrow");
+        await expectDateAlignment();
+        await dueDate.tap();
+        await picker
+          .getByRole("button", { name: "Clear date", exact: true })
+          .tap();
+        await expect(dueDate).toContainText("No date");
+        await expectDateAlignment();
         const result = await new AxeBuilder({ page })
           .include('[role="dialog"]')
           .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
