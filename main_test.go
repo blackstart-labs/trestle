@@ -127,7 +127,7 @@ func fetch(t *testing.T, method, url string) (*http.Response, []byte) {
 	return res, body
 }
 
-const csp = "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
+const csp = "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'"
 
 func TestEmbeddedRootDeliversTheBuiltFrontendWithoutADatabase(t *testing.T) {
 	srv := embeddedApp(t)

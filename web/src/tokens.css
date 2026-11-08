@@ -304,7 +304,7 @@
 
   /* ── Layout ──────────────────────────────────────────────────── */
   --nav-width: 16.5rem;
-  --content-width: 82rem;
+  --content-width: 100%;
   --gutter: clamp(1rem, 0.6rem + 1.6vw, 2rem);
   --drawer-width: min(56rem, 100vw);
   --topbar-height: 4rem;
