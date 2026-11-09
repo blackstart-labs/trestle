@@ -1,0 +1,9 @@
+# robots.txt for Trestle Documentation (https://tresstle.vercel.app)
+User-agent: *
+Allow: /
+Allow: /assets/
+Allow: /favicon.svg
+
+# Sitemaps
+Sitemap: https://tresstle.vercel.app/sitemap.xml
+
