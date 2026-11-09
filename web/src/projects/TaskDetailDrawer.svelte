@@ -14,6 +14,7 @@
   import Select, { type SelectOption } from "../ui/Select.svelte";
   import DatePicker from "../ui/DatePicker.svelte";
   import MultiPicker from "../ui/MultiPicker.svelte";
+  import Avatar from "../ui/Avatar.svelte";
   import { appear, drawerIn, drawerOut, fadeIn } from "../lib/motion";
   import { relativeTime } from "../lib/identity";
   import { liveTimer } from "../lib/timer.svelte";
@@ -44,6 +45,7 @@
     user_id: string;
     author_name: string;
     author_username: string;
+    avatar_url?: string | null;
     content: string;
     created_at: string;
     updated_at: string;
@@ -79,6 +81,7 @@
     username: string;
     display_name: string;
     role: string;
+    avatar_url?: string | null;
   }
 
   let {
@@ -1423,11 +1426,11 @@
             {:else}
               {#each comments as comment, i (comment.id)}
                 <article class="comment" in:appear>
-                  <span
-                    class="avatar"
-                    style:--avatar-hue={identityHue(comment.user_id)}
-                    aria-hidden="true">{getInitials(comment.author_name)}</span
-                  >
+                  <Avatar
+                    id={comment.user_id}
+                    name={comment.author_name}
+                    avatarUrl={comment.avatar_url}
+                  />
                   <div class="comment-main">
                     <div class="comment-header">
                       <span class="author-name">{comment.author_name}</span>
@@ -1588,11 +1591,12 @@
             <dd class="chips">
               {#each currentTask.assignees ?? [] as a (a.user_id)}
                 <span class="person-chip" in:appear>
-                  <span
-                    class="avatar avatar-sm"
-                    style:--avatar-hue={identityHue(a.user_id)}
-                    aria-hidden="true">{getInitials(a.display_name)}</span
-                  >
+                  <Avatar
+                    id={a.user_id}
+                    name={a.display_name}
+                    avatarUrl={a.avatar_url}
+                    size="sm"
+                  />
                   <span class="person-name">{a.display_name}</span>
                   {#if canManage}
                     <button
@@ -1620,6 +1624,7 @@
                     sub: `@${m.username}`,
                     hue: identityHue(m.user_id),
                     initials: getInitials(m.display_name),
+                    avatarUrl: m.avatar_url,
                   }))}
                   selected={(currentTask.assignees ?? []).map((a) => a.user_id)}
                   ontoggle={(id, on) =>

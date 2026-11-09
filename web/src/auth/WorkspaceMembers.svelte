@@ -7,6 +7,7 @@
   import Modal from "../ui/Modal.svelte";
   import Toast from "../ui/Toast.svelte";
   import Select from "../ui/Select.svelte";
+  import Avatar from "../ui/Avatar.svelte";
   import { identityHue, initials } from "../lib/identity";
 
   export interface Member {
@@ -14,6 +15,7 @@
     username: string;
     display_name: string;
     role: "owner" | "admin" | "member" | "guest";
+    avatar_url?: string | null;
   }
 
   let {
@@ -329,11 +331,11 @@
               <tr>
                 <td>
                   <div class="member-info">
-                    <span
-                      class="avatar"
-                      style:--avatar-hue={identityHue(member.user_id)}
-                      aria-hidden="true">{initials(member.display_name)}</span
-                    >
+                    <Avatar
+                      id={member.user_id}
+                      name={member.display_name}
+                      avatarUrl={member.avatar_url}
+                    />
                     <span class="member-text">
                       <span class="member-name">
                         <span>{member.display_name}</span>

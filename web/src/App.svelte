@@ -12,6 +12,7 @@
   import TasksView from "./projects/TasksView.svelte";
   import Dashboard from "./projects/Dashboard.svelte";
   import Icon from "./ui/Icon.svelte";
+  import Avatar from "./ui/Avatar.svelte";
   import BrandMark from "./ui/BrandMark.svelte";
   import CommandPalette, { type Command } from "./ui/CommandPalette.svelte";
   import Toast from "./ui/Toast.svelte";
@@ -590,11 +591,12 @@
 
     {#if user && selectedWorkspace}
       <div class="ws-switcher">
-        <span
-          class="avatar ws-avatar"
-          style:--avatar-hue={identityHue(selectedWorkspace.id)}
-          aria-hidden="true">{initials(selectedWorkspace.name)}</span
-        >
+        <Avatar
+          id={selectedWorkspace.id}
+          name={selectedWorkspace.name}
+          avatarUrl={selectedWorkspace.avatar_url}
+          class="ws-avatar"
+        />
         <span class="ws-text">
           <span class="ws-name">{selectedWorkspace.name}</span>
           <span class="ws-role">{selectedWorkspace.role}</span>
@@ -817,11 +819,11 @@
 
         {#if user}
           <div class="user-chip">
-            <span
-              class="avatar"
-              style:--avatar-hue={identityHue(user.id)}
-              aria-hidden="true">{initials(user.display_name)}</span
-            >
+            <Avatar
+              id={user.id}
+              name={user.display_name}
+              avatarUrl={user.avatar_url}
+            />
             <span
               class="user-badge"
               aria-label="Signed in as {user.display_name}"
@@ -991,7 +993,7 @@
     box-shadow: var(--shadow-card);
   }
 
-  .ws-avatar {
+  :global(.ws-switcher .ws-avatar) {
     border-radius: var(--radius-sm);
   }
 
@@ -1450,7 +1452,7 @@
       background: transparent;
     }
 
-    .ws-switcher .avatar {
+    :global(.ws-switcher .avatar) {
       --avatar-size: 1.75rem;
     }
 
