@@ -416,6 +416,7 @@ test("renders custom project statuses in top progress rail and allows filtering"
   await fireEvent.click(inReviewBtn);
 
   await waitFor(() => {
+    expect(within(rail).getByText(/In Review tasks/i)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("status_id=s-5"),
       expect.anything(),
