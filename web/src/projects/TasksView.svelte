@@ -6,6 +6,7 @@
   import EditProjectModal from "./EditProjectModal.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
+  import Avatar from "../ui/Avatar.svelte";
   import Modal from "../ui/Modal.svelte";
   import Toast from "../ui/Toast.svelte";
   import Select, { type SelectOption } from "../ui/Select.svelte";
@@ -862,11 +863,13 @@
   {#if task.assignees && task.assignees.length > 0}
     <span class="avatar-stack" aria-label="Task assignees">
       {#each task.assignees.slice(0, 3) as a (a.user_id)}
-        <span
-          class="avatar avatar-sm"
-          style:--avatar-hue={identityHue(a.user_id)}
-          title="Assigned to {a.display_name}">{initials(a.display_name)}</span
-        >
+        <Avatar
+          id={a.user_id}
+          name={a.display_name}
+          avatarUrl={a.avatar_url}
+          size="sm"
+          title="Assigned to {a.display_name}"
+        />
       {/each}
       {#if task.assignees.length > 3}
         <span class="avatar avatar-sm more-avatars"

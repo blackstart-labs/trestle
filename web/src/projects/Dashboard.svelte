@@ -3,6 +3,7 @@
   import Button from "../ui/Button.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon, { type IconName } from "../ui/Icon.svelte";
+  import Avatar from "../ui/Avatar.svelte";
   import type { Project } from "./ProjectsView.svelte";
   import type { Task } from "./TasksView.svelte";
   import type { User } from "../auth/SignIn.svelte";
@@ -507,11 +508,12 @@
                   {#if item.task.assignees && item.task.assignees.length > 0}
                     <span class="avatar-stack" aria-hidden="true">
                       {#each item.task.assignees.slice(0, 3) as a (a.user_id)}
-                        <span
-                          class="avatar avatar-sm"
-                          style:--avatar-hue={identityHue(a.user_id)}
-                          >{initials(a.display_name)}</span
-                        >
+                        <Avatar
+                          id={a.user_id}
+                          name={a.display_name}
+                          avatarUrl={a.avatar_url}
+                          size="sm"
+                        />
                       {/each}
                     </span>
                   {/if}

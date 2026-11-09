@@ -8,6 +8,7 @@
     /** Stable hue for a person's avatar. */
     hue?: number;
     initials?: string;
+    avatarUrl?: string | null;
   }
 </script>
 
@@ -172,8 +173,20 @@
             <span
               class="avatar avatar-sm"
               style:--avatar-hue={item.hue}
-              aria-hidden="true">{item.initials}</span
+              aria-hidden="true"
             >
+              {#if item.avatarUrl}
+                <img
+                  src={item.avatarUrl}
+                  alt=""
+                  class="avatar-img"
+                  onerror={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = "none";
+                  }}
+                />
+              {/if}
+              <span>{item.initials}</span>
+            </span>
           {:else if item.color}
             <span class="dot" style:background={item.color} aria-hidden="true"
             ></span>

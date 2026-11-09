@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Appearance from "./Appearance.svelte";
   import Readiness from "./Readiness.svelte";
   import Integrations from "./Integrations.svelte";
@@ -29,12 +30,33 @@
     onuserupdated?: (u: User) => void;
   } = $props();
 
+  async function focusHeading(targetSection: string) {
+    await tick();
+    const headingId =
+      targetSection === "profile"
+        ? "profile-heading"
+        : targetSection === "workspace"
+          ? "ws-heading"
+          : targetSection;
+    let heading =
+      document.getElementById(headingId) ||
+      document.getElementById(targetSection);
+    if (!heading) {
+      await tick();
+      heading =
+        document.getElementById(headingId) ||
+        document.getElementById(targetSection);
+    }
+    heading?.focus();
+  }
+
   function handleTabClick(e: MouseEvent, targetSection: string) {
     e.preventDefault();
     onselectsection?.(targetSection);
     try {
       history.replaceState(null, "", "#" + targetSection);
     } catch {}
+    void focusHeading(targetSection);
   }
 </script>
 

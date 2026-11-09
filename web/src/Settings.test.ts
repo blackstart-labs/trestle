@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { expect, test, vi } from "vitest";
 import Settings from "./Settings.svelte";
 
@@ -23,4 +23,22 @@ test("default Settings retains Appearance and Instance status", async () => {
   expect(screen.getByRole("heading", { name: "Appearance" })).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Instance status" })).toBeTruthy();
   expect(screen.queryByRole("heading", { name: "Integration" })).toBeNull();
+});
+
+test("clicking Integration tab triggers onselectsection and selects section", async () => {
+  const onselectsection = vi.fn();
+  const { rerender } = render(Settings, {
+    props: {
+      section: "appearance",
+      onselectsection,
+    },
+  });
+
+  const integrationLink = screen.getByRole("link", { name: "Integration" });
+  await fireEvent.click(integrationLink);
+
+  expect(onselectsection).toHaveBeenCalledWith("integration");
+
+  await rerender({ section: "integration" });
+  expect(screen.getByRole("heading", { name: "Integration" })).toBeTruthy();
 });
