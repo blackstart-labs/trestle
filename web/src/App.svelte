@@ -248,7 +248,19 @@
 
   async function focusSection(id: string) {
     await tick();
-    const target = document.getElementById(id);
+    const headingId =
+      id === "profile"
+        ? "profile-heading"
+        : id === "workspace"
+          ? "ws-heading"
+          : id;
+    let target =
+      document.getElementById(headingId) || document.getElementById(id);
+    if (!target) {
+      await tick();
+      target =
+        document.getElementById(headingId) || document.getElementById(id);
+    }
     target?.focus({ preventScroll: true });
   }
 
