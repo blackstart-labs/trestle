@@ -2,6 +2,7 @@
   import Header from "./components/Header.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import SearchModal from "./components/SearchModal.svelte";
+  import SEO from "./components/SEO.svelte";
   import DocContent from "./pages/DocContent.svelte";
   import Home from "./pages/Home.svelte";
   import { SECTIONS } from "./content";
@@ -51,6 +52,8 @@
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
+
+<SEO sectionId={activeSection} />
 
 <div class="docs-app" data-theme={theme}>
   {#if activeSection === "home"}

@@ -3,18 +3,85 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Trestle Documentation — Self-hosted workspace for projects, tasks, workflows, and knowledge." />
-    <meta property="og:title" content="Trestle Documentation & User Manual" />
-    <meta property="og:description" content="Self-hosted workspace for projects, tasks, workflows, and knowledge." />
-    <meta property="og:url" content="https://tresstle.vercel.app" />
+    <title>Trestle — Self-Hosted Workspace for Projects, Tasks & Knowledge</title>
+
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="Trestle — Self-Hosted Workspace for Projects, Tasks & Knowledge" />
+    <meta name="description" content="Open-source, privacy-first team workspace combining Kanban boards, live task time tracking, milestone roadmaps, and chat integrations without SaaS complexity." />
+    <meta name="keywords" content="trestle, self-hosted project management, open source task manager, kanban board, svelte 5, go project management, privacy-first issue tracker, self-hosted linear alternative, self-hosted jira alternative" />
+    <meta name="author" content="Trestle Maintainers" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://tresstle.vercel.app/" />
+
+    <!-- Mobile & PWA Theme Colors -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f19" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Trestle Docs" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tresstle.vercel.app/" />
+    <meta property="og:title" content="Trestle — Self-Hosted Workspace for Projects, Tasks & Knowledge" />
+    <meta property="og:description" content="Open-source, privacy-first team workspace combining Kanban boards, live task time tracking, milestone roadmaps, and chat integrations without SaaS complexity." />
     <meta property="og:image" content="https://tresstle.vercel.app/assets/docs.webp" />
+    <meta property="og:image:alt" content="Trestle Documentation & User Manual Preview" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="Trestle Documentation" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Trestle Documentation - User Manual, Architecture, Self-Hosting & API</title>
+    <meta name="twitter:url" content="https://tresstle.vercel.app/" />
+    <meta name="twitter:title" content="Trestle — Self-Hosted Workspace for Projects, Tasks & Knowledge" />
+    <meta name="twitter:description" content="Open-source, privacy-first team workspace combining Kanban boards, live task time tracking, milestone roadmaps, and chat integrations without SaaS complexity." />
+    <meta name="twitter:image" content="https://tresstle.vercel.app/assets/docs.webp" />
+    <meta name="twitter:image:alt" content="Trestle Documentation Preview" />
+
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Baseline Structured Data for Static Crawlers -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://tresstle.vercel.app/#website",
+            "url": "https://tresstle.vercel.app/",
+            "name": "Trestle Documentation",
+            "description": "Self-hosted workspace for projects, tasks, workflows, and knowledge.",
+            "inLanguage": "en-US"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://tresstle.vercel.app/#software",
+            "name": "Trestle",
+            "applicationCategory": "BusinessApplication, ProjectManagementApplication",
+            "operatingSystem": "Linux, macOS, Windows, Docker",
+            "url": "https://tresstle.vercel.app",
+            "description": "Self-hosted operational workspace for canonical tasks, Kanban boards, milestone roadmaps, and live time tracking.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-
