@@ -83,7 +83,7 @@ func TestConfigurationAcceptsExplicitIPv6AndBoundaryValues(t *testing.T) {
 		if got := cfg.BindAddr.String(); got != "[::1]:4000" {
 			t.Errorf("bind addr %q", got)
 		}
-		if got := strconv.FormatUint(uint64(cfg.MaxDBConnections), 10); got != c.connections {
+		if got := strconv.FormatInt(int64(cfg.MaxDBConnections), 10); got != c.connections {
 			t.Errorf("connections %s, want %s", got, c.connections)
 		}
 		if got := strconv.FormatInt(cfg.DBTimeout.Milliseconds(), 10); got != c.timeout {

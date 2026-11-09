@@ -23,7 +23,7 @@ const (
 
 type Config struct {
 	BindAddr         netip.AddrPort
-	MaxDBConnections uint32
+	MaxDBConnections int32
 	DBTimeout        time.Duration
 	// Database holds the parsed connection settings; it is never logged.
 	Database *pgxpool.Config
@@ -86,7 +86,7 @@ func FromPairs(values map[string]string) (Config, error) {
 		return Config{}, errors.New("TRESTLE_BIND_ADDR must be an IP socket address with a nonzero port")
 	}
 
-	maxConns, err := bounded(values, "TRESTLE_MAX_DB_CONNECTIONS", 5, 1, 32,
+	maxConns, err := boundedInt32(values, "TRESTLE_MAX_DB_CONNECTIONS", 5, 1, 32,
 		"TRESTLE_MAX_DB_CONNECTIONS must be an integer from 1 to 32")
 	if err != nil {
 		return Config{}, err
@@ -141,4 +141,16 @@ func bounded(values map[string]string, key string, def, min, max uint32, message
 		return 0, errors.New(message)
 	}
 	return uint32(n), nil
+}
+
+func boundedInt32(values map[string]string, key string, def, min, max int32, message string) (int32, error) {
+	raw, ok := values[key]
+	if !ok {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || int32(n) < min || int32(n) > max {
+		return 0, errors.New(message)
+	}
+	return int32(n), nil
 }
