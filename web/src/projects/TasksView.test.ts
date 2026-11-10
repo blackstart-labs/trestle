@@ -397,8 +397,8 @@ test("renders custom project statuses in top progress rail and allows filtering"
   await waitFor(() => {
     const rail = screen.getByRole("group", { name: /filter by status/i });
     expect(
-      within(rail).getByRole("button", { name: /in review/i }),
-    ).toBeTruthy();
+      within(rail).getAllByRole("button", { name: /in review/i }).length,
+    ).toBeGreaterThan(0);
     expect(
       within(rail).getByRole("button", { name: /all tasks/i }),
     ).toBeTruthy();
@@ -412,7 +412,9 @@ test("renders custom project statuses in top progress rail and allows filtering"
   });
 
   const rail = screen.getByRole("group", { name: /filter by status/i });
-  const inReviewBtn = within(rail).getByRole("button", { name: /in review/i });
+  const inReviewBtn = within(rail).getAllByRole("button", {
+    name: /in review/i,
+  })[0];
   await fireEvent.click(inReviewBtn);
 
   await waitFor(() => {
@@ -491,5 +493,248 @@ test("allows switching to Milestones view and displays project milestones with p
     expect(screen.getByText("Q4 Launch")).toBeTruthy();
     expect(screen.getByText("Q4 public beta deliverables")).toBeTruthy();
     expect(screen.getByText(/\(50%\)/)).toBeTruthy();
+  });
+});
+
+test("allows selecting closed milestones when creating a task", async () => {
+  Object.defineProperty(document, "cookie", {
+    writable: true,
+    value: "trestle-csrf=test-csrf-token",
+  });
+
+  const milestones = [
+    {
+      id: "ms-closed-1",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      title: "v1.0 Release",
+      description: "First release",
+      due_date: "2026-10-15",
+      color: "#6366f1",
+      status: "closed",
+      total_tasks: 5,
+      completed_tasks: 5,
+      open_tasks: 0,
+      created_at: "2026-10-01T00:00:00Z",
+      updated_at: "2026-10-15T00:00:00Z",
+    },
+  ];
+
+  let postPayload: Record<string, unknown> | null = null;
+
+  const fetchMock = vi
+    .fn()
+    .mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && url.includes("/tasks")) {
+        postPayload = JSON.parse(init.body as string);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "task-99",
+              workspace_id: "ws-1",
+              project_id: "proj-1",
+              project_key: "CORE",
+              task_number: 99,
+              human_key: "CORE-99",
+              title: "Follow-up task",
+              status: "unstarted",
+              priority: "none",
+              milestone_id: "ms-closed-1",
+              created_at: "2026-11-02T00:00:00Z",
+              updated_at: "2026-11-02T00:00:00Z",
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      if (url.includes("/milestones")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ milestones }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      if (url.includes("/tasks?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ tasks: [], total: 0 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(TasksView, {
+    workspace: {
+      id: "ws-1",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+    project: mockProject,
+  });
+
+  const newBtn = await screen.findByRole("button", { name: /new task/i });
+  await fireEvent.click(newBtn);
+
+  await waitFor(() => {
+    expect(screen.getByText(/new task in CORE/i)).toBeTruthy();
+  });
+
+  const titleInput = screen.getByLabelText(/title/i);
+  await fireEvent.input(titleInput, { target: { value: "Follow-up task" } });
+
+  // Open the milestone dropdown
+  const dialog = screen.getByRole("dialog");
+  const milestoneTrigger = within(dialog).getByRole("button", {
+    name: /milestone/i,
+  });
+  await fireEvent.click(milestoneTrigger);
+
+  // Verify the closed milestone option appears
+  const closedOption = await screen.findByRole("option", {
+    name: /v1\.0 Release.*closed/i,
+  });
+  expect(closedOption).toBeTruthy();
+  await fireEvent.click(closedOption);
+
+  const saveBtn = screen.getByRole("button", { name: "Save task" });
+  await fireEvent.click(saveBtn);
+
+  await waitFor(() => {
+    expect(postPayload).not.toBeNull();
+    expect(postPayload?.milestone_id).toBe("ms-closed-1");
+  });
+});
+
+test("clicking colored rail segment filters tasks and board columns reflect status totals", async () => {
+  const customStatuses = [
+    {
+      id: "s-backlog",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "Backlog",
+      category: "backlog",
+      color: "#4c544c",
+      position: 0,
+    },
+    {
+      id: "s-done",
+      project_id: "proj-1",
+      workspace_id: "ws-1",
+      name: "Done",
+      category: "completed",
+      color: "#26633b",
+      position: 1,
+    },
+  ];
+
+  const backlogTask = {
+    id: "task-1",
+    workspace_id: "ws-1",
+    project_id: "proj-1",
+    project_key: "CORE",
+    task_number: 1,
+    human_key: "CORE-1",
+    title: "Backlog Item",
+    status: "backlog",
+    status_id: "s-backlog",
+    priority: "none",
+    created_at: "2026-11-01T00:00:00Z",
+    updated_at: "2026-11-01T00:00:00Z",
+  };
+
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/statuses")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ statuses: customStatuses }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("status_id=s-backlog")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tasks: [backlogTask], total: 213 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("status_id=s-done")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ tasks: [], total: 97 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (url.includes("/tasks?")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [backlogTask],
+            total: 310,
+            limit: 100,
+            offset: 0,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(TasksView, {
+    workspace: {
+      id: "ws-1",
+      name: "Acme",
+      slug: "acme",
+      role: "owner",
+    },
+    project: mockProject,
+  });
+
+  // Switch to board view
+  const boardBtn = screen.getByRole("button", { name: /board/i });
+  await fireEvent.click(boardBtn);
+
+  await waitFor(() => {
+    // Check that board column header shows real total 213 instead of 1 (in-memory length)
+    expect(
+      screen.getByRole("region", { name: /backlog, 213 tasks/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: /done, 97 tasks/i }),
+    ).toBeTruthy();
+  });
+
+  // Find rail span for Backlog and click it
+  const backlogSpan = document.querySelector('.rail-span[title^="Backlog:"]');
+  expect(backlogSpan).toBeTruthy();
+  await fireEvent.click(backlogSpan!);
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("status_id=s-backlog"),
+      expect.anything(),
+    );
   });
 });
