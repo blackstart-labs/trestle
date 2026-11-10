@@ -817,8 +817,12 @@
           };
         }
 
-
-        if (statusTotals && oldStatusId && newStatusId && oldStatusId !== newStatusId) {
+        if (
+          statusTotals &&
+          oldStatusId &&
+          newStatusId &&
+          oldStatusId !== newStatusId
+        ) {
           statusTotals = {
             ...statusTotals,
             [oldStatusId]: Math.max(0, (statusTotals[oldStatusId] || 1) - 1),
@@ -890,7 +894,10 @@
         if (statusTotals && task.status_id) {
           statusTotals = {
             ...statusTotals,
-            [task.status_id]: Math.max(0, (statusTotals[task.status_id] || 1) - 1),
+            [task.status_id]: Math.max(
+              0,
+              (statusTotals[task.status_id] || 1) - 1,
+            ),
           };
         } else if (categoryTotals && task.status) {
           categoryTotals = {
@@ -1962,9 +1969,9 @@
       {#each columns as col (col.id)}
         {@const colCount =
           sortedStatuses.length > 0 && statusTotals
-            ? statusTotals[col.id] ?? col.tasks.length
+            ? (statusTotals[col.id] ?? col.tasks.length)
             : categoryTotals
-              ? categoryTotals[col.id as Category] ?? col.tasks.length
+              ? (categoryTotals[col.id as Category] ?? col.tasks.length)
               : col.tasks.length}
         <section
           class="board-col"
