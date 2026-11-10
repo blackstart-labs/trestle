@@ -3,21 +3,23 @@
 </script>
 
 <!-- A trestle: one deck carried by splayed legs and a braced span. -->
-<span class="brand-mark" aria-hidden="true">
+<span
+  class="brand-mark"
+  style:width="{size}px"
+  style:height="{size}px"
+  aria-hidden="true"
+>
   <svg
-    width={size * 0.62}
-    height={size * 0.62}
+    width={size * 0.75}
+    height={size * 0.75}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    stroke-width="2.25"
+    stroke-width="1.75"
     stroke-linecap="round"
     stroke-linejoin="round"
   >
-    <path d="M2.5 6h19" />
-    <path d="M6.5 6 4 20M17.5 6 20 20" />
-    <path d="M6.5 6 12 13l5.5-7" />
-    <path d="M5.2 14.5h13.6" />
+    <path d="M3 5h18M7 5 3 20M17 5l4 15M5 13h14M7 5l12 15M17 5 5 20" />
   </svg>
 </span>
 

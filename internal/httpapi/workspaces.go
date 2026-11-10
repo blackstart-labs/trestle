@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -73,6 +75,31 @@ func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request, session 
 		items[i] = toWorkspaceItem(ws)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workspaces": items})
+}
+
+func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	var req struct {
+		Name *string `json:"name"`
+		Slug *string `json:"slug"`
+	}
+	if !decodeJSON(w, r, &req) || !required(w, req.Name, req.Slug) {
+		return
+	}
+	name, slug := strings.TrimSpace(*req.Name), strings.ToLower(strings.TrimSpace(*req.Slug))
+	if name == "" || utf8.RuneCountInString(name) > 120 || !validProjectSlug(slug) {
+		badRequest(w, "Enter a workspace name of 1–120 characters and a slug of 2–48 lowercase letters, numbers or hyphens")
+		return
+	}
+	ws, err := identity.CreateWorkspace(r.Context(), s.Pool, session.User.ID, name, slug)
+	if errors.Is(err, identity.ErrConflict) {
+		conflict(w, "A workspace with this slug already exists. Choose another slug.")
+		return
+	}
+	if err != nil {
+		internal(w, "failed to create workspace", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toWorkspaceItem(ws))
 }
 
 func (s *Server) listMembers(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
@@ -299,22 +326,24 @@ func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request, session
 		Name *string `json:"name"`
 		Slug *string `json:"slug"`
 	}
-	if !decodeJSON(w, r, &req) {
+	if !decodeJSON(w, r, &req) || !required(w, req.Name, req.Slug) {
 		return
 	}
-	name := ""
-	if req.Name != nil {
-		name = *req.Name
-	}
-	slug := ""
-	if req.Slug != nil {
-		slug = *req.Slug
+	name, slug := strings.TrimSpace(*req.Name), strings.ToLower(strings.TrimSpace(*req.Slug))
+	if name == "" || utf8.RuneCountInString(name) > 120 || !validProjectSlug(slug) {
+		badRequest(w, "Enter a workspace name of 1–120 characters and a slug of 2–48 lowercase letters, numbers or hyphens")
+		return
 	}
 	ws, err := identity.UpdateWorkspace(r.Context(), s.Pool, ids[0], name, slug)
-	if err != nil {
-		badRequest(w, err.Error())
+	if errors.Is(err, identity.ErrConflict) {
+		conflict(w, "A workspace with this slug already exists. Choose another slug.")
 		return
 	}
+	if err != nil {
+		internal(w, "failed to update workspace", err)
+		return
+	}
+	ws.Role = role
 	writeJSON(w, http.StatusOK, toWorkspaceItem(ws))
 }
 

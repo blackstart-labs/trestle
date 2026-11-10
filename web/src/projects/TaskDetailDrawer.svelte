@@ -1270,7 +1270,7 @@
                       <Button
                         variant="primary"
                         onclick={handleStopLiveTimer}
-                        disabled={stoppingLiveTimer}
+                        disabled={stoppingLiveTimer || liveTimer.saving}
                       >
                         {#snippet children()}
                           <Icon name="stop" size={14} />
@@ -1283,8 +1283,15 @@
                       </Button>
                       <Button
                         variant="quiet"
-                        onclick={() => liveTimer.discard()}
-                        disabled={stoppingLiveTimer}
+                        onclick={() => {
+                          if (
+                            confirm(
+                              "Discard this timer? Unlogged time will be lost.",
+                            )
+                          )
+                            liveTimer.discard();
+                        }}
+                        disabled={stoppingLiveTimer || liveTimer.saving}
                       >
                         {#snippet children()}
                           <span>Discard</span>

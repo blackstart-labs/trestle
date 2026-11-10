@@ -3,8 +3,8 @@
   import Button from "../ui/Button.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
+  import Modal from "../ui/Modal.svelte";
   import Avatar from "../ui/Avatar.svelte";
-  import { identityHue, initials } from "../lib/identity";
 
   export interface Workspace {
     id: string;
@@ -45,6 +45,57 @@
   let workspaces = $state<Workspace[]>([]);
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
+  let showCreate = $state(false);
+  let name = $state("");
+  let slug = $state("");
+  let saving = $state(false);
+  let createError = $state("");
+
+  function closeCreate() {
+    if (saving) return;
+    if ((name || slug) && !confirm("Discard this unsaved workspace?")) return;
+    showCreate = false;
+  }
+
+  async function createWorkspace(e: SubmitEvent) {
+    e.preventDefault();
+    if (saving) return;
+    saving = true;
+    createError = "";
+    try {
+      const csrf = document.cookie
+        .split("; ")
+        .find((c) => c.startsWith("trestle-csrf="))
+        ?.slice("trestle-csrf=".length);
+      const res = await fetch("/api/v1/workspaces", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf || "",
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          slug: slug.trim().toLowerCase(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        createError =
+          data.error?.message || "Could not create workspace. Try again.";
+        return;
+      }
+      showCreate = false;
+      workspaces = [...workspaces, data];
+      name = "";
+      slug = "";
+      choose(data);
+    } catch {
+      createError =
+        "Could not create workspace. Check your connection and try again.";
+    } finally {
+      saving = false;
+    }
+  }
 
   async function loadWorkspaces() {
     loading = true;
@@ -90,6 +141,11 @@
       <h2 id="workspaces-heading" tabindex="-1">Choose a workspace</h2>
       <p>Each workspace keeps its own members, projects and tasks.</p>
     </div>
+    <div class="page-actions">
+      <Button variant="primary" onclick={() => (showCreate = true)}>
+        {#snippet children()}<Icon name="plus" size={16} />New workspace{/snippet}
+      </Button>
+    </div>
   </div>
 
   {#if loading}
@@ -116,10 +172,7 @@
     <div class="empty">
       <span class="empty-mark"><Icon name="layers" size={22} /></span>
       <h3>No workspaces yet</h3>
-      <Feedback tone="warning">
-        You are not currently a member of any workspaces. Contact your
-        administrator to be added to a workspace.
-      </Feedback>
+      <p>Create a workspace, or ask an owner to add you to an existing one.</p>
     </div>
   {:else}
     <ul class="ws-grid" role="list">
@@ -148,6 +201,56 @@
     </ul>
   {/if}
 </section>
+
+{#if showCreate}
+  <Modal
+    title="Create workspace"
+    description="You will be its owner. Invite members after creating it."
+    onclose={closeCreate}
+  >
+    {#if createError}<Feedback tone="danger" announcement="alert"
+        >{createError}</Feedback
+      >{/if}
+    <form class="form-grid" onsubmit={createWorkspace}>
+      <div class="field">
+        <label for="workspace-name">Workspace name</label>
+        <input
+          id="workspace-name"
+          bind:value={name}
+          required
+          maxlength="120"
+          disabled={saving}
+        />
+      </div>
+      <div class="field">
+        <label for="workspace-slug">Workspace slug</label>
+        <input
+          id="workspace-slug"
+          bind:value={slug}
+          required
+          minlength="2"
+          maxlength="48"
+          pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]"
+          disabled={saving}
+          aria-describedby="workspace-slug-hint"
+        />
+        <p class="note" id="workspace-slug-hint">
+          2–48 lowercase letters, numbers or hyphens.
+        </p>
+      </div>
+      <div class="dialog-actions">
+        <Button variant="quiet" onclick={closeCreate} disabled={saving}
+          >{#snippet children()}Cancel{/snippet}</Button
+        >
+        <Button type="submit" variant="primary" disabled={saving}
+          >{#snippet children()}{saving
+              ? "Creating…"
+              : "Create workspace"}{/snippet}</Button
+        >
+      </div>
+    </form>
+  </Modal>
+{/if}
 
 <style>
   .ws-grid {

@@ -76,6 +76,19 @@ Response envelope:
 
 ### 2.2 Workspaces & Members
 
+`POST /api/v1/workspaces` accepts `{ "name": "Engineering", "slug": "engineering" }`.
+It requires a signed-in session and CSRF token. The creator becomes owner in the same transaction.
+Slugs are globally unique (409 on conflict), 2–48 lowercase letters, numbers or hyphens, with no leading/trailing hyphen.
+Names are 1–120 characters. `PATCH /api/v1/workspaces/{workspace_id}` accepts the same fields for owners/admins and returns the caller's role.
+
+Task creation accepts optional `assignee_ids` (up to 100 active Workspace member UUIDs) and `milestone_id`.
+All metadata is validated and written in the Task transaction; invalid references roll back creation.
+Task creation, subtask creation and Task PATCH accept descriptions up to 15,000 Unicode characters.
+Task responses include `subtask_count`, the number of direct children in the same Workspace and Project, not just those on the current page.
+
+Project and Workspace JSON exports read every task page from a stable database snapshot.
+Workspace exports include archived Projects. A failed read returns an error instead of a successful partial backup.
+
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/api/v1/workspaces` | List all workspaces where the current user is a member. |
@@ -156,4 +169,3 @@ Response envelope:
 | --- | --- | --- |
 | `GET` | `/health/live` | Liveness probe: returns `200 OK` immediately if HTTP server is running. |
 | `GET` | `/health/ready` | Readiness probe: checks database ping and connection pool health. Returns `200 OK` or `503 Service Unavailable`. |
-

@@ -1,11 +1,13 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/maruf-pfc/trestle/internal/identity"
 	"github.com/maruf-pfc/trestle/internal/projects"
 )
@@ -30,69 +32,65 @@ type workspaceExportData struct {
 	Projects   []projectExportData `json:"projects"`
 }
 
+func readProjectExport(ctx context.Context, db projects.Querier, ws, id uuid.UUID) (projectExportData, error) {
+	// shortcut: snapshots fit small-team memory; stream exports when datasets outgrow it.
+	out := projectExportData{ExportedAt: time.Now().UTC().Format(time.RFC3339), Tasks: []taskExportItem{}}
+	p, err := projects.GetProject(ctx, db, ws, id)
+	if err != nil {
+		return out, err
+	}
+	out.Project = toProject(p)
+	statuses, err := projects.ListProjectStatuses(ctx, db, ws, id)
+	if err != nil {
+		return out, err
+	}
+	out.Statuses = mapSlice(statuses, toStatus)
+	milestones, err := projects.ListMilestones(ctx, db, ws, id)
+	if err != nil {
+		return out, err
+	}
+	out.Milestones = mapSlice(milestones, toMilestone)
+	for offset := int64(0); ; {
+		page, err := projects.ListTasks(ctx, db, ws, id, projects.ListTasksParams{Limit: 100, Offset: offset})
+		if err != nil {
+			return out, err
+		}
+		for _, task := range page.Tasks {
+			logs, err := projects.ListTaskTimeLogs(ctx, db, ws, id, task.ID)
+			if err != nil {
+				return out, err
+			}
+			if logs == nil {
+				logs = []projects.TimeLog{}
+			}
+			out.Tasks = append(out.Tasks, taskExportItem{taskItem: toTask(task), TimeLogs: logs})
+		}
+		offset += int64(len(page.Tasks))
+		if offset >= page.Total || len(page.Tasks) == 0 {
+			return out, nil
+		}
+	}
+}
+
 func (s *Server) exportProject(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
 	ids, _, ok := s.scope(w, r, session, false, "project_id")
 	if !ok {
 		return
 	}
-	wsID, pID := ids[0], ids[1]
-
-	proj, err := projects.GetProject(r.Context(), s.Pool, wsID, pID)
+	// A stable snapshot prevents concurrent edits from skipping tasks between pages.
+	tx, err := s.Pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		internal(w, "failed to get project", err)
+		internal(w, "failed to start export", err)
 		return
 	}
-
-	statuses, err := projects.ListProjectStatuses(r.Context(), s.Pool, wsID, pID)
+	defer tx.Rollback(r.Context())
+	out, err := readProjectExport(r.Context(), tx, ids[0], ids[1])
 	if err != nil {
-		internal(w, "failed to list statuses", err)
+		internal(w, "failed to export project", err)
 		return
 	}
-	stItems := make([]statusItem, len(statuses))
-	for i, st := range statuses {
-		stItems[i] = toStatus(st)
-	}
-
-	milestones, err := projects.ListMilestones(r.Context(), s.Pool, wsID, pID)
-	if err != nil {
-		internal(w, "failed to list milestones", err)
-		return
-	}
-	msItems := make([]milestoneItem, len(milestones))
-	for i, ms := range milestones {
-		msItems[i] = toMilestone(ms)
-	}
-
-	paginated, err := projects.ListTasks(r.Context(), s.Pool, wsID, pID, projects.ListTasksParams{Limit: 10000})
-	if err != nil {
-		internal(w, "failed to list tasks", err)
-		return
-	}
-
-	taskItems := make([]taskExportItem, len(paginated.Tasks))
-	for i, t := range paginated.Tasks {
-		tItem := toTask(t)
-		logs, _ := projects.ListTaskTimeLogs(r.Context(), s.Pool, wsID, pID, t.ID)
-		if logs == nil {
-			logs = []projects.TimeLog{}
-		}
-		taskItems[i] = taskExportItem{
-			taskItem: tItem,
-			TimeLogs: logs,
-		}
-	}
-
-	export := projectExportData{
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		Project:    toProject(proj),
-		Statuses:   stItems,
-		Milestones: msItems,
-		Tasks:      taskItems,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, proj.Key))
-	_ = json.NewEncoder(w).Encode(export)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, out.Project.Key))
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) exportWorkspace(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
@@ -100,8 +98,7 @@ func (s *Server) exportWorkspace(w http.ResponseWriter, r *http.Request, session
 	if !ok {
 		return
 	}
-	wsID := ids[0]
-	role, ok := s.membership(w, r, wsID, session.User.ID)
+	role, ok := s.membership(w, r, ids[0], session.User.ID)
 	if !ok {
 		return
 	}
@@ -109,86 +106,46 @@ func (s *Server) exportWorkspace(w http.ResponseWriter, r *http.Request, session
 		forbidden(w)
 		return
 	}
-
-	workspaces, err := identity.ListUserWorkspaces(r.Context(), s.Pool, session.User.ID)
+	tx, err := s.Pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		internal(w, "failed to start export", err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	workspaces, err := identity.ListUserWorkspaces(r.Context(), tx, session.User.ID)
 	if err != nil {
 		internal(w, "failed to get workspace", err)
 		return
 	}
-	var currentWS *workspaceItem
+	out := workspaceExportData{ExportedAt: time.Now().UTC().Format(time.RFC3339), Projects: []projectExportData{}}
 	for _, ws := range workspaces {
-		if ws.ID == wsID {
-			item := toWorkspaceItem(ws)
-			currentWS = &item
-			break
+		if ws.ID == ids[0] {
+			out.Workspace = toWorkspaceItem(ws)
 		}
 	}
-	if currentWS == nil {
+	if out.Workspace.ID == "" {
 		notFound(w)
 		return
 	}
-
-	members, err := identity.ListWorkspaceMembers(r.Context(), s.Pool, wsID)
+	members, err := identity.ListWorkspaceMembers(r.Context(), tx, ids[0])
 	if err != nil {
 		internal(w, "failed to list members", err)
 		return
 	}
-	mItems := make([]memberItem, len(members))
-	for i, m := range members {
-		mItems[i] = toMember(m)
-	}
-
-	projList, err := projects.ListProjects(r.Context(), s.Pool, wsID, false)
+	out.Members = mapSlice(members, toMember)
+	list, err := projects.ListProjects(r.Context(), tx, ids[0], true)
 	if err != nil {
 		internal(w, "failed to list projects", err)
 		return
 	}
-
-	pExports := make([]projectExportData, 0, len(projList))
-	for _, proj := range projList {
-		statuses, _ := projects.ListProjectStatuses(r.Context(), s.Pool, wsID, proj.ID)
-		stItems := make([]statusItem, len(statuses))
-		for i, st := range statuses {
-			stItems[i] = toStatus(st)
+	for _, p := range list {
+		data, err := readProjectExport(r.Context(), tx, ids[0], p.ID)
+		if err != nil {
+			internal(w, "failed to export project", err)
+			return
 		}
-
-		milestones, _ := projects.ListMilestones(r.Context(), s.Pool, wsID, proj.ID)
-		msItems := make([]milestoneItem, len(milestones))
-		for i, ms := range milestones {
-			msItems[i] = toMilestone(ms)
-		}
-
-		paginated, _ := projects.ListTasks(r.Context(), s.Pool, wsID, proj.ID, projects.ListTasksParams{Limit: 10000})
-		taskItems := make([]taskExportItem, len(paginated.Tasks))
-		for i, t := range paginated.Tasks {
-			tItem := toTask(t)
-			logs, _ := projects.ListTaskTimeLogs(r.Context(), s.Pool, wsID, proj.ID, t.ID)
-			if logs == nil {
-				logs = []projects.TimeLog{}
-			}
-			taskItems[i] = taskExportItem{
-				taskItem: tItem,
-				TimeLogs: logs,
-			}
-		}
-
-		pExports = append(pExports, projectExportData{
-			ExportedAt: time.Now().UTC().Format(time.RFC3339),
-			Project:    toProject(proj),
-			Statuses:   stItems,
-			Milestones: msItems,
-			Tasks:      taskItems,
-		})
+		out.Projects = append(out.Projects, data)
 	}
-
-	export := workspaceExportData{
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		Workspace:  *currentWS,
-		Members:    mItems,
-		Projects:   pExports,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, currentWS.Slug))
-	_ = json.NewEncoder(w).Encode(export)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, out.Workspace.Slug))
+	writeJSON(w, http.StatusOK, out)
 }

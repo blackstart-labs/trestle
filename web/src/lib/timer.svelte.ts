@@ -26,6 +26,7 @@ export function formatDuration(seconds: number): string {
 
 export class LiveTimer {
   active = $state<ActiveTimerData | null>(null);
+  saving = $state(false);
   now = $state<number>(Date.now());
   private intervalId: number | null = null;
   private listeners: ((taskId: string, spentHours: number) => void)[] = [];
@@ -86,6 +87,14 @@ export class LiveTimer {
     },
     description = "",
   ) {
+    if (this.saving || this.active?.taskId === task.id) return;
+    if (
+      this.active &&
+      !confirm(
+        `Discard the running timer for ${this.active.taskHumanKey} and start this task? Unlogged time will be lost.`,
+      )
+    )
+      return;
     this.active = {
       taskId: task.id,
       taskHumanKey: task.human_key,
@@ -111,6 +120,7 @@ export class LiveTimer {
   }
 
   discard() {
+    if (this.saving) return;
     this.active = null;
     this.stopTicker();
     try {
@@ -128,7 +138,9 @@ export class LiveTimer {
   async stopAndLog(
     csrfToken: string,
   ): Promise<{ ok: boolean; spentHours: number; error?: string }> {
-    if (!this.active) return { ok: false, spentHours: 0 };
+    if (!this.active || this.saving) return { ok: false, spentHours: 0 };
+    this.saving = true;
+    this.now = Date.now();
     const task = this.active;
     const hours = this.elapsedHours;
     const desc = task.description || "";
@@ -161,17 +173,20 @@ export class LiveTimer {
       const data = await res.json();
       const spent =
         typeof data.spent_hours === "number" ? data.spent_hours : hours;
+      this.saving = false;
       this.discard();
       for (const listener of this.listeners) {
         listener(task.taskId, spent);
       }
       return { ok: true, spentHours: spent };
-    } catch (e: any) {
+    } catch {
       return {
         ok: false,
         spentHours: 0,
-        error: e?.message || "Network error while logging time",
+        error: "Could not log time. Check your connection and try again.",
       };
+    } finally {
+      this.saving = false;
     }
   }
 }

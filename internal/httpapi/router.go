@@ -68,6 +68,7 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("DELETE /api/v1/me/avatar", s.auth(s.deleteUserAvatar))
 	mux.HandleFunc("GET /api/v1/users/{user_id}/avatar", s.getUserAvatar)
 	mux.HandleFunc("GET /api/v1/workspaces", s.auth(s.listWorkspaces))
+	mux.HandleFunc("POST /api/v1/workspaces", s.auth(s.createWorkspace))
 	const ws = "/api/v1/workspaces/{workspace_id}"
 	mux.HandleFunc("PATCH "+ws, s.auth(s.updateWorkspace))
 	mux.HandleFunc("GET "+ws+"/image", s.auth(s.getWorkspaceImage))
@@ -271,6 +272,7 @@ var assetTypes = map[string]string{
 	".css":   "text/css; charset=utf-8",
 	".txt":   "text/plain; charset=utf-8",
 	".woff2": "font/woff2",
+	".svg":   "image/svg+xml",
 }
 
 func serveAsset(assets fs.FS, name string) http.HandlerFunc {

@@ -110,7 +110,10 @@
     </div>
   {:else if section === "workspace" && workspace}
     <div class="settings-single">
-      <WorkspaceSettings {workspace} {onworkspaceupdated} />
+      {#key workspace.id}<WorkspaceSettings
+          {workspace}
+          {onworkspaceupdated}
+        />{/key}
     </div>
   {:else if section === "integration"}
     <Integrations

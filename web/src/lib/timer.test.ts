@@ -89,4 +89,35 @@ describe("LiveTimer", () => {
       }),
     );
   });
+
+  it("prevents duplicate logs and keeps a failed timer for retry", async () => {
+    const timer = new LiveTimer();
+    timer.start({
+      id: "task-1",
+      human_key: "CORE-1",
+      title: "Task",
+      project_id: "proj",
+      workspace_id: "ws",
+    });
+    let respond!: (value: Response) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((resolve) => (respond = resolve)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = timer.stopAndLog("csrf");
+    expect(timer.saving).toBe(true);
+    await timer.stopAndLog("csrf");
+    timer.discard();
+    expect(timer.active).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    respond(
+      new Response(JSON.stringify({ error: { message: "Try again" } }), {
+        status: 500,
+      }),
+    );
+    expect((await pending).ok).toBe(false);
+    expect(timer.saving).toBe(false);
+    expect(timer.active).not.toBeNull();
+    timer.discard();
+  });
 });

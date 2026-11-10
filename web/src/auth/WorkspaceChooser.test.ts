@@ -9,6 +9,7 @@ test("loads and displays authorized workspaces", async () => {
       name: "Engineering",
       slug: "engineering",
       role: "owner",
+      avatar_url: "/api/v1/workspaces/ws-1/image",
     },
     {
       id: "ws-2",
@@ -27,7 +28,7 @@ test("loads and displays authorized workspaces", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   const onselect = vi.fn();
-  render(WorkspaceChooser, { onselect });
+  const { container } = render(WorkspaceChooser, { onselect });
 
   await waitFor(() => {
     expect(screen.getByText("Engineering")).toBeTruthy();
@@ -37,6 +38,9 @@ test("loads and displays authorized workspaces", async () => {
   });
 
   const buttons = screen.getAllByRole("button", { name: /open/i });
+  expect(container.querySelector("img")?.getAttribute("src")).toBe(
+    workspaces[0].avatar_url,
+  );
   expect(buttons.length).toBe(2);
 
   await fireEvent.click(buttons[0]);
@@ -56,7 +60,7 @@ test("displays empty state when user has no workspaces", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByText(/not currently a member of any workspaces/i),
+      screen.getByText(/create a workspace, or ask an owner/i),
     ).toBeTruthy();
   });
 });
@@ -107,4 +111,58 @@ test("on arrival, the only workspace opens without a click", async () => {
   const onselect = vi.fn();
   render(WorkspaceChooser, { onselect, autoselect: true });
   await waitFor(() => expect(onselect).toHaveBeenCalledWith(only));
+});
+
+test("workspace creation preserves a rejected draft and selects the workspace after retry", async () => {
+  document.cookie = "trestle-csrf=test-token";
+  const ws = {
+    id: "new",
+    name: "New workspace",
+    slug: "new-workspace",
+    role: "owner",
+  };
+  let reject = true;
+  const fetchMock = vi.fn(async (_url, init) => {
+    if (init?.method === "POST")
+      return new Response(
+        JSON.stringify(
+          reject ? { error: { message: "Choose another slug." } } : ws,
+        ),
+        { status: reject ? 409 : 201 },
+      );
+    return new Response(JSON.stringify({ workspaces: [] }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const onselect = vi.fn();
+  render(WorkspaceChooser, { onselect });
+  await fireEvent.click(screen.getByRole("button", { name: "New workspace" }));
+  await fireEvent.input(screen.getByLabelText("Workspace name"), {
+    target: { value: ws.name },
+  });
+  await fireEvent.input(screen.getByLabelText("Workspace slug"), {
+    target: { value: ws.slug },
+  });
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Create workspace" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Choose another slug",
+    ),
+  );
+  expect(screen.getByLabelText("Workspace name")).toHaveProperty(
+    "value",
+    ws.name,
+  );
+  reject = false;
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Create workspace" }),
+  );
+  await waitFor(() => expect(onselect).toHaveBeenCalledWith(ws));
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/v1/workspaces",
+    expect.objectContaining({
+      headers: expect.objectContaining({ "X-CSRF-Token": "test-token" }),
+    }),
+  );
 });

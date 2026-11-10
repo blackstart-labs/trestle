@@ -96,7 +96,7 @@ Headings track at -0.022em, the display at -0.035em; nothing is tighter than
 
 ## Responsive policy
 
-- Above 60rem: a fixed sidebar and a sticky translucent top bar.
+- Above 60rem: a fixed sidebar and a sticky, opaque top bar using `--surface`, so scrolling content never shows through its text.
 - At 60rem and below: navigation becomes a sticky, horizontally scrolling strip under the top bar, so every destination stays one tap away with no hidden menu.
 - At 40rem and below: dialogs become bottom sheets, task rows become two-line cards, and boards swipe column by column.
 
