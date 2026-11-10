@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/maruf-pfc/trestle/internal/identity"
 	"github.com/maruf-pfc/trestle/internal/projects"
 )
 
@@ -43,6 +44,9 @@ func TestWorkspaceCreationAndEditing(t *testing.T) {
 func TestTaskCreationMetadataDescriptionAndSubtaskCounts(t *testing.T) {
 	a := newApp(t)
 	owner, ws := ptBootstrap(a, "owner", "audit-password", "Owner", "Workspace", "workspace")
+	if err := identity.SetUserAvatar(t.Context(), a.pool, owner.ID, []byte("avatar"), "image/png"); err != nil {
+		t.Fatal(err)
+	}
 	c := a.login("owner", "audit-password")
 	base := fmt.Sprintf("/api/v1/workspaces/%s/projects", ws)
 	p := ptExpect(t, c.do("POST", base, map[string]string{"name": "Core", "slug": "core", "key": "CORE"}), http.StatusCreated).JSON(t)
@@ -53,7 +57,8 @@ func TestTaskCreationMetadataDescriptionAndSubtaskCounts(t *testing.T) {
 	created := ptExpect(t, c.do("POST", path, map[string]any{"title": "Parent", "description": description, "milestone_id": m["id"], "assignee_ids": []string{owner.ID.String()}}), http.StatusCreated).JSON(t)
 	ptEq(t, "description", created["description"], description)
 	ptEq(t, "milestone_id", created["milestone_id"], m["id"])
-	ptLen(t, "assignees", created["assignees"], 1)
+	assignees := ptLen(t, "assignees", created["assignees"], 1)
+	ptEq(t, "avatar_url", assignees[0].(map[string]any)["avatar_url"], "/api/v1/users/"+owner.ID.String()+"/avatar")
 	taskPath := path + "/" + created["id"].(string)
 	ptExpect(t, c.do("PATCH", taskPath, map[string]string{"description": description}), http.StatusOK)
 	ptExpect(t, c.do("PATCH", taskPath, map[string]string{"description": description + "x"}), http.StatusBadRequest)
@@ -68,6 +73,12 @@ func TestTaskCreationMetadataDescriptionAndSubtaskCounts(t *testing.T) {
 	ptEq(t, "subtask_count", rows[0].(map[string]any)["subtask_count"], 2)
 	ptExpect(t, c.do("POST", path, map[string]any{"title": "Invalid assignee", "assignee_ids": []string{uuid.NewString()}}), http.StatusNotFound)
 	ptExpect(t, c.do("POST", path, map[string]any{"title": "Invalid status", "status_id": uuid.NewString()}), http.StatusNotFound)
+	disabled := a.createUser("disabled", "audit-password", "Disabled")
+	ptAddMember(a, owner.ID, ws, disabled.ID, "member")
+	if _, err := identity.SetUserDisabled(t.Context(), a.pool, "disabled", true); err != nil {
+		t.Fatal(err)
+	}
+	ptExpect(t, c.do("POST", path, map[string]any{"title": "Disabled assignee", "assignee_ids": []string{disabled.ID.String()}}), http.StatusNotFound)
 	page = ptExpect(t, c.do("GET", path, nil), http.StatusOK).JSON(t)
 	ptEq(t, "total", page["total"], 3)
 }

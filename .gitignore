@@ -10,8 +10,8 @@
 *.key
 
 # Frontend dependencies, builds and caches
-/web/node_modules/
-/web/dist/
+node_modules/
+dist/
 /web/.vite/
 /web/.svelte-kit/
 /docs-site/node_modules/

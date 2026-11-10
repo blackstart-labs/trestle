@@ -6,6 +6,7 @@
   import EditProjectModal from "./EditProjectModal.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
+  import Avatar from "../ui/Avatar.svelte";
   import Modal from "../ui/Modal.svelte";
   import Toast from "../ui/Toast.svelte";
   import Select, { type SelectOption } from "../ui/Select.svelte";
@@ -316,6 +317,16 @@
       : 0,
   );
 
+  const hasScopeFilter = $derived(
+    Boolean(labelFilter || assigneeFilter || milestoneFilter),
+  );
+
+  const activeCustomStatus = $derived(
+    statusIdFilter
+      ? projectStatuses.find((s) => s.id === statusIdFilter) || null
+      : null,
+  );
+
   // Board columns: the project's own statuses in workflow order, or the
   // canonical categories when a project has none configured.
   const columns = $derived.by(() => {
@@ -393,7 +404,16 @@
   /** Bounded count queries (limit=1) read each category's or status's total. */
   export async function loadCategoryTotals() {
     try {
-      const base = `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks?limit=1&offset=0`;
+      let base = `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks?limit=1&offset=0`;
+      if (labelFilter) {
+        base += `&label_id=${encodeURIComponent(labelFilter)}`;
+      }
+      if (assigneeFilter) {
+        base += `&assignee_id=${encodeURIComponent(assigneeFilter)}`;
+      }
+      if (milestoneFilter) {
+        base += `&milestone_id=${encodeURIComponent(milestoneFilter)}`;
+      }
       if (projectStatuses.length > 0) {
         const counts = await Promise.all(
           projectStatuses.map(async (s) => {
@@ -533,6 +553,7 @@
     milestoneFilter = milestoneId;
     offset = 0;
     setView("list");
+    void loadCategoryTotals();
   }
 
   function openEditMilestone(m: Milestone) {
@@ -868,11 +889,13 @@
   {#if task.assignees && task.assignees.length > 0}
     <span class="avatar-stack" aria-label="Task assignees">
       {#each task.assignees.slice(0, 3) as a (a.user_id)}
-        <span
-          class="avatar avatar-sm"
-          style:--avatar-hue={identityHue(a.user_id)}
-          title="Assigned to {a.display_name}">{initials(a.display_name)}</span
-        >
+        <Avatar
+          id={a.user_id}
+          name={a.display_name}
+          avatarUrl={a.avatar_url}
+          size="sm"
+          title="Assigned to {a.display_name}"
+        />
       {/each}
       {#if task.assignees.length > 3}
         <span class="avatar avatar-sm more-avatars"
@@ -975,32 +998,82 @@
     <div class="rail panel" role="group" aria-label="Filter by status">
       <div class="rail-head">
         <span class="rail-summary">
-          <strong class="num">{doneShare}%</strong> complete
-          <span class="note num"
-            >· {railCompleted} of {railCounted} tasks done</span
-          >
+          {#if activeCustomStatus}
+            <strong class="num"
+              >{statusTotals
+                ? statusTotals[activeCustomStatus.id] || 0
+                : 0}</strong
+            >
+            {activeCustomStatus.name} tasks
+            <span class="note num"
+              >· {railTotal > 0
+                ? Math.round(
+                    ((statusTotals
+                      ? statusTotals[activeCustomStatus.id] || 0
+                      : 0) /
+                      railTotal) *
+                      100,
+                  )
+                : 0}% of {hasScopeFilter ? "filtered" : "all"} tasks</span
+            >
+          {:else if statusFilter !== "all" && categoryTotals}
+            {@const catName =
+              statusCategories.find((c) => c.value === statusFilter)?.label ||
+              statusFilter}
+            <strong class="num"
+              >{categoryTotals[statusFilter as Category] || 0}</strong
+            >
+            {catName} tasks
+            <span class="note num"
+              >· {railTotal > 0
+                ? Math.round(
+                    ((categoryTotals[statusFilter as Category] || 0) /
+                      railTotal) *
+                      100,
+                  )
+                : 0}% of {hasScopeFilter ? "filtered" : "all"} tasks</span
+            >
+          {:else}
+            <strong class="num">{doneShare}%</strong> complete
+            <span class="note num"
+              >· {railCompleted} of {railCounted}
+              {hasScopeFilter ? "filtered " : ""}tasks done</span
+            >
+          {/if}
         </span>
       </div>
       <div class="rail-track" aria-hidden="true">
         {#if sortedStatuses.length > 0 && statusTotals}
           {#each sortedStatuses as s (s.id)}
             {#if (statusTotals[s.id] || 0) > 0}
+              {@const count = statusTotals[s.id] || 0}
+              {@const pct =
+                railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
               <span
                 class="rail-span"
+                class:active={statusIdFilter === s.id}
                 class:dim={statusIdFilter !== "" && statusIdFilter !== s.id}
                 style:--span-color={s.color}
-                style:flex-grow={statusTotals[s.id]}
+                style:flex-grow={count}
+                title="{s.name}: {count} tasks ({pct}%)"
               ></span>
             {/if}
           {/each}
         {:else if categoryTotals}
           {#each categoryOrder as c (c)}
-            {#if categoryTotals[c] > 0}
+            {#if (categoryTotals[c] || 0) > 0}
+              {@const count = categoryTotals[c] || 0}
+              {@const pct =
+                railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
+              {@const catLabel =
+                statusCategories.find((cat) => cat.value === c)?.label || c}
               <span
                 class="rail-span"
+                class:active={statusFilter === c}
                 class:dim={statusFilter !== "all" && statusFilter !== c}
                 style:--span-color="var(--cat-{c})"
-                style:flex-grow={categoryTotals[c]}
+                style:flex-grow={count}
+                title="{catLabel}: {count} tasks ({pct}%)"
               ></span>
             {/if}
           {/each}
@@ -1238,6 +1311,7 @@
               labelFilter = v;
               offset = 0;
               void loadTasks();
+              void loadCategoryTotals();
             }}
           />
         {/if}
@@ -1260,6 +1334,7 @@
               assigneeFilter = v;
               offset = 0;
               void loadTasks();
+              void loadCategoryTotals();
             }}
           />
         {/if}
@@ -1284,6 +1359,7 @@
               milestoneFilter = v;
               offset = 0;
               void loadTasks();
+              void loadCategoryTotals();
             }}
           />
         {/if}
@@ -1348,6 +1424,7 @@
                 sub: m.username,
                 hue: identityHue(m.user_id),
                 initials: initials(m.display_name),
+                avatarUrl: m.avatar_url,
               }))}
               selected={createAssigneeIds}
               disabled={creating}
@@ -2124,10 +2201,12 @@
   .rail-track {
     display: flex;
     gap: 3px;
-    height: 0.5rem;
+    height: 0.625rem;
     border-radius: var(--radius-full);
     overflow: hidden;
     background: var(--surface-sunken);
+    padding: 0;
+    margin: 0;
   }
 
   .rail-span {
@@ -2137,7 +2216,21 @@
     box-shadow: 0 0 10px -2px var(--span-color);
     transition:
       opacity var(--transition-normal),
-      flex-grow var(--duration-slow) var(--ease-out);
+      filter var(--transition-fast),
+      transform var(--transition-fast);
+  }
+
+  .rail-span:hover {
+    filter: brightness(1.2);
+    transform: scaleY(1.25);
+  }
+
+  .rail-span.active {
+    box-shadow:
+      0 0 0 2px var(--surface-raised),
+      0 0 8px 1px var(--span-color);
+    z-index: 1;
+    transform: scaleY(1.15);
   }
 
   .rail-span.dim {

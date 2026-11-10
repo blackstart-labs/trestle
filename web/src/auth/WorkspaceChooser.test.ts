@@ -9,6 +9,7 @@ test("loads and displays authorized workspaces", async () => {
       name: "Engineering",
       slug: "engineering",
       role: "owner",
+      avatar_url: "/api/v1/workspaces/ws-1/image",
     },
     {
       id: "ws-2",
@@ -27,7 +28,7 @@ test("loads and displays authorized workspaces", async () => {
   vi.stubGlobal("fetch", fetchMock);
 
   const onselect = vi.fn();
-  render(WorkspaceChooser, { onselect });
+  const { container } = render(WorkspaceChooser, { onselect });
 
   await waitFor(() => {
     expect(screen.getByText("Engineering")).toBeTruthy();
@@ -37,6 +38,9 @@ test("loads and displays authorized workspaces", async () => {
   });
 
   const buttons = screen.getAllByRole("button", { name: /open/i });
+  expect(container.querySelector("img")?.getAttribute("src")).toBe(
+    workspaces[0].avatar_url,
+  );
   expect(buttons.length).toBe(2);
 
   await fireEvent.click(buttons[0]);

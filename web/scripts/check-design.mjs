@@ -130,6 +130,33 @@ function walk(dir, out = []) {
   return out;
 }
 
+function isBlockOpen(line, tag) {
+  const trimmed = line.trimStart().toLowerCase();
+  if (!trimmed.startsWith("<" + tag)) return false;
+  const next = trimmed[tag.length + 1];
+  return (
+    next === ">" ||
+    next === " " ||
+    next === "\t" ||
+    next === "\r" ||
+    next === "\n"
+  );
+}
+
+function isBlockClose(line, tag) {
+  const trimmed = line.trimStart().toLowerCase();
+  if (!trimmed.startsWith("</" + tag)) return false;
+  const next = trimmed[tag.length + 2];
+  return (
+    next === ">" ||
+    next === " " ||
+    next === "\t" ||
+    next === "\r" ||
+    next === "\n" ||
+    next === undefined
+  );
+}
+
 /** Split a file into lines tagged with the region they belong to. */
 function regions(file, text) {
   const lines = text.split(/\r?\n/);
@@ -137,10 +164,11 @@ function regions(file, text) {
   if (file.endsWith(".ts")) return lines.map((l) => ({ l, region: "script" }));
   let region = "markup";
   return lines.map((l) => {
-    if (/<script[\s>]/.test(l)) region = "script";
-    else if (/<style[\s>]/.test(l)) region = "style";
+    if (isBlockOpen(l, "script")) region = "script";
+    else if (isBlockOpen(l, "style")) region = "style";
     const tagged = { l, region };
-    if (/<\/script>/.test(l) || /<\/style>/.test(l)) region = "markup";
+    if (isBlockClose(l, "script") || isBlockClose(l, "style"))
+      region = "markup";
     return tagged;
   });
 }

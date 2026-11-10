@@ -67,6 +67,7 @@ type TaskComment struct {
 	UserID         uuid.UUID
 	AuthorName     string
 	AuthorUsername string
+	AvatarURL      *string
 	Content        string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -463,7 +464,7 @@ func fetchAssignees(ctx context.Context, db Querier, taskIDs []uuid.UUID) (map[u
 	if len(taskIDs) == 0 {
 		return out, nil
 	}
-	rows, err := db.Query(ctx, `SELECT ta.task_id, ta.user_id, u.username, u.display_name, ta.assigned_by, ta.created_at
+	rows, err := db.Query(ctx, `SELECT ta.task_id, ta.user_id, u.username, u.display_name, (u.avatar_data IS NOT NULL), ta.assigned_by, ta.created_at
 		FROM task_assignees ta
 		JOIN users u ON u.id = ta.user_id
 		WHERE ta.task_id = ANY($1)
@@ -474,8 +475,13 @@ func fetchAssignees(ctx context.Context, db Querier, taskIDs []uuid.UUID) (map[u
 	defer rows.Close()
 	for rows.Next() {
 		var a TaskAssignee
-		if err := rows.Scan(&a.TaskID, &a.UserID, &a.Username, &a.DisplayName, &a.AssignedBy, &a.CreatedAt); err != nil {
+		var hasAvatar bool
+		if err := rows.Scan(&a.TaskID, &a.UserID, &a.Username, &a.DisplayName, &hasAvatar, &a.AssignedBy, &a.CreatedAt); err != nil {
 			return nil, err
+		}
+		if hasAvatar {
+			url := "/api/v1/users/" + a.UserID.String() + "/avatar"
+			a.AvatarURL = &url
 		}
 		out[a.TaskID] = append(out[a.TaskID], a)
 	}
@@ -787,11 +793,16 @@ func AssignUser(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID
 		return TaskAssignee{}, err
 	}
 	a := TaskAssignee{TaskID: taskID, UserID: userID, AssignedBy: actorID, CreatedAt: time.Now().UTC()}
-	if err := db.QueryRow(ctx, `SELECT u.username, u.display_name
+	var hasAvatar bool
+	if err := db.QueryRow(ctx, `SELECT u.username, u.display_name, (u.avatar_data IS NOT NULL)
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
-		WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND u.disabled_at IS NULL`, workspaceID, userID).Scan(&a.Username, &a.DisplayName); err != nil {
+		WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND u.disabled_at IS NULL`, workspaceID, userID).Scan(&a.Username, &a.DisplayName, &hasAvatar); err != nil {
 		return TaskAssignee{}, mapErr(err)
+	}
+	if hasAvatar {
+		url := "/api/v1/users/" + a.UserID.String() + "/avatar"
+		a.AvatarURL = &url
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO task_assignees (task_id, user_id, assigned_by, created_at)
 		VALUES ($1, $2, $3, $4)
@@ -840,8 +851,13 @@ func CreateComment(ctx context.Context, db Querier, actorID, workspaceID, projec
 	}
 	now := time.Now().UTC()
 	c := TaskComment{ID: uuid.New(), WorkspaceID: workspaceID, TaskID: taskID, UserID: actorID, Content: content, CreatedAt: now, UpdatedAt: now}
-	if err := db.QueryRow(ctx, "SELECT username, display_name FROM users WHERE id = $1", actorID).Scan(&c.AuthorUsername, &c.AuthorName); err != nil {
+	var hasAvatar bool
+	if err := db.QueryRow(ctx, "SELECT username, display_name, (avatar_data IS NOT NULL) FROM users WHERE id = $1", actorID).Scan(&c.AuthorUsername, &c.AuthorName, &hasAvatar); err != nil {
 		return TaskComment{}, mapErr(err)
+	}
+	if hasAvatar {
+		u := "/api/v1/users/" + actorID.String() + "/avatar"
+		c.AvatarURL = &u
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO task_comments (id, workspace_id, task_id, user_id, content, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $6)`, c.ID, workspaceID, taskID, actorID, content, now); err != nil {
@@ -856,7 +872,7 @@ func ListComments(ctx context.Context, db Querier, workspaceID, projectID, taskI
 	if _, err := taskKey(ctx, db, workspaceID, projectID, taskID); err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(ctx, `SELECT c.id, c.workspace_id, c.task_id, c.user_id, u.display_name, u.username, c.content, c.created_at, c.updated_at
+	rows, err := db.Query(ctx, `SELECT c.id, c.workspace_id, c.task_id, c.user_id, u.display_name, u.username, (u.avatar_data IS NOT NULL), c.content, c.created_at, c.updated_at
 		FROM task_comments c
 		JOIN users u ON u.id = c.user_id
 		WHERE c.task_id = $1 AND c.workspace_id = $2
@@ -866,7 +882,15 @@ func ListComments(ctx context.Context, db Querier, workspaceID, projectID, taskI
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (TaskComment, error) {
 		var c TaskComment
-		return c, r.Scan(&c.ID, &c.WorkspaceID, &c.TaskID, &c.UserID, &c.AuthorName, &c.AuthorUsername, &c.Content, &c.CreatedAt, &c.UpdatedAt)
+		var hasAvatar bool
+		if err := r.Scan(&c.ID, &c.WorkspaceID, &c.TaskID, &c.UserID, &c.AuthorName, &c.AuthorUsername, &hasAvatar, &c.Content, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return c, err
+		}
+		if hasAvatar {
+			u := "/api/v1/users/" + c.UserID.String() + "/avatar"
+			c.AvatarURL = &u
+		}
+		return c, nil
 	})
 }
 

@@ -138,20 +138,31 @@ func toAssignee(a projects.TaskAssignee) assigneeItem {
 }
 
 type commentItem struct {
-	ID             string `json:"id"`
-	WorkspaceID    string `json:"workspace_id"`
-	TaskID         string `json:"task_id"`
-	UserID         string `json:"user_id"`
-	AuthorName     string `json:"author_name"`
-	AuthorUsername string `json:"author_username"`
-	Content        string `json:"content"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID             string  `json:"id"`
+	WorkspaceID    string  `json:"workspace_id"`
+	TaskID         string  `json:"task_id"`
+	UserID         string  `json:"user_id"`
+	AuthorName     string  `json:"author_name"`
+	AuthorUsername string  `json:"author_username"`
+	AvatarURL      *string `json:"avatar_url,omitempty"`
+	Content        string  `json:"content"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 func toComment(c projects.TaskComment) commentItem {
-	return commentItem{c.ID.String(), c.WorkspaceID.String(), c.TaskID.String(), c.UserID.String(),
-		c.AuthorName, c.AuthorUsername, c.Content, ts(c.CreatedAt), ts(c.UpdatedAt)}
+	return commentItem{
+		c.ID.String(),
+		c.WorkspaceID.String(),
+		c.TaskID.String(),
+		c.UserID.String(),
+		c.AuthorName,
+		c.AuthorUsername,
+		c.AvatarURL,
+		c.Content,
+		ts(c.CreatedAt),
+		ts(c.UpdatedAt),
+	}
 }
 
 type activityItem struct {

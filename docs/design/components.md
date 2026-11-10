@@ -16,6 +16,7 @@ them through real application interactions, not private internals.
 | `CommandPalette` | Combobox and listbox with `aria-activedescendant`. Arrow keys, Home/End, Enter and Escape; opened with Ctrl/⌘ K, `/` or the search button. Offers only real destinations, the workspace's projects and preferences. |
 | `Toast` | A transient success confirmation (polite live region) that floats bottom-right and leaves after 4.5s. Hover or focus pauses it, and it can be dismissed. Errors never use it: they stay inline until resolved. |
 | `Icon` | One outline family (24px grid, 1.75 stroke), always `aria-hidden`; meaning comes from the adjacent label |
+| `Avatar` | Person or workspace avatar in sizes `sm`, `md` and `lg`. Renders custom image when `avatarUrl` is present, falling back gracefully to initials with deterministic `identityHue` if missing or failing to load. Always `aria-hidden` when decorative beside text. |
 | `BrandMark`, `TrestleArt` | The trestle mark, and the overview linework (decorative, `aria-hidden`) |
 
 ## Shell

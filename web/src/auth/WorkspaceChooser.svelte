@@ -4,7 +4,7 @@
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
   import Modal from "../ui/Modal.svelte";
-  import { identityHue, initials } from "../lib/identity";
+  import Avatar from "../ui/Avatar.svelte";
 
   export interface Workspace {
     id: string;
@@ -179,11 +179,13 @@
       {#each workspaces as ws (ws.id)}
         <li>
           <button type="button" class="ws-card" onclick={() => choose(ws)}>
-            <span
-              class="avatar avatar-lg ws-tile"
-              style:--avatar-hue={identityHue(ws.id)}
-              aria-hidden="true">{initials(ws.name)}</span
-            >
+            <Avatar
+              id={ws.id}
+              name={ws.name}
+              avatarUrl={ws.avatar_url}
+              size="lg"
+              class="ws-tile"
+            />
             <span class="ws-info">
               <span class="ws-name">{ws.name}</span>
               <span class="ws-slug">/{ws.slug}</span>
@@ -307,7 +309,7 @@
     }
   }
 
-  .ws-tile {
+  :global(.ws-tile) {
     border-radius: var(--radius);
     grid-row: span 2;
   }

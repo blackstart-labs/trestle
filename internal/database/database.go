@@ -24,7 +24,7 @@ import (
 func Pool(cfg config.Config) *pgxpool.Pool {
 	c := cfg.Database.Copy()
 	c.MinConns = 0
-	c.MaxConns = int32(cfg.MaxDBConnections)
+	c.MaxConns = cfg.MaxDBConnections
 	c.ConnConfig.ConnectTimeout = cfg.DBTimeout
 	c.ConnConfig.RuntimeParams["application_name"] = "trestle"
 	c.ConnConfig.RuntimeParams["statement_timeout"] = "5000"
