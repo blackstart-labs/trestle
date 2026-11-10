@@ -327,6 +327,17 @@
       : null,
   );
 
+  const activeCategoryCount = $derived.by(() => {
+    if (statusFilter === "all") return 0;
+    const totals = statusTotals;
+    if (projectStatuses.length > 0 && totals) {
+      return projectStatuses
+        .filter((s) => s.category === statusFilter)
+        .reduce((sum, s) => sum + (totals[s.id] || 0), 0);
+    }
+    return categoryTotals ? categoryTotals[statusFilter as Category] || 0 : 0;
+  });
+
   // Board columns: the project's own statuses in workflow order, or the
   // canonical categories when a project has none configured.
   const columns = $derived.by(() => {
@@ -575,14 +586,20 @@
       void loadProjectMilestones();
     } else {
       void loadTasks();
+      void loadCategoryTotals();
     }
   }
 
   function handleStatusFilter(newStatus: string) {
-    statusFilter = newStatus;
+    if (statusFilter === newStatus && !statusIdFilter) {
+      statusFilter = "all";
+    } else {
+      statusFilter = newStatus;
+    }
     statusIdFilter = "";
     offset = 0;
     void loadTasks();
+    void loadCategoryTotals();
   }
 
   function handleAllTasksFilter() {
@@ -590,6 +607,7 @@
     statusIdFilter = "";
     offset = 0;
     void loadTasks();
+    void loadCategoryTotals();
   }
 
   function handleCustomStatusFilter(statusId: string) {
@@ -602,6 +620,7 @@
     }
     offset = 0;
     void loadTasks();
+    void loadCategoryTotals();
   }
 
   function handleResetFilters() {
@@ -612,6 +631,7 @@
     milestoneFilter = "";
     offset = 0;
     void loadTasks();
+    void loadCategoryTotals();
   }
 
   function handlePrevPage() {
@@ -636,6 +656,12 @@
       } else {
         createStatus = statusId;
       }
+    }
+    if (projectMilestones.length === 0) {
+      void loadProjectMilestones();
+    }
+    if (workspaceMembers.length === 0) {
+      void loadLabelsAndMembers();
     }
     createError = null;
     showCreate = true;
@@ -762,10 +788,35 @@
 
       if (res.status === 200) {
         const updated: Task = await res.json();
+        const oldStatusId = task.status_id;
+        const oldCategory = task.status as Category;
+        const newStatusId = updated.status_id;
+        const newCategory = updated.status as Category;
+
         tasks = tasks.map((t) => (t.id === task.id ? updated : t));
         if (selectedTask?.id === task.id) {
           selectedTask = updated;
         }
+
+        if (
+          statusTotals &&
+          oldStatusId &&
+          newStatusId &&
+          oldStatusId !== newStatusId
+        ) {
+          statusTotals = {
+            ...statusTotals,
+            [oldStatusId]: Math.max(0, (statusTotals[oldStatusId] || 1) - 1),
+            [newStatusId]: (statusTotals[newStatusId] || 0) + 1,
+          };
+        } else if (categoryTotals && oldCategory !== newCategory) {
+          categoryTotals = {
+            ...categoryTotals,
+            [oldCategory]: Math.max(0, (categoryTotals[oldCategory] || 1) - 1),
+            [newCategory]: (categoryTotals[newCategory] || 0) + 1,
+          };
+        }
+
         void loadCategoryTotals();
       } else {
         errorMessage = "Could not update task status.";
@@ -803,6 +854,23 @@
         successMessage = `Task ${task.human_key} deleted.`;
         if (selectedTask?.id === task.id) {
           selectedTask = null;
+        }
+        if (statusTotals && task.status_id) {
+          statusTotals = {
+            ...statusTotals,
+            [task.status_id]: Math.max(
+              0,
+              (statusTotals[task.status_id] || 1) - 1,
+            ),
+          };
+        } else if (categoryTotals && task.status) {
+          categoryTotals = {
+            ...categoryTotals,
+            [task.status as Category]: Math.max(
+              0,
+              (categoryTotals[task.status as Category] || 1) - 1,
+            ),
+          };
         }
         void loadCategoryTotals();
       } else {
@@ -1016,21 +1084,15 @@
                   )
                 : 0}% of {hasScopeFilter ? "filtered" : "all"} tasks</span
             >
-          {:else if statusFilter !== "all" && categoryTotals}
+          {:else if statusFilter !== "all" && (statusTotals || categoryTotals)}
             {@const catName =
               statusCategories.find((c) => c.value === statusFilter)?.label ||
               statusFilter}
-            <strong class="num"
-              >{categoryTotals[statusFilter as Category] || 0}</strong
-            >
+            <strong class="num">{activeCategoryCount}</strong>
             {catName} tasks
             <span class="note num"
               >· {railTotal > 0
-                ? Math.round(
-                    ((categoryTotals[statusFilter as Category] || 0) /
-                      railTotal) *
-                      100,
-                  )
+                ? Math.round((activeCategoryCount / railTotal) * 100)
                 : 0}% of {hasScopeFilter ? "filtered" : "all"} tasks</span
             >
           {:else}
@@ -1042,21 +1104,25 @@
           {/if}
         </span>
       </div>
-      <div class="rail-track" aria-hidden="true">
+      <div class="rail-track" role="group" aria-label="Progress segments">
         {#if sortedStatuses.length > 0 && statusTotals}
           {#each sortedStatuses as s (s.id)}
             {#if (statusTotals[s.id] || 0) > 0}
               {@const count = statusTotals[s.id] || 0}
               {@const pct =
                 railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
-              <span
+              <button
+                type="button"
                 class="rail-span"
                 class:active={statusIdFilter === s.id}
                 class:dim={statusIdFilter !== "" && statusIdFilter !== s.id}
                 style:--span-color={s.color}
                 style:flex-grow={count}
                 title="{s.name}: {count} tasks ({pct}%)"
-              ></span>
+                aria-label="{s.name}: {count} tasks ({pct}%)"
+                aria-pressed={statusIdFilter === s.id}
+                onclick={() => handleCustomStatusFilter(s.id)}
+              ></button>
             {/if}
           {/each}
         {:else if categoryTotals}
@@ -1067,14 +1133,18 @@
                 railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
               {@const catLabel =
                 statusCategories.find((cat) => cat.value === c)?.label || c}
-              <span
+              <button
+                type="button"
                 class="rail-span"
-                class:active={statusFilter === c}
+                class:active={statusFilter === c && !statusIdFilter}
                 class:dim={statusFilter !== "all" && statusFilter !== c}
                 style:--span-color="var(--cat-{c})"
                 style:flex-grow={count}
                 title="{catLabel}: {count} tasks ({pct}%)"
-              ></span>
+                aria-label="{catLabel}: {count} tasks ({pct}%)"
+                aria-pressed={statusFilter === c && !statusIdFilter}
+                onclick={() => handleStatusFilter(c)}
+              ></button>
             {/if}
           {/each}
         {/if}
@@ -1290,6 +1360,7 @@
               statusFilter = "all";
               offset = 0;
               void loadTasks();
+              void loadCategoryTotals();
             }}
           />
         {/if}
@@ -1483,13 +1554,18 @@
             value={createMilestoneId}
             options={[
               { value: "", label: "No milestone", icon: "flag" },
-              ...projectMilestones
-                .filter((m) => m.status === "open")
+              ...[...projectMilestones]
+                .sort((a, b) => {
+                  if (a.status === b.status)
+                    return a.title.localeCompare(b.title);
+                  return a.status === "open" ? -1 : 1;
+                })
                 .map((m) => ({
                   value: m.id,
                   label: m.title,
                   icon: "flag" as const,
                   color: m.color,
+                  hint: m.status === "closed" ? "Closed" : undefined,
                 })),
             ]}
             onchange={(v) => (createMilestoneId = v)}
@@ -1855,10 +1931,16 @@
       onscroll={updateBoardEdges}
     >
       {#each columns as col (col.id)}
+        {@const colCount =
+          sortedStatuses.length > 0 && statusTotals
+            ? (statusTotals[col.id] ?? col.tasks.length)
+            : categoryTotals
+              ? (categoryTotals[col.id as Category] ?? col.tasks.length)
+              : col.tasks.length}
         <section
           class="board-col"
           class:drop={dropTarget === col.id}
-          aria-label="{col.name}, {col.tasks.length} tasks"
+          aria-label="{col.name}, {colCount} tasks"
           ondragover={(e) => {
             if (!draggingId) return;
             e.preventDefault();
@@ -1876,7 +1958,7 @@
             <span class="dot" style:background={col.color} aria-hidden="true"
             ></span>
             <h3 class="col-name">{col.name}</h3>
-            <span class="col-count num">{col.tasks.length}</span>
+            <span class="col-count num">{colCount}</span>
             <button
               type="button"
               class="btn-quiet btn-icon col-add"
@@ -2210,14 +2292,26 @@
   }
 
   .rail-span {
+    appearance: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
     flex-basis: 0;
     min-width: 0.5rem;
+    height: 100%;
     background: var(--span-color);
     box-shadow: 0 0 10px -2px var(--span-color);
     transition:
       opacity var(--transition-normal),
       filter var(--transition-fast),
       transform var(--transition-fast);
+  }
+
+  .rail-span:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    z-index: 2;
   }
 
   .rail-span:hover {
