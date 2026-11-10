@@ -1140,25 +1140,21 @@
           {/if}
         </span>
       </div>
-      <div class="rail-track" role="group" aria-label="Progress segments">
+      <div class="rail-track" aria-hidden="true">
         {#if sortedStatuses.length > 0 && statusTotals}
           {#each sortedStatuses as s (s.id)}
             {#if (statusTotals[s.id] || 0) > 0}
               {@const count = statusTotals[s.id] || 0}
               {@const pct =
                 railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
-              <button
-                type="button"
+              <span
                 class="rail-span"
                 class:active={statusIdFilter === s.id}
                 class:dim={statusIdFilter !== "" && statusIdFilter !== s.id}
                 style:--span-color={s.color}
                 style:flex-grow={count}
                 title="{s.name}: {count} tasks ({pct}%)"
-                aria-label="{s.name}: {count} tasks ({pct}%)"
-                aria-pressed={statusIdFilter === s.id}
-                onclick={() => handleCustomStatusFilter(s.id)}
-              ></button>
+              ></span>
             {/if}
           {/each}
         {:else if categoryTotals}
@@ -1169,18 +1165,14 @@
                 railTotal > 0 ? Math.round((count / railTotal) * 100) : 0}
               {@const catLabel =
                 statusCategories.find((cat) => cat.value === c)?.label || c}
-              <button
-                type="button"
+              <span
                 class="rail-span"
                 class:active={statusFilter === c && !statusIdFilter}
                 class:dim={statusFilter !== "all" && statusFilter !== c}
                 style:--span-color="var(--cat-{c})"
                 style:flex-grow={count}
                 title="{catLabel}: {count} tasks ({pct}%)"
-                aria-label="{catLabel}: {count} tasks ({pct}%)"
-                aria-pressed={statusFilter === c && !statusIdFilter}
-                onclick={() => handleStatusFilter(c)}
-              ></button>
+              ></span>
             {/if}
           {/each}
         {/if}
@@ -2328,11 +2320,6 @@
   }
 
   .rail-span {
-    appearance: none;
-    border: none;
-    padding: 0;
-    margin: 0;
-    cursor: pointer;
     flex-basis: 0;
     min-width: 0.5rem;
     height: 100%;
@@ -2342,17 +2329,6 @@
       opacity var(--transition-normal),
       filter var(--transition-fast),
       transform var(--transition-fast);
-  }
-
-  .rail-span:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    z-index: 2;
-  }
-
-  .rail-span:hover {
-    filter: brightness(1.2);
-    transform: scaleY(1.25);
   }
 
   .rail-span.active {
