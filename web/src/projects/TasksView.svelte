@@ -817,6 +817,21 @@
           };
         }
 
+
+        if (statusTotals && oldStatusId && newStatusId && oldStatusId !== newStatusId) {
+          statusTotals = {
+            ...statusTotals,
+            [oldStatusId]: Math.max(0, (statusTotals[oldStatusId] || 1) - 1),
+            [newStatusId]: (statusTotals[newStatusId] || 0) + 1,
+          };
+        } else if (categoryTotals && oldCategory !== newCategory) {
+          categoryTotals = {
+            ...categoryTotals,
+            [oldCategory]: Math.max(0, (categoryTotals[oldCategory] || 1) - 1),
+            [newCategory]: (categoryTotals[newCategory] || 0) + 1,
+          };
+        }
+
         void loadCategoryTotals();
       } else {
         errorMessage = "Could not update task status.";
@@ -862,6 +877,20 @@
               0,
               (statusTotals[task.status_id] || 1) - 1,
             ),
+          };
+        } else if (categoryTotals && task.status) {
+          categoryTotals = {
+            ...categoryTotals,
+            [task.status as Category]: Math.max(
+              0,
+              (categoryTotals[task.status as Category] || 1) - 1,
+            ),
+          };
+        }
+        if (statusTotals && task.status_id) {
+          statusTotals = {
+            ...statusTotals,
+            [task.status_id]: Math.max(0, (statusTotals[task.status_id] || 1) - 1),
           };
         } else if (categoryTotals && task.status) {
           categoryTotals = {
@@ -1933,9 +1962,9 @@
       {#each columns as col (col.id)}
         {@const colCount =
           sortedStatuses.length > 0 && statusTotals
-            ? (statusTotals[col.id] ?? col.tasks.length)
+            ? statusTotals[col.id] ?? col.tasks.length
             : categoryTotals
-              ? (categoryTotals[col.id as Category] ?? col.tasks.length)
+              ? categoryTotals[col.id as Category] ?? col.tasks.length
               : col.tasks.length}
         <section
           class="board-col"
