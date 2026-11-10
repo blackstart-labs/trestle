@@ -15,6 +15,7 @@
   import BrandMark from "./ui/BrandMark.svelte";
   import CommandPalette, { type Command } from "./ui/CommandPalette.svelte";
   import Toast from "./ui/Toast.svelte";
+  import Feedback from "./ui/Feedback.svelte";
   import { accents, preferences } from "./lib/preferences.svelte";
   import { liveTimer } from "./lib/timer.svelte";
   import { identityHue, initials } from "./lib/identity";
@@ -25,6 +26,10 @@
   let openTaskId = $state<string | null>(null);
   let workspaceTab = $state<"dashboard" | "projects" | "members">("dashboard");
   let checkingAuth = $state(true);
+  let openingTask = $state(false);
+  let routeError = $state("");
+  let taskRouteVersion = 0;
+  let timerError = $state("");
   let settingsSection = $state("");
   // Skip the chooser on arrival; an explicit switch always shows it.
   let autoOpenWorkspace = $state(true);
@@ -47,12 +52,13 @@
   }
 
   async function stopActiveTimer() {
+    timerError = "";
     const token = getCookie("trestle-csrf");
     const res = await liveTimer.stopAndLog(token || "");
     if (res.ok) {
-      toastMessage = `Logged ${res.spentHours}h to task`;
+      toastMessage = "Time logged to task.";
     } else {
-      toastMessage = res.error || "Failed to log time";
+      timerError = res.error || "Could not log time. Try again.";
     }
   }
 
@@ -112,13 +118,14 @@
           if (activeTab === "signin" || activeTab === "overview") {
             activeTab = "workspaces";
           }
-          void ensureWorkspaceSelected();
           const currentHash = window.location.hash.replace(/^#/, "");
           if (
             currentHash.startsWith("task/") ||
             currentHash.startsWith("workspaces/")
           ) {
             route(currentHash);
+          } else {
+            await ensureWorkspaceSelected();
           }
         } else {
           user = null;
@@ -152,6 +159,9 @@
   // Every change of view runs through one place, so the old page can
   // cross-fade into the new one while the shell stays still.
   function go(update: () => void) {
+    taskRouteVersion++;
+    openingTask = false;
+    routeError = "";
     withViewTransition(async () => {
       update();
       await tick();
@@ -163,13 +173,14 @@
       user = authenticatedUser;
       autoOpenWorkspace = true;
       activeTab = "workspaces";
-      void ensureWorkspaceSelected();
       const currentHash = window.location.hash.replace(/^#/, "");
       if (
         currentHash.startsWith("task/") ||
         currentHash.startsWith("workspaces/")
       ) {
         route(currentHash);
+      } else {
+        void ensureWorkspaceSelected();
       }
     });
   }
@@ -256,37 +267,41 @@
     projId: string,
     taskId: string,
   ) {
-    activeTab = "workspaces";
-    workspaceTab = "projects";
-    openTaskId = taskId;
-
+    const version = ++taskRouteVersion;
+    openingTask = true;
+    routeError = "";
     try {
       const res = await fetch("/api/v1/workspaces", {
         headers: { Accept: "application/json" },
         cache: "no-store",
       });
-      if (res.ok) {
-        const data = await res.json();
-        const foundWs = (data.workspaces || []).find(
-          (w: Workspace) => w.id === wsId,
-        );
-        if (foundWs) selectedWorkspace = foundWs;
-      }
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const foundWs = (data.workspaces || []).find(
+        (w: Workspace) => w.id === wsId,
+      );
+      if (!foundWs) throw new Error();
+      const projectRes = await fetch(
+        `/api/v1/workspaces/${wsId}/projects/${projId}`,
+        {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        },
+      );
+      if (!projectRes.ok) throw new Error();
+      const proj = await projectRes.json();
+      if (version !== taskRouteVersion) return;
+      selectedWorkspace = foundWs;
+      selectedProject = proj;
+      workspaceTab = "projects";
+      openTaskId = taskId;
+      activeTab = "workspaces";
     } catch {
-      // safe fallback
-    }
-
-    try {
-      const res = await fetch(`/api/v1/workspaces/${wsId}/projects/${projId}`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const proj = await res.json();
-        selectedProject = proj;
-      }
-    } catch {
-      // safe fallback
+      if (version === taskRouteVersion)
+        routeError =
+          "Could not open this task. Check your connection and workspace access, then try again.";
+    } finally {
+      if (version === taskRouteVersion) openingTask = false;
     }
   }
 
@@ -296,6 +311,10 @@
         /^(?:task|workspaces)\/([^/]+)\/projects\/([^/]+)\/tasks\/([^/]+)$/,
       ) || hash.match(/^task\/([^/]+)\/([^/]+)\/([^/]+)$/);
     if (taskMatch) {
+      if (!user) {
+        activeTab = "signin";
+        return;
+      }
       void openTaskFromRoute(taskMatch[1], taskMatch[2], taskMatch[3]);
       return;
     }
@@ -751,7 +770,6 @@
       <div class="topbar-actions">
         {#if liveTimer.active}
           <div class="live-timer-banner" aria-label="Active live timer">
-            <span class="live-pulse-dot" aria-hidden="true"></span>
             <button
               type="button"
               class="live-timer-task"
@@ -761,24 +779,30 @@
             >
               <span class="live-timer-key">{liveTimer.active.taskHumanKey}</span
               >
+              <span class="live-timer-label">Tracking</span>
               <span class="live-timer-time num"
                 >{liveTimer.formattedDuration}</span
               >
             </button>
             <button
               type="button"
-              class="live-timer-btn live-timer-stop"
+              class="btn-quiet live-timer-btn"
               onclick={stopActiveTimer}
+              disabled={liveTimer.saving}
               title="Stop and log time"
               aria-label="Stop timer"
             >
               <Icon name="stop" size={12} />
-              <span>Stop</span>
+              <span>{liveTimer.saving ? "Logging…" : "Stop & log"}</span>
             </button>
             <button
               type="button"
-              class="live-timer-btn live-timer-discard"
-              onclick={() => liveTimer.discard()}
+              class="btn-quiet btn-icon live-timer-discard"
+              disabled={liveTimer.saving}
+              onclick={() => {
+                if (confirm("Discard this timer? Unlogged time will be lost."))
+                  liveTimer.discard();
+              }}
               title="Discard timer"
               aria-label="Discard timer"
             >
@@ -853,7 +877,19 @@
     </header>
 
     <main id="main" tabindex="-1" class:dense={activeTab === "workspaces"}>
-      {#if activeTab === "signin" && !user}
+      {#if timerError}<Feedback tone="danger">{timerError}</Feedback>{/if}
+      {#if routeError}
+        <Feedback tone="danger">{routeError}</Feedback>
+        <button
+          type="button"
+          onclick={() => route(window.location.hash.slice(1))}
+          >Retry task link</button
+        >
+      {:else if openingTask || (checkingAuth && activeTab !== "settings" && activeTab !== "overview")}
+        <Feedback announcement="status"
+          >{openingTask ? "Opening task…" : "Checking your session…"}</Feedback
+        >
+      {:else if activeTab === "signin" && !user}
         <SignIn onsuccess={handleLoginSuccess} />
       {:else if activeTab === "workspaces" && user}
         {#if !selectedWorkspace}
@@ -1254,12 +1290,7 @@
     min-height: var(--topbar-height);
     padding: var(--space-2) var(--gutter);
     padding-right: max(var(--gutter), env(safe-area-inset-right));
-    background: light-dark(
-      oklch(0.972 var(--tint) var(--brand-hue) / 0.6),
-      oklch(0.118 var(--tint) var(--brand-hue) / 0.45)
-    );
-    backdrop-filter: blur(14px) saturate(1.3);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    background: var(--surface);
     border-bottom: var(--border-width) solid var(--line);
   }
 
@@ -1513,6 +1544,17 @@
   }
 
   @media (max-width: 40rem) {
+    .topbar-actions {
+      display: contents;
+    }
+    .search-trigger {
+      margin-left: auto;
+    }
+    .live-timer-banner {
+      order: 2;
+      flex: 1 0 100%;
+      justify-content: space-between;
+    }
     .signout-text,
     .search-keys,
     .topbar-brand .wordmark {

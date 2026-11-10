@@ -104,6 +104,7 @@ type Task struct {
 	MilestoneTitle *string
 	MilestoneColor *string
 	SpentHours     float64
+	SubtaskCount   int64
 	Labels         []Label
 	Assignees      []TaskAssignee
 	CreatedAt      time.Time
@@ -131,6 +132,7 @@ type UpdateProjectParams struct {
 }
 
 type CreateTaskParams struct {
+	AssigneeIDs []uuid.UUID
 	Title       string
 	Description string
 	Status      string
@@ -386,6 +388,9 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 	case err == nil:
 		t.StatusID, t.StatusName, t.StatusColor = &sid, &sname, &scolor
 	case errors.Is(err, pgx.ErrNoRows):
+		if params.StatusID != nil {
+			return Task{}, ErrNotFound
+		}
 		t.Status = params.Status
 	default:
 		return Task{}, err
@@ -398,6 +403,13 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, actorID *uuid.UUID, wor
 		return Task{}, mapErr(err)
 	}
 	t.HumanKey = humanKey(t.ProjectKey, t.TaskNumber)
+	for _, userID := range params.AssigneeIDs {
+		a, err := AssignUser(ctx, tx, actorID, workspaceID, projectID, t.ID, userID)
+		if err != nil {
+			return Task{}, err
+		}
+		t.Assignees = append(t.Assignees, a)
+	}
 
 	if err := audit(ctx, tx, actorID, "task.created", map[string]any{
 		"workspace_id": workspaceID, "project_id": projectID, "task_id": t.ID, "human_key": t.HumanKey,
@@ -473,7 +485,8 @@ func fetchAssignees(ctx context.Context, db Querier, taskIDs []uuid.UUID) (map[u
 const taskColumns = `t.id, t.workspace_id, t.project_id, p.key, t.task_number, t.title, t.description,
 	t.status, t.priority, t.due_date, t.created_by, t.parent_id,
 	t.status_id, ts.name, ts.color, t.created_at, t.updated_at,
-	t.milestone_id, m.title, m.color, COALESCE(ttl.spent_hours, 0)
+	t.milestone_id, m.title, m.color, COALESCE(ttl.spent_hours, 0),
+	(SELECT count(*) FROM tasks sub WHERE sub.parent_id = t.id AND sub.project_id = t.project_id AND sub.workspace_id = t.workspace_id)
 	FROM tasks t
 	JOIN projects p ON p.id = t.project_id
 	LEFT JOIN task_statuses ts ON ts.id = t.status_id
@@ -495,7 +508,7 @@ func queryTasks(ctx context.Context, db Querier, sql string, args ...any) ([]Tas
 		err := r.Scan(&t.ID, &t.WorkspaceID, &t.ProjectID, &t.ProjectKey, &t.TaskNumber, &t.Title, &t.Description,
 			&t.Status, &t.Priority, &t.DueDate, &t.CreatedBy, &t.ParentID,
 			&t.StatusID, &t.StatusName, &t.StatusColor, &t.CreatedAt, &t.UpdatedAt,
-			&t.MilestoneID, &t.MilestoneTitle, &t.MilestoneColor, &t.SpentHours)
+			&t.MilestoneID, &t.MilestoneTitle, &t.MilestoneColor, &t.SpentHours, &t.SubtaskCount)
 		t.HumanKey = humanKey(t.ProjectKey, t.TaskNumber)
 		return t, err
 	})
@@ -777,7 +790,7 @@ func AssignUser(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID
 	if err := db.QueryRow(ctx, `SELECT u.username, u.display_name
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
-		WHERE wm.workspace_id = $1 AND wm.user_id = $2`, workspaceID, userID).Scan(&a.Username, &a.DisplayName); err != nil {
+		WHERE wm.workspace_id = $1 AND wm.user_id = $2 AND u.disabled_at IS NULL`, workspaceID, userID).Scan(&a.Username, &a.DisplayName); err != nil {
 		return TaskAssignee{}, mapErr(err)
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO task_assignees (task_id, user_id, assigned_by, created_at)

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -185,6 +186,7 @@ type taskItem struct {
 	MilestoneTitle *string        `json:"milestone_title"`
 	MilestoneColor *string        `json:"milestone_color"`
 	SpentHours     float64        `json:"spent_hours"`
+	SubtaskCount   int64          `json:"subtask_count"`
 	Labels         []labelItem    `json:"labels"`
 	Assignees      []assigneeItem `json:"assignees"`
 	CreatedAt      string         `json:"created_at"`
@@ -199,8 +201,8 @@ func toTask(t projects.Task) taskItem {
 		CreatedBy: idPtr(t.CreatedBy), ParentID: idPtr(t.ParentID), StatusID: idPtr(t.StatusID),
 		StatusName: t.StatusName, StatusColor: t.StatusColor,
 		MilestoneID: idPtr(t.MilestoneID), MilestoneTitle: t.MilestoneTitle, MilestoneColor: t.MilestoneColor,
-		SpentHours: t.SpentHours,
-		Labels:     mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
+		SpentHours: t.SpentHours, SubtaskCount: t.SubtaskCount,
+		Labels: mapSlice(t.Labels, toLabel), Assignees: mapSlice(t.Assignees, toAssignee),
 		CreatedAt: ts(t.CreatedAt), UpdatedAt: ts(t.UpdatedAt),
 	}
 	if t.DueDate != nil {
@@ -325,6 +327,14 @@ func (s *Server) scope(w http.ResponseWriter, r *http.Request, session *Authenti
 	if managerOnly && !isManager(role) {
 		forbidden(w)
 		return nil, "", false
+	}
+	if role == "guest" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		comment := (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/comments")) ||
+			(r.Method == http.MethodDelete && r.PathValue("comment_id") != "")
+		if !comment {
+			forbidden(w)
+			return nil, "", false
+		}
 	}
 	return ids, role, true
 }
@@ -695,14 +705,15 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request, session *Auth
 }
 
 type createTaskRequest struct {
-	Title       *string    `json:"title"`
-	Description *string    `json:"description"`
-	Status      *string    `json:"status"`
-	StatusID    *uuid.UUID `json:"status_id"`
-	Priority    *string    `json:"priority"`
-	DueDate     *string    `json:"due_date"`
-	MilestoneID *uuid.UUID `json:"milestone_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
+	Title       *string     `json:"title"`
+	Description *string     `json:"description"`
+	Status      *string     `json:"status"`
+	StatusID    *uuid.UUID  `json:"status_id"`
+	Priority    *string     `json:"priority"`
+	DueDate     *string     `json:"due_date"`
+	MilestoneID *uuid.UUID  `json:"milestone_id"`
+	ParentID    *uuid.UUID  `json:"parent_id"`
+	AssigneeIDs []uuid.UUID `json:"assignee_ids"`
 }
 
 // createTaskOrSubtask serves both endpoints; noun is "Task" or "Subtask" in error messages.
@@ -749,8 +760,12 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 	if req.Description != nil {
 		description = *req.Description
 	}
-	if len(description) > 10000 {
-		badRequest(w, noun+" description cannot exceed 10000 characters")
+	if utf8.RuneCountInString(description) > 15000 {
+		badRequest(w, noun+" description cannot exceed 15000 characters")
+		return
+	}
+	if len(req.AssigneeIDs) > 100 {
+		badRequest(w, "Choose at most 100 assignees")
 		return
 	}
 	var due *time.Time
@@ -766,7 +781,7 @@ func (s *Server) createTaskOrSubtask(w http.ResponseWriter, r *http.Request, ses
 	}
 	t, err := projects.CreateTask(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], projects.CreateTaskParams{
 		Title: title, Description: description, Status: status, Priority: priority, DueDate: due,
-		ParentID: parent, StatusID: req.StatusID, MilestoneID: req.MilestoneID,
+		ParentID: parent, StatusID: req.StatusID, MilestoneID: req.MilestoneID, AssigneeIDs: req.AssigneeIDs,
 	})
 	if err != nil {
 		storeError(w, err, "failed to create "+lower, "")
@@ -843,8 +858,8 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request, session *Aut
 		badRequest(w, "Invalid task priority")
 		return
 	}
-	if req.Description != nil && len(*req.Description) > 10000 {
-		badRequest(w, "Task description cannot exceed 10000 characters")
+	if req.Description != nil && utf8.RuneCountInString(*req.Description) > 15000 {
+		badRequest(w, "Task description cannot exceed 15000 characters")
 		return
 	}
 	params := projects.UpdateTaskParams{Title: req.Title, Description: req.Description, Status: req.Status,

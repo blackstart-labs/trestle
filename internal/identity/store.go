@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -568,10 +569,29 @@ func RecordAuditEvent(ctx context.Context, db Querier, actorID *uuid.UUID, event
 	return err
 }
 
+func CreateWorkspace(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, name, slug string) (WorkspaceProjection, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return WorkspaceProjection{}, err
+	}
+	defer tx.Rollback(ctx)
+	w := WorkspaceProjection{ID: uuid.New(), Name: name, Slug: slug, Role: "owner"}
+	if _, err := tx.Exec(ctx, "INSERT INTO workspaces (id, name, slug) VALUES ($1, $2, $3)", w.ID, name, slug); err != nil {
+		return WorkspaceProjection{}, MapErr(err)
+	}
+	if _, err := tx.Exec(ctx, "INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner')", w.ID, userID); err != nil {
+		return WorkspaceProjection{}, err
+	}
+	if err := RecordAuditEvent(ctx, tx, &userID, "workspace.created", map[string]any{"workspace_id": w.ID}); err != nil {
+		return WorkspaceProjection{}, err
+	}
+	return w, tx.Commit(ctx)
+}
+
 func UpdateWorkspace(ctx context.Context, db Querier, workspaceID uuid.UUID, name, slug string) (WorkspaceProjection, error) {
 	name = strings.TrimSpace(name)
 	slug = strings.TrimSpace(strings.ToLower(slug))
-	if len(name) < 1 || len(name) > 120 {
+	if utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 120 {
 		return WorkspaceProjection{}, errors.New("Enter a workspace name of up to 120 characters")
 	}
 	if len(slug) < 2 || len(slug) > 48 {
@@ -584,7 +604,7 @@ func UpdateWorkspace(ctx context.Context, db Querier, workspaceID uuid.UUID, nam
 		WHERE id = $4
 		RETURNING id, name, slug, (avatar_data IS NOT NULL), avatar_updated_at`,
 		name, slug, now, workspaceID).Scan(&w.ID, &w.Name, &w.Slug, &w.HasAvatar, &w.AvatarUpdatedAt)
-	return w, err
+	return w, MapErr(err)
 }
 
 func SetWorkspaceAvatar(ctx context.Context, db Querier, workspaceID uuid.UUID, data []byte, mime string) error {

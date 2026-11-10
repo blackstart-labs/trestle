@@ -28,6 +28,7 @@
     searchLabel = "Search",
     createLabel = (q: string) => `Create “${q}”`,
     emptyText = "Nothing to show",
+    disabled = false,
   }: {
     items: readonly PickerItem[];
     selected: readonly string[];
@@ -39,6 +40,7 @@
     searchLabel?: string;
     createLabel?: (query: string) => string;
     emptyText?: string;
+    disabled?: boolean;
   } = $props();
 
   const listId = uid("picker");
@@ -64,6 +66,7 @@
   const rowCount = $derived(results.length + (canCreate ? 1 : 0));
 
   async function openPicker() {
+    if (disabled) return;
     query = "";
     active = 0;
     open = true;
@@ -116,6 +119,7 @@
   title={label}
   aria-haspopup="listbox"
   aria-expanded={open}
+  {disabled}
   onclick={() => (open ? close() : openPicker())}
 >
   <Icon name="plus" size={15} />

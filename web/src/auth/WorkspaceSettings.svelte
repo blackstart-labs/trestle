@@ -34,6 +34,31 @@
       slug.trim().toLowerCase() !== workspace.slug,
   );
 
+  $effect(() => {
+    if (!dirty) return;
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const beforeNavigate = (e: MouseEvent) => {
+      const link = (e.target as Element | null)?.closest("a[href]");
+      if (
+        link &&
+        !link.hasAttribute("download") &&
+        !confirm("Leave workspace settings? Your unsaved changes will be lost.")
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", beforeNavigate, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", beforeNavigate, true);
+    };
+  });
+
   function getCsrfToken(): string | null {
     if (typeof document === "undefined") return null;
     for (const part of document.cookie.split(";")) {
@@ -46,7 +71,7 @@
   }
 
   async function handleImageFile(e: Event) {
-    if (!canManage) return;
+    if (!canManage || uploadingImage || deletingImage) return;
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -89,7 +114,7 @@
   }
 
   async function handleRemoveImage() {
-    if (!canManage) return;
+    if (!canManage || uploadingImage || deletingImage) return;
     if (!confirm("Remove the workspace icon?")) return;
     deletingImage = true;
     error = null;
@@ -118,7 +143,7 @@
 
   async function handleSaveDetails(e: SubmitEvent) {
     e.preventDefault();
-    if (!canManage) return;
+    if (!canManage || saving) return;
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim().toLowerCase();
 
@@ -158,6 +183,8 @@
       }
 
       const updated = await res.json();
+      name = updated.name;
+      slug = updated.slug;
       toastMessage = "Workspace details saved.";
       onworkspaceupdated?.({
         ...workspace,
@@ -178,6 +205,9 @@
       <h2 id="ws-heading" tabindex="-1">Workspace settings</h2>
       <p>Name, URL slug and branding for {workspace.name}.</p>
     </div>
+    {#if !canManage}<Feedback tone="neutral"
+        >Only workspace owners and admins can change these settings.</Feedback
+      >{/if}
 
     {#if error}
       <Feedback tone="danger">{error}</Feedback>
@@ -194,18 +224,22 @@
           class="avatar-display"
           style:--avatar-hue={identityHue(workspace.id)}
         >
-          <img
-            src={`/api/v1/workspaces/${workspace.id}/image?v=${imageVersion}`}
-            alt={workspace.name}
-            class="avatar-img"
-            onerror={(e) => {
-              (e.currentTarget as HTMLElement).style.display = "none";
-              const fallback = (e.currentTarget as HTMLElement)
-                .nextElementSibling;
-              if (fallback) (fallback as HTMLElement).style.display = "flex";
-            }}
-          />
-          <span class="avatar-fallback" aria-hidden="true">
+          {#if workspace.avatar_url}<img
+              src={`/api/v1/workspaces/${workspace.id}/image?v=${imageVersion}`}
+              alt={workspace.name}
+              class="avatar-img"
+              onerror={(e) => {
+                (e.currentTarget as HTMLElement).style.display = "none";
+                const fallback = (e.currentTarget as HTMLElement)
+                  .nextElementSibling;
+                if (fallback) (fallback as HTMLElement).style.display = "flex";
+              }}
+            />{/if}
+          <span
+            class="avatar-fallback"
+            class:visible={!workspace.avatar_url}
+            aria-hidden="true"
+          >
             {initials(workspace.name)}
           </span>
         </div>
@@ -355,6 +389,9 @@
     height: 100%;
     align-items: center;
     justify-content: center;
+  }
+  .avatar-fallback.visible {
+    display: flex;
   }
   .uploader-controls {
     display: flex;

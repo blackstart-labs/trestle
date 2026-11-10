@@ -98,7 +98,7 @@ Trestle allows projects to dispatch notifications to Discord, Slack, and Telegra
   - Custom ports, userinfo, and query parameter overrides are rejected.
   - Redirects and HTTP proxies are disabled on outbound webhook clients.
 - **Write-Only Storage**: Webhook tokens and secrets are write-only through the API; they are never reflected back in API responses.
-- **Payload Minimization**: Outbound payloads contain only project name, task key, title, and status category. Assignee details, internal descriptions, and comments are never sent over integrations.
+- **Notification contents**: Enabling a Project integration sends its project/milestone name, task title, status, priority, assignee display names and a description excerpt to that provider. Legacy HTML descriptions are converted to text; description excerpts are limited to 1,000 Unicode characters and assignee names to 200. Longer content is explicitly marked as truncated. Telegram HTML and Slack control characters are escaped, and Discord mentions are disabled. Comments and credentials are not included. Enable integrations only for destinations allowed to receive this Project's content.
 
 ---
 

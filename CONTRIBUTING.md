@@ -24,6 +24,5 @@ tree; preserve other contributors' uncommitted work.
 - Preserve the license and upstream relationship. No release/push is implied
   by a local contribution. Use conventional commit messages when committing.
 
-The fork currently has Issues disabled. Use a pull request for non-sensitive
-changes or obtain maintainer agreement on a tracker; do not publish secrets or
-security vulnerabilities in a public PR.
+Track non-sensitive bugs in the repository's GitHub Issues. Do not publish
+secrets or security vulnerabilities in a public issue or PR; follow SECURITY.md.

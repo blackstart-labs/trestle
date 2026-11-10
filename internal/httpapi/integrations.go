@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -195,13 +197,13 @@ func formatTaskNotification(provider string, p projects.Project, t projects.Task
 	}
 	var assignedLine string
 	if len(assigneeNames) > 0 {
-		assignedLine = fmt.Sprintf("👤 Assigned To: %s", strings.Join(assigneeNames, ", "))
+		assignedLine = fmt.Sprintf("👤 Assigned To: %s", notificationExcerpt(strings.Join(assigneeNames, ", "), 200))
 	} else {
 		assignedLine = "👤 Assigned To: Unassigned"
 	}
 
 	var descBlock string
-	desc := strings.TrimSpace(t.Description)
+	desc := notificationExcerpt(notificationText(t.Description), 1000)
 	if desc != "" {
 		descBlock = fmt.Sprintf("\n\n📝 Description:\n%s", desc)
 	}
@@ -218,15 +220,64 @@ func formatTaskNotification(provider string, p projects.Project, t projects.Task
 			escDesc = fmt.Sprintf("\n\n📝 Description:\n%s", html.EscapeString(desc))
 		}
 		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 <a href=\"%s\">Open in Trestle</a>",
-			escHeader, escTitle, escStatus, escPriority, escAssigned, escDesc, link)
+			escHeader, escTitle, escStatus, escPriority, escAssigned, escDesc, html.EscapeString(link))
 	case "slack":
+		escape := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace
 		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 <%s|Open in Trestle>",
-			header, titleLine, statusLine, priorityLine, assignedLine, descBlock, link)
+			escape(header), escape(titleLine), escape(statusLine), escape(priorityLine), escape(assignedLine), escape(descBlock), link)
 	default:
 		// Discord and standard Markdown
 		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 [Open in Trestle](%s)",
 			header, titleLine, statusLine, priorityLine, assignedLine, descBlock, link)
 	}
+}
+
+func notificationExcerpt(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) > limit {
+		return string(runes[:limit]) + "… (open task for full text)"
+	}
+	return text
+}
+
+// Legacy rich-text descriptions contain HTML. Decode text only; never forward tags or attributes.
+func notificationText(source string) string {
+	d := xml.NewDecoder(strings.NewReader(source))
+	d.Strict = false
+	d.AutoClose = xml.HTMLAutoClose
+	d.Entity = xml.HTMLEntity
+	var out strings.Builder
+	skip := 0
+	for {
+		token, err := d.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Plain Markdown can contain '<' without an HTML tag.
+			return strings.TrimSpace(source)
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			name := strings.ToLower(t.Name.Local)
+			if name == "script" || name == "style" {
+				skip++
+			}
+			if skip == 0 && (name == "p" || name == "div" || name == "br" || name == "li") {
+				out.WriteByte('\n')
+			}
+		case xml.EndElement:
+			name := strings.ToLower(t.Name.Local)
+			if (name == "script" || name == "style") && skip > 0 {
+				skip--
+			}
+		case xml.CharData:
+			if skip == 0 {
+				out.Write(t)
+			}
+		}
+	}
+	return strings.TrimSpace(out.String())
 }
 
 // shortcut: best-effort delivery has no queue or retry; add an outbox when guaranteed delivery is required.

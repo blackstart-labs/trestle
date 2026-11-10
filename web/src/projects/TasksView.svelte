@@ -10,6 +10,7 @@
   import Toast from "../ui/Toast.svelte";
   import Select, { type SelectOption } from "../ui/Select.svelte";
   import DatePicker from "../ui/DatePicker.svelte";
+  import MultiPicker from "../ui/MultiPicker.svelte";
   import { flip } from "svelte/animate";
   import { crossfade } from "svelte/transition";
   import { appear, fadeIn, reducedMotion, sheet } from "../lib/motion";
@@ -56,6 +57,7 @@
     labels?: Label[];
     assignees?: TaskAssignee[];
     spent_hours?: number;
+    subtask_count?: number;
     created_at: string;
     updated_at: string;
   }
@@ -129,6 +131,8 @@
   let createPriority = $state<string>("none");
   let createDueDate = $state("");
   let createMilestoneId = $state<string>("");
+  let createAssigneeIds = $state<string[]>([]);
+  let metadataError = $state("");
   let creating = $state(false);
   let createError = $state<string | null>(null);
 
@@ -143,9 +147,9 @@
     const csrf = getCsrfToken();
     const res = await liveTimer.stopAndLog(csrf || "");
     if (res.ok) {
-      successMessage = `Logged ${res.spentHours}h to task.`;
+      successMessage = "Time logged to task.";
     } else {
-      createError = res.error || "Failed to log time.";
+      errorMessage = res.error || "Failed to log time.";
     }
   }
   let moreRight = $state(false);
@@ -185,6 +189,11 @@
 
   const canDelete = $derived(
     workspace.role === "owner" || workspace.role === "admin",
+  );
+  const canEdit = $derived(
+    workspace.role === "owner" ||
+      workspace.role === "admin" ||
+      workspace.role === "member",
   );
 
   const hasActiveFilters = $derived(
@@ -452,6 +461,7 @@
   }
 
   export async function loadLabelsAndMembers() {
+    metadataError = "";
     try {
       const [labelsRes, membersRes] = await Promise.all([
         fetch(
@@ -466,9 +476,11 @@
       if (membersRes.ok) {
         const data = await membersRes.json();
         workspaceMembers = data.members || [];
-      }
+      } else
+        metadataError =
+          "Could not load people. Retry before assigning this task.";
     } catch {
-      // safe fallback
+      metadataError = "Could not load people. Check your connection and retry.";
     }
   }
 
@@ -480,9 +492,12 @@
       if (res.ok) {
         const data = await res.json();
         projectMilestones = data.milestones || [];
-      }
+      } else
+        metadataError =
+          "Could not load milestones. Retry before selecting one.";
     } catch {
-      // safe fallback
+      metadataError =
+        "Could not load milestones. Check your connection and retry.";
     }
   }
 
@@ -593,6 +608,7 @@
   }
 
   function openCreate(statusId?: string) {
+    if (!canEdit) return;
     if (statusId) {
       if (projectStatuses.some((s) => s.id === statusId)) {
         createStatusId = statusId;
@@ -600,7 +616,6 @@
         createStatus = statusId;
       }
     }
-    createMilestoneId = "";
     createError = null;
     showCreate = true;
   }
@@ -608,7 +623,11 @@
   function closeCreate() {
     if (creating) return;
     if (
-      (createTitle.trim() || createDesc) &&
+      (createTitle.trim() ||
+        createDesc ||
+        createAssigneeIds.length ||
+        createMilestoneId ||
+        createDueDate) &&
       !confirm(
         "Close this task draft? Your unsaved text will be kept until you leave this Project.",
       )
@@ -648,6 +667,7 @@
         description: createDesc,
         status: resolvedCategory,
         priority: createPriority,
+        assignee_ids: createAssigneeIds,
       };
       if (createStatusId) {
         payload.status_id = createStatusId;
@@ -682,6 +702,7 @@
         createPriority = "none";
         createDueDate = "";
         createMilestoneId = "";
+        createAssigneeIds = [];
         offset = 0;
         refreshAll();
       } else {
@@ -819,8 +840,12 @@
         { headers: { Accept: "application/json" }, cache: "no-store" },
       );
       if (res.ok) selectedTask = await res.json();
+      else
+        errorMessage =
+          "Could not open this task. Check your access and try the link again.";
     } catch {
-      // The list is still available; the drawer simply does not open.
+      errorMessage =
+        "Could not open this task. Check your connection and try the link again.";
     }
   }
 </script>
@@ -828,6 +853,7 @@
 {#snippet statusMenu(task: Task)}
   <Select
     variant="chip"
+    disabled={!canEdit}
     label="Status for {task.human_key}"
     value={projectStatuses.length > 0
       ? task.status_id || task.status
@@ -897,9 +923,6 @@
         <h2 id="tasks-heading" tabindex="-1">
           <span class="visually-hidden">Tasks for </span>{project.name}
         </h2>
-        <p>
-          {#if project.description}{project.description}{:else}/{project.slug}{/if}
-        </p>
       </div>
     </div>
     <div class="page-actions">
@@ -910,6 +933,7 @@
       {/if}
       <Button
         onclick={() => (showStatusManager = true)}
+        disabled={!canDelete}
         label="Workflow statuses"
       >
         {#snippet children()}
@@ -918,14 +942,22 @@
           <span class="label-short" aria-hidden="true">Statuses</span>
         {/snippet}
       </Button>
-      <Button onclick={() => (showMilestoneManager = true)} label="Milestones">
+      <Button
+        onclick={() => (showMilestoneManager = true)}
+        label="Milestones"
+        disabled={!canEdit}
+      >
         {#snippet children()}
           <Icon name="flag" size={16} />
           <span class="label-long">Milestones</span>
           <span class="label-short" aria-hidden="true">Milestones</span>
         {/snippet}
       </Button>
-      <Button variant="primary" onclick={() => openCreate()}>
+      <Button
+        variant="primary"
+        onclick={() => openCreate()}
+        disabled={!canEdit}
+      >
         {#snippet children()}
           <Icon name="plus" size={16} />
           New task
@@ -934,6 +966,10 @@
       </Button>
     </div>
   </div>
+
+  {#if !canEdit}<Feedback tone="neutral"
+      >You have read-only access to tasks. You can still add comments.</Feedback
+    >{/if}
 
   {#if hasTotals && railTotal > 0 && view !== "milestones"}
     <div class="rail panel" role="group" aria-label="Filter by status">
@@ -1288,6 +1324,45 @@
           disabled={creating}
         />
 
+        {#if metadataError}
+          <Feedback tone="danger">{metadataError}</Feedback>
+          <Button
+            onclick={() => {
+              void loadLabelsAndMembers();
+              void loadProjectMilestones();
+            }}
+            >{#snippet children()}Retry people and milestones{/snippet}</Button
+          >
+        {/if}
+        <div class="field">
+          <span class="field-label">Assignees</span>
+          <div class="page-actions">
+            {#each workspaceMembers.filter( (m) => createAssigneeIds.includes(m.user_id) ) as member (member.user_id)}<span
+                class="pill">{member.display_name}</span
+              >{/each}
+            <MultiPicker
+              label="Assignees"
+              items={workspaceMembers.map((m) => ({
+                value: m.user_id,
+                label: m.display_name,
+                sub: m.username,
+                hue: identityHue(m.user_id),
+                initials: initials(m.display_name),
+              }))}
+              selected={createAssigneeIds}
+              disabled={creating}
+              ontoggle={(id, selected) => {
+                createAssigneeIds = selected
+                  ? [...createAssigneeIds, id]
+                  : createAssigneeIds.filter((v) => v !== id);
+              }}
+            />
+            {#if createAssigneeIds.length === 0}<span class="note"
+                >Unassigned</span
+              >{/if}
+          </div>
+        </div>
+
         <div class="form-row three">
           <div class="field">
             <label for="task-status">Status</label>
@@ -1323,27 +1398,29 @@
           </div>
         </div>
 
-        {#if projectMilestones.length > 0}
-          <div class="field">
-            <label for="task-milestone">Milestone</label>
-            <Select
-              id="task-milestone"
-              value={createMilestoneId}
-              options={[
-                { value: "", label: "No milestone", icon: "flag" },
-                ...projectMilestones
-                  .filter((m) => m.status === "open")
-                  .map((m) => ({
-                    value: m.id,
-                    label: m.title,
-                    icon: "flag" as const,
-                    color: m.color,
-                  })),
-              ]}
-              onchange={(v) => (createMilestoneId = v)}
-            />
-          </div>
-        {/if}
+        <div class="field">
+          <label for="task-milestone">Milestone</label>
+          <Select
+            id="task-milestone"
+            disabled={creating}
+            value={createMilestoneId}
+            options={[
+              { value: "", label: "No milestone", icon: "flag" },
+              ...projectMilestones
+                .filter((m) => m.status === "open")
+                .map((m) => ({
+                  value: m.id,
+                  label: m.title,
+                  icon: "flag" as const,
+                  color: m.color,
+                })),
+            ]}
+            onchange={(v) => (createMilestoneId = v)}
+          />
+        </div>
+        {#if projectMilestones.length === 0 && !metadataError}<p class="note">
+            No milestones yet. Create one from the project’s Milestones action.
+          </p>{/if}
 
         <div class="dialog-actions">
           <Button variant="quiet" onclick={closeCreate} disabled={creating}>
@@ -1523,7 +1600,11 @@
           {#snippet children()}Reset filters{/snippet}
         </Button>
       {:else}
-        <Button variant="primary" onclick={() => openCreate()}>
+        <Button
+          variant="primary"
+          onclick={() => openCreate()}
+          disabled={!canEdit}
+        >
           {#snippet children()}Create a task{/snippet}
         </Button>
       {/if}
@@ -1566,6 +1647,10 @@
                   </span>
                 {/if}
                 <span class="task-title">{task.title}</span>
+                {#if task.subtask_count}<span class="pill"
+                    >{task.subtask_count}
+                    {task.subtask_count === 1 ? "subtask" : "subtasks"}</span
+                  >{/if}
               </span>
               {#if task.description}
                 <span class="task-snippet">{task.description}</span>
@@ -1624,7 +1709,7 @@
                 >
                   <Icon name="stop" size={16} />
                 </button>
-              {:else if canDelete}
+              {:else if canEdit}
                 <button
                   type="button"
                   class="btn-quiet btn-icon start-timer-btn"
@@ -1719,6 +1804,7 @@
               type="button"
               class="btn-quiet btn-icon col-add"
               onclick={() => openCreate(col.id)}
+              disabled={!canEdit}
               aria-label="Add task to {col.name}"
               title="Add task to {col.name}"
             >
@@ -1736,7 +1822,7 @@
                 out:send={{ key: task.id }}
                 class="card"
                 class:dragging={draggingId === task.id}
-                draggable="true"
+                draggable={canEdit}
                 ondragstart={(e) => {
                   draggingId = task.id;
                   e.dataTransfer?.setData("text/plain", task.id);
@@ -1779,6 +1865,10 @@
                     {/if}
                   </span>
                   <span class="card-title">{task.title}</span>
+                  {#if task.subtask_count}<span class="pill"
+                      >{task.subtask_count}
+                      {task.subtask_count === 1 ? "subtask" : "subtasks"}</span
+                    >{/if}
                   {#if task.milestone_title}
                     <span
                       class="milestone-badge"
@@ -1812,7 +1902,7 @@
                     >
                       <Icon name="stop" size={14} />
                     </button>
-                  {:else if canDelete}
+                  {:else if canEdit}
                     <button
                       type="button"
                       class="btn-quiet btn-icon start-timer-btn"
@@ -1872,7 +1962,10 @@
     ondelete={canDelete ? handleDeleteTask : undefined}
     siblings={tasks}
     onnavigate={(t) => (selectedTask = t)}
-    onclose={() => (selectedTask = null)}
+    onclose={() => {
+      selectedTask = null;
+      refreshAll();
+    }}
     ontaskupdated={(updated) => {
       tasks = tasks.map((t) => (t.id === updated.id ? updated : t));
       selectedTask = updated;
@@ -1992,16 +2085,6 @@
 
   .title-text {
     min-width: 0;
-  }
-
-  .title-text p {
-    margin-top: 0.125rem;
-    font-size: var(--text-small);
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 52ch;
   }
 
   /* ── Progress rail ───────────────────────────────────────────── */
@@ -2725,12 +2808,20 @@
       align-items: stretch;
     }
 
+    .project-title {
+      flex-wrap: wrap;
+    }
+
+    .title-text {
+      flex: 1 1 12rem;
+    }
+
     .page-actions {
       width: 100%;
     }
 
     .page-actions :global(.btn) {
-      flex: 1;
+      flex: 1 1 9rem;
     }
 
     .task-row {
@@ -2744,6 +2835,7 @@
 
     .cell-controls {
       justify-content: space-between;
+      flex-wrap: wrap;
       padding-left: var(--space-3);
     }
 

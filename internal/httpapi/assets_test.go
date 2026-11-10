@@ -31,6 +31,7 @@ func idServe(t *testing.T, app *testApp, method, path string) (*http.Response, [
 func TestReferencedAssetsHaveCorrectTypesAndSecurityHeaders(t *testing.T) {
 	app := idNoDBApp(t)
 	for path, wantType := range map[string]string{
+		"/assets/favicon.svg": "image/svg+xml",
 		"/assets/index-x.js":  "text/javascript; charset=utf-8",
 		"/assets/index-x.css": "text/css; charset=utf-8",
 	} {

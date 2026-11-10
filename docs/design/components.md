@@ -10,7 +10,7 @@ them through real application interactions, not private internals.
 | `MarkdownEditor` | Task descriptions in creation and the drawer. Write/Preview modes, selection formatting for bold, italic, headings, lists, links and code; preview uses the unsaved draft and never saves. Read-only users see rendered content. Raw HTML is escaped, output sanitized, and images become alt text with no requests. Wide code/tables scroll inside `.markdown-preview`. Markdown source (including significant whitespace) is stored unchanged. |
 | `Select` | The only dropdown, with variants field, chip and ghost. Options take a colour dot or icon, an optional hint and an optional description. It is a listbox popover with arrows, Home/End, typeahead and Esc (which closes only the menu). A visible `<label for=id>` or the `label` prop names it. |
 | `DatePicker` | The only date input. A calendar popover with Today, Tomorrow, Next week and Clear, arrow-key grid navigation, today and overdue states, and the value as `YYYY-MM-DD` or `""`. The trigger keeps its icon, date text and chevron on one line at the shared control height, including when no date is selected; placeholder styling must not use the global `.empty` surface class. |
-| `MultiPicker` | A searchable checklist popover for assignees and labels. Each toggle applies immediately, and `oncreate` adds inline creation. |
+| `MultiPicker` | A searchable checklist popover for assignees and labels. Each toggle applies immediately, and `oncreate` adds inline creation. `disabled` prevents opening while saving. |
 | `Feedback` | Escaped text with neutral, success, warning or danger tone, always in words; the caller chooses status, alert or polite live text |
 | `Modal` | `role=dialog`, labelled title, optional description, focus moves to the first field, Tab stays inside, Escape and scrim close it, focus returns to the opener. Bottom sheet below 40rem. |
 | `CommandPalette` | Combobox and listbox with `aria-activedescendant`. Arrow keys, Home/End, Enter and Escape; opened with Ctrl/⌘ K, `/` or the search button. Offers only real destinations, the workspace's projects and preferences. |
@@ -23,9 +23,13 @@ them through real application interactions, not private internals.
 - A skip link targets the focusable `main`.
 - The sidebar holds the brand, a workspace switcher and the labelled "Application" navigation: Dashboard, Projects and Members, or Workspaces, or Sign in; then Overview, Appearance and Instance status.
 - The top bar holds breadcrumbs, search, a quick light/dark toggle and the account.
+- The top bar is opaque in both themes. The trestle mark and same-origin SVG favicon share the deck-and-braces geometry.
+- A running timer shows the task key, “Tracking”, elapsed time and “Stop & log”, with 44px controls. Discard and switching tasks confirm the loss of unlogged time. Failed saves stay inline; saving disables duplicate logs across all timer surfaces.
 - Section links focus their headings, even when opened from another view.
 - Shortcuts never fire while typing in a field or when a dialog is open. Ctrl/⌘ K or `/` opens search, and `C` creates a task in a project. Hints show only where a keyboard exists.
 - On arrival Trestle opens the last-used workspace (`trestle.workspace`, browser-local), or the only one. "Switch workspace" always shows the chooser.
+- The chooser offers “New workspace” even when empty. Any signed-in user can create a Workspace and becomes its owner. Creation retains failed drafts, prevents duplicate submission and guards closing. Settings → Workspace lets owners/admins edit its name, slug and icon; other roles get an explanation. Changed settings guard navigation and reload.
+- Task links (`#task/{workspace}/{project}/{task}`, also the expanded Workspace/Project/Task form) wait for sign-in and resolve the requested Workspace before rendering. Startup selection must not replace the linked Project. Failed links offer retry.
 - The tab title names the current place, for example "Platform Core — Trestle".
 
 ## Work surfaces
@@ -56,6 +60,8 @@ them through real application interactions, not private internals.
 
 - **Projects**: one card per project. It shows the key tile or uploaded project icon, the name and slug, live progress (open count, then done of total excluding cancelled, from bounded count queries), and when it was last updated. The key-sequence counter is shown only when live counts are unavailable. Both project creation and editing support uploading a project icon (PNG, JPEG, WebP, GIF, or SVG up to 5 MB) stored directly with the project and served over same-origin endpoints. Owners/admins have an Edit action on cards and Edit project in the task header. Both open `EditProjectModal`: prefilled name, slug, description, and project icon with preview and remove option, a read-only project key, explicit Save project, unsaved-change confirmation, saving/disabled state and persistent errors with drafts retained. Successful updates reconcile the card or the open project/header/breadcrumbs from the server response. Archive asks for confirmation and explains that archiving keeps the project. A live filter appears above three projects.
 - **Tasks** start with the **progress rail**. It shows project-wide totals per status category, read with bounded `limit=1` count queries, and its legend doubles as the category filter. The rail is a summary; the list stays authoritative.
+- The task header shows the Project name aligned with its icon, without repeating its description or slug. Descriptions remain available on Project cards and in the editor. Task descriptions accept up to 15,000 Unicode characters on creation and editing.
+- New task drafts include an assignee MultiPicker and a milestone Select, even when no milestones exist. Selected people stay visible; metadata failures offer retry. Assignees and milestone are saved atomically with the Task. List and Board show API-provided direct subtask counts, independent of pagination and filtering, refreshed after the drawer closes.
 - **Completion** means completed ÷ (all − cancelled) on every surface: the rail, the project cards and the dashboard.
 - **List**: inset-card rows with key, title, description, labels, priority (dot and word), due date with an *Overdue* marker for open tasks, assignees, and a status menu styled as a chip in the status colour. Delete appears on row hover or focus for mouse users and stays visible on touch. Pagination appears only when there is more than one page.
 - **Board**: one column per project status in workflow order, falling back to the five categories. Every card has a status menu, so dragging is an optional pointer shortcut and never required. The board loads up to 100 tasks and says so when more exist.
@@ -75,4 +81,5 @@ and priority only when their persisted values change, including moves between
 two Statuses in the same Status category; identical writes do not add entries.
 The task list responds to available container width, including enlarged text,
 so its columns become stacked rows before fixed columns overflow the page.
+Segmented controls and narrow task action rows wrap when enlarged text needs another line; project header actions use whole, readable buttons rather than squeezing labels into vertical fragments.
 Preview links open in a new tab with opener/referrer isolation, preserving drafts.

@@ -173,6 +173,8 @@ func TestEmbeddedReferencedAssetsHaveCorrectTypesAndSecurityHeaders(t *testing.T
 		wantType := "text/css; charset=utf-8"
 		if strings.HasSuffix(p, ".js") {
 			wantType = "text/javascript; charset=utf-8"
+		} else if strings.HasSuffix(p, ".svg") {
+			wantType = "image/svg+xml"
 		}
 		for k, v := range map[string]string{
 			"Content-Type": wantType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",

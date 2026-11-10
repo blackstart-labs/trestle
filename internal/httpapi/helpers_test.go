@@ -23,6 +23,7 @@ import (
 
 // testAssets stands in for the built frontend.
 var testAssets = fstest.MapFS{
+	"assets/favicon.svg": {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
 	"index.html":         {Data: []byte("<!doctype html><title>Trestle</title>")},
 	"assets/index-x.js":  {Data: []byte("console.log(1)")},
 	"assets/index-x.css": {Data: []byte("body{}")},

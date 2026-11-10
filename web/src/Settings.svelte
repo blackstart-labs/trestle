@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Appearance from "./Appearance.svelte";
   import Readiness from "./Readiness.svelte";
   import Integrations from "./Integrations.svelte";
@@ -29,12 +30,18 @@
     onuserupdated?: (u: User) => void;
   } = $props();
 
-  function handleTabClick(e: MouseEvent, targetSection: string) {
+  async function handleTabClick(e: MouseEvent, targetSection: string) {
     e.preventDefault();
     onselectsection?.(targetSection);
     try {
       history.replaceState(null, "", "#" + targetSection);
     } catch {}
+    await tick();
+    document
+      .getElementById(
+        targetSection === "workspace" ? "ws-heading" : targetSection,
+      )
+      ?.focus({ preventScroll: true });
   }
 </script>
 
@@ -88,7 +95,10 @@
     </div>
   {:else if section === "workspace" && workspace}
     <div class="settings-single">
-      <WorkspaceSettings {workspace} {onworkspaceupdated} />
+      {#key workspace.id}<WorkspaceSettings
+          {workspace}
+          {onworkspaceupdated}
+        />{/key}
     </div>
   {:else if section === "integration"}
     <Integrations
