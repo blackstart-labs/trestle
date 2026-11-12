@@ -56,7 +56,27 @@
     | "upload"
     | "play"
     | "stop"
-    | "pause";
+    | "pause"
+    | "select"
+    | "hand"
+    | "rectangle"
+    | "diamond"
+    | "terminator"
+    | "document"
+    | "database"
+    | "parallelogram"
+    | "note"
+    | "frame"
+    | "swimlane"
+    | "connector"
+    | "undo"
+    | "redo"
+    | "zoom-in"
+    | "zoom-out"
+    | "fit"
+    | "download"
+    | "lock"
+    | "unlock";
 </script>
 
 <script lang="ts">
@@ -85,7 +105,67 @@
   focusable="false"
   class="svg-icon {className}"
 >
-  {#if name === "calendar"}
+  {#if name === "select"}<path d="m5 3 14 9-7 1-3 7z" />
+  {:else if name === "hand"}<path
+      d="M8 12V6a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-6a2 2 0 0 1 4 0v9c0 4-3 6-7 6-3 0-4-2-6-4l-3-4a2 2 0 0 1 3-2l1 1"
+    />
+  {:else if name === "rectangle"}<rect
+      x="3"
+      y="5"
+      width="18"
+      height="14"
+      rx="2"
+    />
+  {:else if name === "diamond"}<path d="m12 2 10 10-10 10L2 12z" />
+  {:else if name === "terminator"}<rect
+      x="2"
+      y="6"
+      width="20"
+      height="12"
+      rx="6"
+    />
+  {:else if name === "document"}<path d="M4 3h16v16q-4-4-8 0t-8 0z" />
+  {:else if name === "database"}<ellipse cx="12" cy="5" rx="9" ry="3" /><path
+      d="M3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0"
+    />
+  {:else if name === "parallelogram"}<path d="M7 4h15l-5 16H2z" />
+  {:else if name === "note"}<path d="M3 3h13l5 5v13H3zM16 3v5h5" />
+  {:else if name === "frame"}<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
+  {:else if name === "swimlane"}<rect
+      x="2"
+      y="3"
+      width="20"
+      height="18"
+      rx="1"
+    /><path d="M7 3v18M2 9h20M2 15h20" />
+  {:else if name === "connector"}<path d="M3 4h7v16h10M16 16l4 4-4 3" />
+  {:else if name === "undo"}<path
+      d="M3 10h11a6 6 0 0 1 0 12M3 10l5-5M3 10l5 5"
+    />
+  {:else if name === "redo"}<path
+      d="M21 10H10a6 6 0 0 0 0 12M21 10l-5-5M21 10l-5 5"
+    />
+  {:else if name === "zoom-in" || name === "zoom-out"}<circle
+      cx="10"
+      cy="10"
+      r="7"
+    /><path d="m15 15 6 6M6 10h8" />{#if name === "zoom-in"}<path
+        d="M10 6v8"
+      />{/if}
+  {:else if name === "fit"}<path
+      d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"
+    /><rect x="7" y="7" width="10" height="10" rx="1" />
+  {:else if name === "download"}<path d="M12 3v12M7 10l5 5 5-5M4 16v5h16v-5" />
+  {:else if name === "lock" || name === "unlock"}<rect
+      x="4"
+      y="10"
+      width="16"
+      height="11"
+      rx="2"
+    />{#if name === "lock"}<path d="M7 10V7a5 5 0 0 1 10 0v3" />{:else}<path
+        d="M7 10V7a5 5 0 0 1 10 0"
+      />{/if}
+  {:else if name === "calendar"}
     <rect x="3" y="4.5" width="18" height="16.5" rx="2.5" />
     <path d="M16 2.5v4M8 2.5v4M3 10h18" />
   {:else if name === "user"}

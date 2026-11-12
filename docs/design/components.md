@@ -22,7 +22,7 @@ them through real application interactions, not private internals.
 ## Shell
 
 - A skip link targets the focusable `main`.
-- The sidebar holds the brand, a workspace switcher and the labelled "Application" navigation: Dashboard, Projects and Members, or Workspaces, or Sign in; then Overview, Appearance and Instance status.
+- The sidebar holds the brand, a workspace switcher and the labelled "Application" navigation: Dashboard, Projects, Members and Boards, or Workspaces, or Sign in; then Overview, Appearance and Instance status.
 - The top bar holds breadcrumbs, search, a quick light/dark toggle and the account.
 - The top bar is opaque in both themes. The trestle mark and same-origin SVG favicon share the deck-and-braces geometry.
 - A running timer shows the task key, “Tracking”, elapsed time and “Stop & log”, with 44px controls. Discard and switching tasks confirm the loss of unlogged time. Failed saves stay inline; saving disables duplicate logs across all timer surfaces.
@@ -34,6 +34,23 @@ them through real application interactions, not private internals.
 - The tab title names the current place, for example "Platform Core — Trestle".
 
 ## Work surfaces
+
+- **Boards**: Workspace diagrams and freehand whiteboards use a full-window
+  canvas-first editor with a collapsible shape library, formatting toolbar,
+  contained canvas stage and an optional properties panel. Semantic ink colors
+  and Mona Sans are unchanged. `boards/BoardCanvas.svelte` renders validated
+  object scenes, not user-provided SVG; `boards/BoardEditor.svelte` owns direct
+  manipulation and `boards/scene.ts` owns geometry, validation and export. The
+  properties panel supplies object selection, coordinate/size editing,
+  connection selection and coordinate-based stroke entry, so dragging is
+  optional. Keyboard shortcuts never fire in fields, dialogs or menus. Explicit
+  saves retain failed/conflicting drafts; archive is reversible and
+  manager-only. Guests can inspect/export but cannot edit. New content is empty,
+  never seeded with example business data. See [Boards](../boards.md) for limits.
+  Shell `go()` and sign-out dispatch the cancelable
+  `trestle:before-navigate` window event; the active board cancels navigation
+  during saves or when the user declines to discard a dirty draft. Page reloads
+  use `beforeunload`. Palette opening alone does not discard content.
 
 - **Settings → Integration** selects an active Project in the current Workspace.
   Workspace owners/admins can save, replace, test, and disconnect Telegram (including optional Topic ID for forum supergroups), Slack,

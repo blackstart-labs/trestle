@@ -63,5 +63,14 @@ associated metadata. _Avoid_: A folder path as its sole identity.
 **Structured collection**: A set of user-defined records and typed properties.
 _Avoid_: Database when confused with Trestle's persistence database.
 
+**Board**: A Workspace-owned visual canvas, saved as editable objects rather
+than a flattened image. All Workspace members can read it; guests cannot edit.
+
+**Diagram**: A Board for labeled shapes and directed connections, such as a
+flowchart. It is not a Task Board view or a second Task store.
+
+**Whiteboard**: A Board for freehand strokes, text and shapes. It shares the
+Diagram's storage, permissions and export format.
+
 **Automation rule**: An authorized trigger, conditions, and actions with
 recorded execution. It is not unrestricted user code.

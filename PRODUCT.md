@@ -29,16 +29,34 @@ service required for core work.
 
 ## Operating Context
 
-Shipped today: local sign-in, workspace membership and roles, ownership
-transfer, projects with keys and image uploads, tasks with labels, assignees, subtasks, comments
-and activity, custom statuses mapped to five canonical categories, milestones with progress rollups, list,
-board, and milestone views, and project notifications to Telegram, Slack, and Discord. Planned: cycles, time tracking,
-documents, reports, and automation.
+Implemented workflows: local sign-in, Workspace creation/settings/membership and roles,
+ownership transfer, Projects with keys and image uploads, Tasks with labels,
+assignees, subtasks, flat comments and activity, custom Statuses mapped to five
+canonical categories, milestones with rollups/timeline, List and Board views,
+JSON exports, and Project notifications to Telegram, Slack and Discord.
+
+Workspace Boards are a native diagram and whiteboard editor: shape library and
+templates, direct manipulation, connectors, formatting, grouping and alignment,
+pan/zoom, JSON/SVG/PNG export, explicit version-checked saves, undo/redo and
+reversible archive. They are not Lucidchart/Excalidraw embeds or file-compatible
+replacements. See [Boards](docs/boards.md) for permissions, limits and test
+instructions.
+
+Basic time logging is implemented: task-scoped manual hours, notes, dates and a
+browser-local live timer. Server-authoritative timers, pause/resume, timesheets,
+Customers, work Activities, rates and billing are not implemented. Project-level
+membership/private visibility and invitations are also not implemented.
+
+Goals, cycles, modules, dependencies, saved views, full Task calendar/Gantt,
+Documents, connected knowledge, collections, GitHub integration, professional
+reports and automation remain planned. The source-backed inventory and proposed
+delivery order are in [Phase 0](docs/phase-0-gap-analysis.md); no plan entry is a
+claim of an available feature.
 
 ## Capabilities and Constraints
 
 - Svelte 5 + Vite static frontend, served from the Go binary on the same origin.
-- A strict CSP: `default-src 'none'`, self-only scripts, styles and fonts, and no images or inline styles. Any visual must be CSS or inline SVG; dynamic values go through the CSSOM (`style:` directives).
+- A strict CSP: `default-src 'none'`, self-only scripts, styles, fonts and connections, images limited to same-origin and blob URLs, and no inline style attributes. Dynamic values go through the CSSOM (`style:` directives). Raw HTML and external images in task Markdown are not rendered.
 - No AI features exist. The UI must not imply AI, metrics or modules that do not exist.
 - Dragging is never the only way to change anything; keyboard and touch are first-class.
 

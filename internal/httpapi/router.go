@@ -70,6 +70,10 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET /api/v1/workspaces", s.auth(s.listWorkspaces))
 	mux.HandleFunc("POST /api/v1/workspaces", s.auth(s.createWorkspace))
 	const ws = "/api/v1/workspaces/{workspace_id}"
+	mux.HandleFunc("GET "+ws+"/boards", s.auth(s.listBoards))
+	mux.HandleFunc("POST "+ws+"/boards", s.auth(s.saveBoard))
+	mux.HandleFunc("GET "+ws+"/boards/{board_id}", s.auth(s.getBoard))
+	mux.HandleFunc("PUT "+ws+"/boards/{board_id}", s.auth(s.saveBoard))
 	mux.HandleFunc("PATCH "+ws, s.auth(s.updateWorkspace))
 	mux.HandleFunc("GET "+ws+"/image", s.auth(s.getWorkspaceImage))
 	mux.HandleFunc("PUT "+ws+"/image", s.auth(s.setWorkspaceImage))
