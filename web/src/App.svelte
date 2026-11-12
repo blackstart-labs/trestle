@@ -121,6 +121,7 @@
         const data = await response.json();
         if (data && typeof data.username === "string") {
           user = data as User;
+          void liveTimer.load();
           if (activeTab === "signin" || activeTab === "overview") {
             activeTab = "workspaces";
           }
@@ -865,9 +866,13 @@
               type="button"
               class="btn-quiet btn-icon live-timer-discard"
               disabled={liveTimer.saving}
-              onclick={() => {
-                if (confirm("Discard this timer? Unlogged time will be lost."))
-                  liveTimer.discard();
+              onclick={async () => {
+                if (!confirm("Discard this timer? Unlogged time will be lost."))
+                  return;
+                const result = await liveTimer.discard();
+                if (!result.ok)
+                  timerError =
+                    result.error || "Could not discard the timer. Try again.";
               }}
               title="Discard timer"
               aria-label="Discard timer"

@@ -25,7 +25,7 @@ them through real application interactions, not private internals.
 - The sidebar holds the brand, a workspace switcher and the labelled "Application" navigation: Dashboard, Projects, Members and Boards, or Workspaces, or Sign in; then Overview, Appearance and Instance status.
 - The top bar holds breadcrumbs, search, a quick light/dark toggle and the account.
 - The top bar is opaque in both themes. The trestle mark and same-origin SVG favicon share the deck-and-braces geometry.
-- A running timer shows the task key, “Tracking”, elapsed time and “Stop & log”, with 44px controls. Discard and switching tasks confirm the loss of unlogged time. Failed saves stay inline; saving disables duplicate logs across all timer surfaces.
+- A running timer shows the task key, “Tracking”, elapsed time and “Stop & log”, with 44px controls. The server owns the start time and one-timer rule; other tabs and devices reconcile from it. Discard and switching tasks confirm the loss of unlogged time. Failed saves stay inline and keep the timer so a retry returns the original log instead of duplicating it.
 - Section links focus their headings, even when opened from another view.
 - Shortcuts never fire while typing in a field or when a dialog is open. Ctrl/⌘ K or `/` opens search, and `C` creates a task in a project. Hints show only where a keyboard exists.
 - On arrival Trestle opens the last-used workspace (`trestle.workspace`, browser-local), or the only one. "Switch workspace" always shows the chooser.

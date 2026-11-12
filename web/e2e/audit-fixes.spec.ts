@@ -38,8 +38,20 @@ const task = {
   updated_at: "2026-11-01T00:00:00Z",
 };
 
-async function setup(page: Page, signedIn = true) {
+async function setup(page: Page, signedIn = true, timerActive = false) {
   const writes: { path: string; body: any }[] = [];
+  let activeTimer = timerActive
+    ? {
+        id: "timer-1",
+        workspace_id: "ws",
+        project_id: "proj",
+        task_id: "task",
+        task_key: "CORE-1",
+        task_title: "Ship release",
+        note: "",
+        started_at: new Date(Date.now() - 60000).toISOString(),
+      }
+    : null;
   if (signedIn)
     await page
       .context()
@@ -51,6 +63,47 @@ async function setup(page: Page, signedIn = true) {
     const path = new URL(req.url()).pathname;
     const json = (body: object, status = 200) =>
       route.fulfill({ status, json: body });
+    if (path.endsWith("/timer/stop")) {
+      const body = req.postDataJSON();
+      writes.push({ path, body });
+      activeTimer = null;
+      return json({
+        time_log: { id: "log-1", hours: 0.5, description: body.note || "" },
+        spent_hours: 0.5,
+      });
+    }
+    if (path.endsWith("/timer/discard")) {
+      writes.push({ path, body: req.postDataJSON() });
+      activeTimer = null;
+      return json({ status: "discarded" });
+    }
+    if (path.endsWith("/timer")) {
+      if (req.method() === "POST") {
+        const body = req.postDataJSON();
+        writes.push({ path, body });
+        activeTimer = {
+          id: "timer-1",
+          workspace_id: "ws",
+          project_id: "proj",
+          task_id: body.task_id,
+          task_key: "CORE-1",
+          task_title: "Ship release",
+          note: body.note || "",
+          started_at: new Date().toISOString(),
+        };
+        return json({ timer: activeTimer }, 201);
+      }
+      if (req.method() === "PATCH") {
+        const body = req.postDataJSON();
+        writes.push({ path, body });
+        if (activeTimer) activeTimer.note = body.note || "";
+        return json({ timer: activeTimer });
+      }
+      return json({
+        timer: activeTimer,
+        server_now: new Date().toISOString(),
+      });
+    }
     if (["POST", "PATCH"].includes(req.method())) {
       const body = req.postDataJSON();
       writes.push({ path, body });
@@ -203,23 +256,11 @@ for (const theme of ["light", "dark"]) {
     test(`shell and timer: ${theme} at ${width}px (#37, #41, #44, #51)`, async ({
       page,
     }) => {
-      await setup(page);
+      await setup(page, true, true);
       await page.setViewportSize({ width, height: 900 });
       await page.addInitScript(
         ({ theme }) => {
           localStorage.setItem("trestle.theme", theme);
-          localStorage.setItem(
-            "trestle.active_timer",
-            JSON.stringify({
-              taskId: "task",
-              taskHumanKey: "CORE-1",
-              taskTitle: "Ship release",
-              projectId: "proj",
-              workspaceId: "ws",
-              startTime: Date.now() - 60000,
-              description: "",
-            }),
-          );
         },
         { theme },
       );

@@ -153,6 +153,19 @@
       errorMessage = res.error || "Failed to log time.";
     }
   }
+
+  async function handleStartLiveTimer(task: Task) {
+    const res = await liveTimer.start({
+      id: task.id,
+      human_key: task.human_key,
+      title: task.title,
+      project_id: project.id,
+      workspace_id: workspace.id,
+    });
+    if (!res.ok && !res.cancelled) {
+      errorMessage = res.error || "Could not start the timer.";
+    }
+  }
   let moreRight = $state(false);
   let moreLeft = $state(false);
 
@@ -1897,13 +1910,7 @@
                   title="Start live timer on {task.human_key}"
                   aria-label="Start live timer on {task.human_key}"
                   onclick={() => {
-                    liveTimer.start({
-                      id: task.id,
-                      human_key: task.human_key,
-                      title: task.title,
-                      project_id: project.id,
-                      workspace_id: workspace.id,
-                    });
+                    void handleStartLiveTimer(task);
                   }}
                 >
                   <Icon name="play" size={14} />
@@ -2096,13 +2103,7 @@
                       title="Start live timer on {task.human_key}"
                       aria-label="Start live timer on {task.human_key}"
                       onclick={() => {
-                        liveTimer.start({
-                          id: task.id,
-                          human_key: task.human_key,
-                          title: task.title,
-                          project_id: project.id,
-                          workspace_id: workspace.id,
-                        });
+                        void handleStartLiveTimer(task);
                       }}
                     >
                       <Icon name="play" size={12} />

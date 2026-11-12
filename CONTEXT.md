@@ -51,6 +51,7 @@ resources, not a copy of those resources.
 duration, and optional task association.
 
 **Running timer**: A time entry whose work interval has started but not ended.
+It is stored on the server; one user has at most one running timer.
 
 **Timesheet**: A period-based view or submission of a user's time entries.
 _Avoid_: Using timesheet to mean every individual time entry.

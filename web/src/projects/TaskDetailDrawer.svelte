@@ -408,15 +408,18 @@
 
   let stoppingLiveTimer = $state(false);
 
-  function handleStartLiveTimer() {
+  async function handleStartLiveTimer() {
     if (!currentTask?.id) return;
-    liveTimer.start({
+    const res = await liveTimer.start({
       id: currentTask.id,
       human_key: currentTask.human_key,
       title: currentTask.title,
       project_id: project.id,
       workspace_id: workspace.id,
     });
+    if (!res.ok && !res.cancelled) {
+      showNotice(res.error || "Could not start the timer.", "danger");
+    }
   }
 
   async function handleStopLiveTimer() {
@@ -1283,13 +1286,19 @@
                       </Button>
                       <Button
                         variant="quiet"
-                        onclick={() => {
+                        onclick={async () => {
                           if (
                             confirm(
                               "Discard this timer? Unlogged time will be lost.",
                             )
-                          )
-                            liveTimer.discard();
+                          ) {
+                            const res = await liveTimer.discard();
+                            if (!res.ok)
+                              showNotice(
+                                res.error || "Could not discard the timer.",
+                                "danger",
+                              );
+                          }
                         }}
                         disabled={stoppingLiveTimer || liveTimer.saving}
                       >

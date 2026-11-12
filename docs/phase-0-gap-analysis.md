@@ -5,8 +5,10 @@ Date: 2026-11-11. Baseline: `a373909`, the PR #52 conflict-resolution commit, in
 Input: the maintainer's `trestle.txt` product brief. This is an implementation proposal, not a statement that the requested product already exists. The published `0.2.1` Docker image was built from `a7e1c24`, before the upstream merge; it is not the exact baseline reviewed here.
 
 This is a frozen inventory of that baseline. Subsequent implementation adds
-[Workspace diagrams and whiteboards](boards.md); consult that document for the
-new visual tools rather than treating this snapshot as the current feature list.
+[Workspace diagrams and whiteboards](boards.md) and
+[server-authoritative running timers](time-tracking.md); consult those documents
+for the new workflows rather than treating this snapshot as the current feature
+list.
 
 ## What this repo does
 
@@ -66,7 +68,7 @@ The complete registered runtime API is in `internal/httpapi/router.go:61–136`.
 
 ## 3. Concrete findings before expansion
 
-These are source-verified cases, not a claim that production incidents were observed. No implementation fixes are included in this Phase 0 branch. Priorities reflect the requested reliable shared-team product; proposed policies are labeled separately from proven behavior.
+These are source-verified cases, not a claim that production incidents were observed. The Phase 0 branch itself added no fixes; later slices do. Finding 1 is fixed in this branch; see [Running timers](time-tracking.md). Priorities reflect the requested reliable shared-team product; proposed policies are labeled separately from proven behavior.
 
 ### Must fix before relying on expanded workflows
 
@@ -74,6 +76,7 @@ These are source-verified cases, not a claim that production incidents were obse
    - **What this is:** The browser converts elapsed local time into a new time-log POST.
    - **Problem:** If the server commits but the response is lost, the timer remains active; retry inserts a second log. Another browser tab/device has an independent guard.
    - **Fix:** Persist user-owned timer state and make stopping it one transaction with an idempotent result. Do not silently import untrusted local timers into the server.
+   - **Status:** Fixed. See [Running timers](time-tracking.md).
    - **If skipped:** Hours can be lost, duplicated or attributed using the wrong local state. This blocks credible timesheets and billing.
 
 2. **Writes can succeed while their activity write fails** (`internal/projects/store.go:698–706,753–815,847–868`).

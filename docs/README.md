@@ -21,6 +21,7 @@ permissions and secret storage. The Phase 0 plan does not implement new features
 | [Operations & Deployment Guide](operations.md) | Production setup, environment variables, Docker/Podman container builds, CLI commands (`trestle migrate`, `trestle bootstrap`), health probes, and backup/restore. |
 | [Phase 0: Feature Inventory & Implementation Plan](phase-0-gap-analysis.md) | Source-backed implemented/partial/missing capabilities, risks, migration proposals, delivery order and acceptance gates for the expanded product brief. |
 | [Boards: Diagrams & Whiteboards](boards.md) | Native visual editing, permissions, persistence, JSON/SVG export, API contracts and real browser/database testing. |
+| [Running Timers & Task Time](time-tracking.md) | Server-authoritative timer, one-active-timer rule, idempotent stop, timezone logging, API contracts and testing. |
 
 ---
 

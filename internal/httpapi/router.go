@@ -110,6 +110,13 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("POST "+t+"/time-logs", s.auth(s.createTaskTimeLog))
 	mux.HandleFunc("DELETE "+t+"/time-logs/{log_id}", s.auth(s.deleteTaskTimeLog))
 
+	// Running timers (one per user, server-authoritative)
+	mux.HandleFunc("GET /api/v1/timer", s.auth(s.getTimer))
+	mux.HandleFunc("POST /api/v1/timer", s.auth(s.startTimer))
+	mux.HandleFunc("PATCH /api/v1/timer", s.auth(s.updateTimerNote))
+	mux.HandleFunc("POST /api/v1/timer/stop", s.auth(s.stopTimer))
+	mux.HandleFunc("POST /api/v1/timer/discard", s.auth(s.discardTimer))
+
 	// Custom statuses
 	mux.HandleFunc("GET "+p+"/statuses", s.auth(s.listStatuses))
 	mux.HandleFunc("POST "+p+"/statuses", s.auth(s.createStatus))

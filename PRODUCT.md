@@ -43,7 +43,8 @@ replacements. See [Boards](docs/boards.md) for permissions, limits and test
 instructions.
 
 Basic time logging is implemented: task-scoped manual hours, notes, dates and a
-browser-local live timer. Server-authoritative timers, pause/resume, timesheets,
+server-authoritative running timer with one active timer per user, idempotent
+stops and cross-tab/device reload. Pause/resume, timesheets,
 Customers, work Activities, rates and billing are not implemented. Project-level
 membership/private visibility and invitations are also not implemented.
 
