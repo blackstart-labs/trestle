@@ -155,17 +155,17 @@ jobs:
       postgres:
         image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
         env:
-          POSTGRES_DB: trestle_test
+          POSTGRES_DB: trestle_e2e_browser
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 127.0.0.1:5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d trestle_test"
+          --health-cmd "pg_isready -U postgres -d trestle_e2e_browser"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_test
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/trestle_e2e_browser
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -193,6 +193,11 @@ jobs:
       - name: Browser smoke tests against Go server
         working-directory: web
         run: npm run test:e2e
+      - name: Real browser/API/PostgreSQL board journey
+        working-directory: web
+        env:
+          TRESTLE_E2E_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:e2e:real
 
   # ----------------------------------------------------------------------------
   # Stage 6: Production release binary and Docker container verification
