@@ -3,6 +3,8 @@
   import Appearance from "./Appearance.svelte";
   import Readiness from "./Readiness.svelte";
   import Integrations from "./Integrations.svelte";
+  import Domains from "./Domains.svelte";
+  import Feedback from "./ui/Feedback.svelte";
   import ProfileSettings from "./auth/ProfileSettings.svelte";
   import WorkspaceSettings from "./auth/WorkspaceSettings.svelte";
   import type { Workspace } from "./auth/WorkspaceChooser.svelte";
@@ -12,22 +14,26 @@
     workspace = null,
     user = null,
     signedIn = false,
+    checkingAuth = false,
     initialProjectId = "",
     section = "",
     onselectsection,
     onselectworkspace,
     onworkspaceupdated,
     onuserupdated,
+    ondomainedit,
   }: {
     workspace?: Workspace | null;
     user?: User | null;
     signedIn?: boolean;
+    checkingAuth?: boolean;
     initialProjectId?: string;
     section?: string;
-    onselectsection?: (section: string) => void;
+    onselectsection?: (section: string) => boolean | void;
     onselectworkspace?: (ws: Workspace) => void;
     onworkspaceupdated?: (ws: Workspace) => void;
     onuserupdated?: (u: User) => void;
+    ondomainedit?: (dirty: boolean) => void;
   } = $props();
 
   async function focusHeading(targetSection: string) {
@@ -52,7 +58,7 @@
 
   function handleTabClick(e: MouseEvent, targetSection: string) {
     e.preventDefault();
-    onselectsection?.(targetSection);
+    if (onselectsection?.(targetSection) === false) return;
     try {
       history.replaceState(null, "", "#" + targetSection);
     } catch {}
@@ -92,7 +98,8 @@
       (!section && !workspace && !user) ||
       (section !== "integration" &&
         section !== "workspace" &&
-        section !== "profile")
+        section !== "profile" &&
+        section !== "domains")
         ? "page"
         : undefined}
       onclick={(e) => handleTabClick(e, "appearance")}>Appearance</a
@@ -102,6 +109,13 @@
       aria-current={section === "integration" ? "page" : undefined}
       onclick={(e) => handleTabClick(e, "integration")}>Integration</a
     >
+    {#if signedIn && user?.instance_operator}
+      <a
+        href="#domains"
+        aria-current={section === "domains" ? "page" : undefined}
+        onclick={(e) => handleTabClick(e, "domains")}>Domains</a
+      >
+    {/if}
   </nav>
 
   {#if section === "profile" && user}
@@ -122,6 +136,26 @@
       {initialProjectId}
       {onselectworkspace}
     />
+  {:else if section === "domains"}
+    <div class="settings-single">
+      {#if signedIn && user?.instance_operator}
+        <Domains ondirtychange={ondomainedit} />
+      {:else}
+        <section class="panel panel-pad" aria-labelledby="domains">
+          <div class="settings-panel-heading">
+            <h2 id="domains" tabindex="-1">Domains</h2>
+            <p>Set the address used in task notification links.</p>
+          </div>
+          {#if checkingAuth}
+            <Feedback announcement="status">Checking instance access…</Feedback>
+          {:else}
+            <Feedback
+              >Sign in as an instance operator to manage domains.</Feedback
+            >
+          {/if}
+        </section>
+      {/if}
+    </div>
   {:else}
     <div class="settings-grid">
       <Appearance />

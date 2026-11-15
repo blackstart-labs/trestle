@@ -61,27 +61,49 @@ func loadDotEnv() {
 }
 
 func run(args []string) error {
+	if len(args) == 1 && args[0] == "healthcheck" {
+		return probeReadiness("http://127.0.0.1:3000/health/ready")
+	}
 	loadDotEnv()
 	commands := map[string]func(config.Config) error{
-		"migrate":       runMigrate,
-		"bootstrap":     runBootstrap,
-		"adduser":       runAddUser,
-		"resetpassword": runResetPassword,
-		"disableuser":   func(c config.Config) error { return runSetDisabled(c, true) },
-		"enableuser":    func(c config.Config) error { return runSetDisabled(c, false) },
+		"migrate":        runMigrate,
+		"bootstrap":      runBootstrap,
+		"adduser":        runAddUser,
+		"resetpassword":  runResetPassword,
+		"disableuser":    func(c config.Config) error { return runSetDisabled(c, true) },
+		"enableuser":     func(c config.Config) error { return runSetDisabled(c, false) },
+		"grantoperator":  func(c config.Config) error { return runSetInstanceOperator(c, true) },
+		"revokeoperator": func(c config.Config) error { return runSetInstanceOperator(c, false) },
 	}
 	var cmd func(config.Config) error = runServer
 	switch {
 	case len(args) == 1 && commands[args[0]] != nil:
 		cmd = commands[args[0]]
 	case len(args) != 0:
-		return errors.New("usage: trestle [migrate | bootstrap | adduser | resetpassword | disableuser | enableuser]")
+		return errors.New("usage: trestle [healthcheck | migrate | bootstrap | adduser | resetpassword | disableuser | enableuser | grantoperator | revokeoperator]")
 	}
 	cfg, err := config.FromEnv()
 	if err != nil {
 		return err
 	}
 	return cmd(cfg)
+}
+
+func probeReadiness(url string) error {
+	client := http.Client{
+		Timeout:       3 * time.Second,
+		Transport:     &http.Transport{},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	response, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("readiness probe failed: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("readiness probe returned HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
 func runServer(cfg config.Config) error {
@@ -416,6 +438,34 @@ func runSetDisabled(cfg config.Config, disabled bool) error {
 	fmt.Fprintf(os.Stderr, "User '%s' has been %s.\n", user.Username, verb)
 	if disabled {
 		fmt.Fprintln(os.Stderr, "All existing active sessions have been revoked.")
+	}
+	return nil
+}
+
+func runSetInstanceOperator(cfg config.Config, granted bool) error {
+	username, ok := os.LookupEnv("TRESTLE_OPERATOR_USERNAME")
+	var err error
+	if !ok {
+		if username, err = promptPlain("Username: "); err != nil {
+			return err
+		}
+	}
+	if username, err = parseUsername(username); err != nil {
+		return err
+	}
+	pool := database.Pool(cfg)
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DBTimeout)
+	defer cancel()
+	if err := identity.SetInstanceOperator(ctx, pool, username, granted); errors.Is(err, identity.ErrNotFound) {
+		return errors.New("Active user not found.")
+	} else if err != nil {
+		return fmt.Errorf("could not update instance operator: %w", err)
+	}
+	if granted {
+		fmt.Fprintf(os.Stderr, "Granted instance operator access to %s.\n", username)
+	} else {
+		fmt.Fprintf(os.Stderr, "Revoked instance operator access from %s.\n", username)
 	}
 	return nil
 }

@@ -168,4 +168,11 @@ Workspace exports include archived Projects. A failed read returns an error inst
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/health/live` | Liveness probe: returns `200 OK` immediately if HTTP server is running. |
-| `GET` | `/health/ready` | Readiness probe: checks database ping and connection pool health. Returns `200 OK` or `503 Service Unavailable`. |
+| `GET` | `/health/ready` | Returns `200 OK` when the database is reachable through the pool and its migration history matches the build. Otherwise returns `503 Service Unavailable`. |
+
+Instance operators can read `GET /api/v1/instance/domain` and update it with
+`PUT /api/v1/instance/domain`. Both return `public_origin` and `listen_address`.
+Updates require CSRF and take `public_origin` plus the last saved value as
+`previous_origin`. An empty origin clears notification links. A stale
+`previous_origin` returns `409 Conflict`. The current user's response includes
+`instance_operator: true` when granted.

@@ -98,7 +98,7 @@ test("checks actual database readiness on opening the foundation page", async ()
   render(App);
   await waitFor(() =>
     expect(screen.getByRole("status").textContent).toContain(
-      "Database connection ready",
+      "Database is ready.",
     ),
   );
   expect(fetch).toHaveBeenCalledWith(
@@ -120,13 +120,13 @@ test("an unavailable database can be checked again and recover", async () => {
   render(App);
   await waitFor(() =>
     expect(screen.getByRole("status").textContent).toContain(
-      "Database connection unavailable",
+      "Database unavailable or migration history does not match.",
     ),
   );
   await fireEvent.click(screen.getByRole("button", { name: "Check again" }));
   await waitFor(() =>
     expect(screen.getByRole("status").textContent).toContain(
-      "Database connection ready",
+      "Database is ready.",
     ),
   );
   expect(fetch).toHaveBeenCalledTimes(2);

@@ -35,6 +35,15 @@ them through real application interactions, not private internals.
 
 ## Work surfaces
 
+- **Settings → Domains** is visible to instance operators. The Public URL form
+  shows the saved HTTPS origin, uses explicit save and discard actions, preserves
+  drafts on failure, and lets operators reload the saved URL after a concurrent
+  edit. Changing sections, leaving Settings, and reloading guard unsaved changes.
+  Domains, Profile and Workspace use `.settings-panel-heading` and
+  `.settings-form-actions` for the same padded-panel headers and right-aligned
+  save actions. Reverse proxy addresses use the shared inset row treatment.
+  Domains is a Settings tab and command palette destination at `#domains`.
+
 - **Settings → Integration** selects an active Project in the current Workspace.
   Workspace owners/admins can save, replace, test, and disconnect Telegram (including optional Topic ID for forum supergroups), Slack,
   and Discord connections. It uses Select, Modal, Feedback, and Toast; credentials

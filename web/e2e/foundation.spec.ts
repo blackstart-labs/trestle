@@ -17,7 +17,7 @@ test("Go serves the compiled foundation with a real unavailable readiness check"
   // the readiness action next.
   await page.goto("/#instance-status");
   await expect(page.getByRole("status")).toHaveText(
-    "Database connection unavailable.",
+    "Database unavailable or migration history does not match.",
   );
   await expect(
     page.getByRole("heading", { name: "Instance status" }),
@@ -30,7 +30,7 @@ test("Go serves the compiled foundation with a real unavailable readiness check"
   await page.keyboard.press("Enter");
   expect((await readiness).status()).toBe(503);
   await expect(page.getByRole("status")).toHaveText(
-    "Database connection unavailable.",
+    "Database unavailable or migration history does not match.",
   );
   expect(assets.length).toBeGreaterThanOrEqual(2);
   expect(assets.every((status) => status === 200)).toBe(true);
@@ -42,7 +42,7 @@ test("foundation remains readable at phone width", async ({ page }) => {
   await page.goto("/#settings");
   await expect(page.getByRole("button", { name: "Check again" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText(
-    "Database connection unavailable.",
+    "Database unavailable or migration history does not match.",
   );
   expect(
     await page.evaluate(

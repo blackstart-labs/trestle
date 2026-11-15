@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: docker.io/marufsarker/trestle
+
+jobs:
+  checks:
+    if: github.repository == 'blackstart-labs/trestle'
+    uses: ./.github/workflows/ci.yml
+
+  candidate:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build and push a candidate image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          docker buildx create --use --driver docker-container
+          docker buildx build --platform linux/amd64,linux/arm64,linux/riscv64 \
+            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$IMAGE:candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" \
+            --sbom=true --provenance=mode=max --push .
+      - name: Test the published candidate digest
+        run: |
+          digest=$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/image-metadata.json")
+          reference="$IMAGE@$digest"
+          docker buildx imagetools inspect --raw "$reference" |
+            jq -e '([.manifests[].platform | select(.os == "linux") | .architecture] | sort) == ["amd64","arm64","riscv64"]'
+          printf '%s\n' "$reference" > image.txt
+          bash tests/deployment-smoke.sh "$reference"
+          bash tests/managed-caddy-smoke.sh "$reference"
+          printf 'Candidate image for native verification: `%s`\n' "$reference" >> "$GITHUB_STEP_SUMMARY"
+      - name: Package deployment assets
+        run: |
+          mkdir release
+          cp deploy/bootstrap.sh release/trestle-install.sh
+          tar -czf release/trestle-deploy.tar.gz deploy/install.sh deploy/compose.yaml deploy/quadlet deploy/caddy image.txt
+          cp image.txt release/image.txt
+          (cd release && sha256sum --binary trestle-deploy.tar.gz > trestle-deploy.tar.gz.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: trestle-release
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    needs: candidate
+    environment: production-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: trestle-release
+          path: release
+      - name: Promote the tested digest to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_RELEASE_TOKEN }}
+        run: |
+          reference=$(cat release/image.txt)
+          digest=${reference#"$IMAGE@"}
+          [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          tag="$IMAGE:$GITHUB_REF_NAME"
+          if existing=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>&1); then
+            if [[ $existing != "$digest" ]]; then
+              echo "$tag already points to a different digest." >&2
+              exit 1
+            fi
+          elif [[ $existing == *"not found"* ]]; then
+            docker buildx imagetools create --tag "$tag" "$reference"
+          else
+            printf '%s\n' "$existing" >&2
+            exit 1
+          fi
+          [[ $(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}') == "$digest" ]]
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
+            release/image.txt release/trestle-install.sh release/trestle-deploy.tar.gz release/trestle-deploy.tar.gz.sha256

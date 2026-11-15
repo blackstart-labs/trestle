@@ -47,14 +47,15 @@ func MapErr(err error) error {
 
 // UserProjection never includes password_hash or other credential fields.
 type UserProjection struct {
-	ID              uuid.UUID
-	Username        string
-	DisplayName     string
-	Locale          string
-	Timezone        string
-	Disabled        bool
-	HasAvatar       bool
-	AvatarUpdatedAt *time.Time
+	ID               uuid.UUID
+	Username         string
+	DisplayName      string
+	Locale           string
+	Timezone         string
+	Disabled         bool
+	HasAvatar        bool
+	AvatarUpdatedAt  *time.Time
+	InstanceOperator bool
 }
 
 type MemberProjection struct {
@@ -85,12 +86,12 @@ func newUser(id uuid.UUID, username, displayName string) UserProjection {
 	return UserProjection{ID: id, Username: username, DisplayName: displayName, Locale: "en", Timezone: "UTC"}
 }
 
-const userColumns = "id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at"
+const userColumns = "id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at, instance_operator"
 
 func scanUser(row pgx.Row) (UserProjection, error) {
 	var u UserProjection
 	var disabledAt *time.Time
-	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt, &u.InstanceOperator)
 	u.Disabled = disabledAt != nil
 	return u, err
 }
@@ -126,7 +127,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, username, passwordHash, 
 	}
 
 	userID := uuid.New()
-	if _, err := tx.Exec(ctx, "INSERT INTO users (id, username, password_hash, display_name) VALUES ($1, $2, $3, $4)",
+	if _, err := tx.Exec(ctx, "INSERT INTO users (id, username, password_hash, display_name, instance_operator) VALUES ($1, $2, $3, $4, true)",
 		userID, username, passwordHash, displayName); err != nil {
 		return UserProjection{}, MapErr(err)
 	}
@@ -142,7 +143,9 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, username, passwordHash, 
 	if err := RecordAuditEvent(ctx, tx, nil, "user.bootstrap", map[string]any{}); err != nil {
 		return UserProjection{}, err
 	}
-	return newUser(userID, username, displayName), tx.Commit(ctx)
+	user := newUser(userID, username, displayName)
+	user.InstanceOperator = true
+	return user, tx.Commit(ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -301,14 +304,14 @@ func ResolveSession(ctx context.Context, db Querier, rawToken string) (*Resolved
 	var s ResolvedSession
 	var disabledAt *time.Time
 	var lastActive time.Time
-	err = db.QueryRow(ctx, `SELECT s.id, s.csrf_token_hash, s.last_active_at, u.id, u.username, u.display_name, u.locale, u.timezone, u.disabled_at, (u.avatar_data IS NOT NULL), u.avatar_updated_at
+	err = db.QueryRow(ctx, `SELECT s.id, s.csrf_token_hash, s.last_active_at, u.id, u.username, u.display_name, u.locale, u.timezone, u.disabled_at, (u.avatar_data IS NOT NULL), u.avatar_updated_at, u.instance_operator
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
 		  AND s.revoked_at IS NULL
 		  AND s.expires_at > $2
 		  AND s.last_active_at > $3`, hash, now, now.Add(-SessionIdle)).
-		Scan(&s.SessionID, &s.CSRFTokenHash, &lastActive, &s.User.ID, &s.User.Username, &s.User.DisplayName, &s.User.Locale, &s.User.Timezone, &disabledAt, &s.User.HasAvatar, &s.User.AvatarUpdatedAt)
+		Scan(&s.SessionID, &s.CSRFTokenHash, &lastActive, &s.User.ID, &s.User.Username, &s.User.DisplayName, &s.User.Locale, &s.User.Timezone, &disabledAt, &s.User.HasAvatar, &s.User.AvatarUpdatedAt, &s.User.InstanceOperator)
 	if errors.Is(err, pgx.ErrNoRows) || disabledAt != nil {
 		return nil, nil
 	}
@@ -646,8 +649,8 @@ func UpdateUserProfile(ctx context.Context, db Querier, userID uuid.UUID, displa
 		    locale = CASE WHEN $3 <> '' THEN $3 ELSE locale END,
 		    updated_at = $4
 		WHERE id = $5
-		RETURNING id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at`,
-		displayName, timezone, locale, now, userID).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt)
+		RETURNING id, username, display_name, locale, timezone, disabled_at, (avatar_data IS NOT NULL), avatar_updated_at, instance_operator`,
+		displayName, timezone, locale, now, userID).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Locale, &u.Timezone, &disabledAt, &u.HasAvatar, &u.AvatarUpdatedAt, &u.InstanceOperator)
 	u.Disabled = disabledAt != nil
 	return u, err
 }

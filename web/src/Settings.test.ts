@@ -42,3 +42,10 @@ test("clicking Integration tab triggers onselectsection and selects section", as
   await rerender({ section: "integration" });
   expect(screen.getByRole("heading", { name: "Integration" })).toBeTruthy();
 });
+
+test("a direct Domains link explains instance access to other users", () => {
+  render(Settings, { section: "domains" });
+  expect(screen.getByRole("heading", { name: "Domains" })).toBeTruthy();
+  expect(screen.getByText(/sign in as an instance operator/i)).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "Domains" })).toBeNull();
+});

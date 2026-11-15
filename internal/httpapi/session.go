@@ -74,16 +74,17 @@ func (s *Server) auth(h authedHandler) http.HandlerFunc {
 }
 
 type userResponse struct {
-	ID          string  `json:"id"`
-	Username    string  `json:"username"`
-	DisplayName string  `json:"display_name"`
-	Locale      string  `json:"locale"`
-	Timezone    string  `json:"timezone"`
-	AvatarURL   *string `json:"avatar_url,omitempty"`
+	ID               string  `json:"id"`
+	Username         string  `json:"username"`
+	DisplayName      string  `json:"display_name"`
+	Locale           string  `json:"locale"`
+	Timezone         string  `json:"timezone"`
+	AvatarURL        *string `json:"avatar_url,omitempty"`
+	InstanceOperator bool    `json:"instance_operator,omitempty"`
 }
 
 func toUserResponse(u identity.UserProjection) userResponse {
-	resp := userResponse{ID: u.ID.String(), Username: u.Username, DisplayName: u.DisplayName, Locale: u.Locale, Timezone: u.Timezone}
+	resp := userResponse{ID: u.ID.String(), Username: u.Username, DisplayName: u.DisplayName, Locale: u.Locale, Timezone: u.Timezone, InstanceOperator: u.InstanceOperator}
 	if u.HasAvatar {
 		url := "/api/v1/users/" + u.ID.String() + "/avatar"
 		resp.AvatarURL = &url

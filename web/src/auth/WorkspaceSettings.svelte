@@ -201,7 +201,7 @@
 
 <div class="workspace-settings-container">
   <section class="panel panel-pad" aria-labelledby="ws-heading">
-    <div class="pref-head">
+    <div class="settings-panel-heading">
       <h2 id="ws-heading" tabindex="-1">Workspace settings</h2>
       <p>Name, URL slug and branding for {workspace.name}.</p>
     </div>
@@ -301,7 +301,7 @@
       </div>
 
       {#if canManage}
-        <div class="form-actions">
+        <div class="settings-form-actions">
           <Button type="submit" variant="primary" disabled={saving || !dirty}>
             {#snippet children()}{saving ? "Saving…" : "Save changes"}{/snippet}
           </Button>
@@ -314,7 +314,7 @@
     class="panel panel-pad export-section"
     aria-labelledby="export-heading"
   >
-    <div class="pref-head">
+    <div class="settings-panel-heading">
       <h2 id="export-heading" tabindex="-1">Data export & backup</h2>
       <p>Download a complete snapshot of all workspace data as JSON.</p>
     </div>
@@ -343,19 +343,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
-  }
-  .pref-head {
-    margin-bottom: var(--space-5);
-  }
-  .pref-head h2 {
-    font-size: var(--text-lg);
-    font-weight: 520;
-    margin: 0 0 var(--space-1) 0;
-  }
-  .pref-head p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
   }
   .avatar-uploader {
     display: flex;
@@ -420,11 +407,6 @@
     flex-direction: column;
     gap: var(--space-4);
     margin-top: var(--space-4);
-  }
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: var(--space-2);
   }
   .export-section {
     border-top: var(--border-width) solid var(--line);

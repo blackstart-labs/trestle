@@ -271,9 +271,9 @@ export const SECTIONS: DocSection[] = [
     title: "Self-Hosting & Docker",
     category: "Deployment",
     badge: "Docker",
-    summary: "Concise operator guide: 1-command setup and official Docker Hub deployment.",
+    summary: "Install Trestle with Docker Compose and connect an HTTPS reverse proxy.",
     metaTitle: "Self-Hosting & Docker Deployment Guide | Trestle Documentation",
-    metaDescription: "Deploy Trestle in production with 1 command. Complete operator guide for Docker, Docker Compose, PostgreSQL, reverse proxies, and Cloudflare Tunnels.",
+    metaDescription: "Deploy Trestle with Docker Compose and PostgreSQL, configure HTTPS, and verify a backup before upgrading.",
     keywords: [
       "self-hosting trestle",
       "docker deployment",

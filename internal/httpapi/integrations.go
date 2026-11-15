@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/maruf-pfc/trestle/internal/identity"
 	"github.com/maruf-pfc/trestle/internal/integrations"
 	"github.com/maruf-pfc/trestle/internal/projects"
 )
@@ -219,16 +220,24 @@ func formatTaskNotification(provider string, p projects.Project, t projects.Task
 		if desc != "" {
 			escDesc = fmt.Sprintf("\n\n📝 Description:\n%s", html.EscapeString(desc))
 		}
-		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 <a href=\"%s\">Open in Trestle</a>",
-			escHeader, escTitle, escStatus, escPriority, escAssigned, escDesc, html.EscapeString(link))
+		body := fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s", escHeader, escTitle, escStatus, escPriority, escAssigned, escDesc)
+		if link != "" {
+			body += fmt.Sprintf("\n\n👉 <a href=\"%s\">Open in Trestle</a>", html.EscapeString(link))
+		}
+		return body
 	case "slack":
 		escape := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace
-		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 <%s|Open in Trestle>",
-			escape(header), escape(titleLine), escape(statusLine), escape(priorityLine), escape(assignedLine), escape(descBlock), link)
+		body := fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s", escape(header), escape(titleLine), escape(statusLine), escape(priorityLine), escape(assignedLine), escape(descBlock))
+		if link != "" {
+			body += fmt.Sprintf("\n\n👉 <%s|Open in Trestle>", link)
+		}
+		return body
 	default:
-		// Discord and standard Markdown
-		return fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s\n\n👉 [Open in Trestle](%s)",
-			header, titleLine, statusLine, priorityLine, assignedLine, descBlock, link)
+		body := fmt.Sprintf("%s\n\n%s\n%s\n%s\n%s%s", header, titleLine, statusLine, priorityLine, assignedLine, descBlock)
+		if link != "" {
+			body += fmt.Sprintf("\n\n👉 [Open in Trestle](%s)", link)
+		}
+		return body
 	}
 }
 
@@ -293,18 +302,11 @@ func (s *Server) notifyTask(r *http.Request, ws, project uuid.UUID, action strin
 		return
 	}
 
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
+	var taskURL string
+	origin, err := identity.InstanceOrigin(ctx, s.Pool)
+	if err == nil && origin != "" {
+		taskURL = fmt.Sprintf("%s/#task/%s/%s/%s", origin, ws, project, t.ID)
 	}
-	host := r.Host
-	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
-		host = h
-	}
-	if host == "" {
-		host = "127.0.0.1:3000"
-	}
-	taskURL := fmt.Sprintf("%s://%s/#task/%s/%s/%s", scheme, host, ws, project, t.ID)
 
 	var wg sync.WaitGroup
 	for _, i := range list {
