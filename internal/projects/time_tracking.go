@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TimeLog struct {
@@ -109,17 +110,40 @@ func ListTaskTimeLogs(ctx context.Context, db Querier, workspaceID, projectID, t
 	return logs, rows.Err()
 }
 
-func DeleteTaskTimeLog(ctx context.Context, db Querier, actorID *uuid.UUID, workspaceID, projectID, taskID, logID uuid.UUID) error {
-	tag, err := db.Exec(ctx, `DELETE FROM task_time_logs
-		WHERE id = $1 AND workspace_id = $2 AND project_id = $3 AND task_id = $4`,
-		logID, workspaceID, projectID, taskID)
+// DeleteTaskTimeLog removes one entry when the actor owns it or manages the
+// Workspace. The delete and its task activity record share one transaction.
+func DeleteTaskTimeLog(ctx context.Context, pool *pgxpool.Pool, actorID uuid.UUID, isManager bool,
+	workspaceID, projectID, taskID, logID uuid.UUID) error {
+	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx)
+
+	var ownerID *uuid.UUID
+	var hours float64
+	err = tx.QueryRow(ctx, `SELECT user_id, hours FROM task_time_logs
+		WHERE id = $1 AND workspace_id = $2 AND project_id = $3 AND task_id = $4
+		FOR UPDATE`, logID, workspaceID, projectID, taskID).Scan(&ownerID, &hours)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	if !isManager && (ownerID == nil || *ownerID != actorID) {
+		return ErrForbidden
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM task_time_logs
+		WHERE id = $1 AND workspace_id = $2 AND project_id = $3 AND task_id = $4`,
+		logID, workspaceID, projectID, taskID); err != nil {
+		return err
+	}
+	if err := RecordTaskActivity(ctx, tx, workspaceID, taskID, &actorID, "time_log.deleted",
+		map[string]any{"log_id": logID, "hours": hours}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func GetTaskTotalSpentHours(ctx context.Context, db Querier, taskID uuid.UUID) (float64, error) {

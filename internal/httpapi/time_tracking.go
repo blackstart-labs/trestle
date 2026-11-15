@@ -73,13 +73,13 @@ func (s *Server) createTaskTimeLog(w http.ResponseWriter, r *http.Request, sessi
 }
 
 func (s *Server) deleteTaskTimeLog(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
-	ids, _, ok := s.scope(w, r, session, false, "project_id", "task_id", "log_id")
+	ids, role, ok := s.scope(w, r, session, false, "project_id", "task_id", "log_id")
 	if !ok {
 		return
 	}
 	wsID, pID, tID, logID := ids[0], ids[1], ids[2], ids[3]
 
-	if err := projects.DeleteTaskTimeLog(r.Context(), s.Pool, &session.User.ID, wsID, pID, tID, logID); err != nil {
+	if err := projects.DeleteTaskTimeLog(r.Context(), s.Pool, session.User.ID, isManager(role), wsID, pID, tID, logID); err != nil {
 		storeError(w, err, "failed to delete task time log", "")
 		return
 	}

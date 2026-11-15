@@ -273,7 +273,10 @@ func SetUserDisabled(ctx context.Context, pool *pgxpool.Pool, username string, d
 
 // CreateSession returns the raw session and CSRF tokens. They are delivered by
 // cookie and never stored or logged; only their hashes are persisted.
-func CreateSession(ctx context.Context, db Querier, userID uuid.UUID) (sessionToken, csrfToken string, err error) {
+func CreateSession(ctx context.Context, db Querier, userID uuid.UUID, ttl time.Duration) (sessionToken, csrfToken string, err error) {
+	if ttl <= 0 {
+		ttl = SessionMaxAge
+	}
 	sessionToken, sessionHash, err := GenerateToken()
 	if err != nil {
 		return "", "", err
@@ -286,7 +289,7 @@ func CreateSession(ctx context.Context, db Querier, userID uuid.UUID) (sessionTo
 	_, err = db.Exec(ctx, `INSERT INTO sessions
 		(token_hash, user_id, csrf_token_hash, created_at, last_active_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
-		sessionHash, userID, csrfHash, now, now, now.Add(SessionMaxAge))
+		sessionHash, userID, csrfHash, now, now, now.Add(ttl))
 	return sessionToken, csrfToken, err
 }
 

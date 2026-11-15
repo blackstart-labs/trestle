@@ -25,6 +25,8 @@ type Config struct {
 	BindAddr         netip.AddrPort
 	MaxDBConnections int32
 	DBTimeout        time.Duration
+	// SessionTTL is the absolute lifetime of a new session.
+	SessionTTL time.Duration
 	// Database holds the parsed connection settings; it is never logged.
 	Database *pgxpool.Config
 	// DevMode relaxes the cookie Secure requirement for loopback HTTP only.
@@ -44,6 +46,7 @@ var keys = []string{
 	"TRESTLE_BIND_ADDR",
 	"TRESTLE_MAX_DB_CONNECTIONS",
 	"TRESTLE_DB_TIMEOUT_MS",
+	"SESSION_TTL_HOURS",
 	"TRESTLE_DEV_MODE",
 	"TRESTLE_ARGON2_M_COST",
 	"TRESTLE_ARGON2_T_COST",
@@ -96,6 +99,11 @@ func FromPairs(values map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sessionHours, err := bounded(values, "SESSION_TTL_HOURS", 336, 1, 8760,
+		"SESSION_TTL_HOURS must be an integer from 1 to 8760")
+	if err != nil {
+		return Config{}, err
+	}
 
 	devMode := values["TRESTLE_DEV_MODE"] == "true"
 	if devMode && !bindAddr.Addr().IsLoopback() {
@@ -123,6 +131,7 @@ func FromPairs(values map[string]string) (Config, error) {
 		BindAddr:          bindAddr,
 		MaxDBConnections:  maxConns,
 		DBTimeout:         time.Duration(timeoutMS) * time.Millisecond,
+		SessionTTL:        time.Duration(sessionHours) * time.Hour,
 		Database:          database,
 		DevMode:           devMode,
 		Argon2MCost:       mCost,

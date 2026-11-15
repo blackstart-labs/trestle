@@ -8,9 +8,9 @@ Trestle exposes a JSON REST API under `/api/v1` served by the Go backend. All re
 
 ### Authentication
 Authentication is session-based via HTTP cookies:
-- Cookie Name: `trestle_session`
-- Flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` (when TLS enabled).
-- Lifespan: Configured via `SESSION_TTL_HOURS` (default 336 hours / 14 days).
+- Cookie Name: `trestle-session`
+- Flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` unless `TRESTLE_DEV_MODE=true` on a loopback bind.
+- Lifespan: Configured via `SESSION_TTL_HOURS` (default 336 hours / 14 days), with a 12-hour idle limit.
 
 ### CSRF Defense
 All unsafe state-changing HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) require a CSRF token:
@@ -70,7 +70,7 @@ Response envelope:
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/v1/session` | Authenticate with username/email and password. Returns user object and sets `trestle_session` & `trestle-csrf` cookies. |
+| `POST` | `/api/v1/session` | Authenticate with username and password. Returns the user object and sets `trestle-session` and `trestle-csrf` cookies. |
 | `DELETE` | `/api/v1/session` | Invalidate current session and clear cookies. |
 | `GET` | `/api/v1/me` | Return the profile of the currently signed-in user. |
 
@@ -125,7 +125,7 @@ Workspace exports include archived Projects. A failed read returns an error inst
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/api/v1/projects/{id}/milestones` | List project milestones with progress rollups (`completed_tasks`, `total_tasks`). |
+| `GET` | `/api/v1/projects/{id}/milestones` | List project milestones with progress rollups (`completed_tasks`, `cancelled_tasks`, `total_tasks`, `open_tasks`). Completion is `completed_tasks` ÷ (`total_tasks` − `cancelled_tasks`). |
 | `POST` | `/api/v1/projects/{id}/milestones` | Create a milestone with title, description, start date, due date, and color. |
 | `GET` | `/api/v1/projects/{id}/milestones/{milestone_id}` | Get milestone details and task associations. |
 | `PATCH` | `/api/v1/projects/{id}/milestones/{milestone_id}` | Update milestone attributes or toggle status (`open`, `closed`). |
@@ -144,6 +144,9 @@ Workspace exports include archived Projects. A failed read returns an error inst
 | `POST` | `/api/v1/tasks/{id}/comments` | Add a comment to a task thread. |
 | `DELETE` | `/api/v1/tasks/{id}/comments/{comment_id}` | Delete comment (author or admin only). |
 | `GET` | `/api/v1/tasks/{id}/activity` | Retrieve property change audit history for a task. |
+| `GET` | `/api/v1/tasks/{id}/time-logs` | List time entries for a task with the running total. |
+| `POST` | `/api/v1/tasks/{id}/time-logs` | Record hours against a task (`hours`, optional `logged_date`, `description`). |
+| `DELETE` | `/api/v1/tasks/{id}/time-logs/{log_id}` | Delete a time entry. Allowed for the entry owner or a Workspace owner/admin; records `time_log.deleted` activity. |
 | `POST` | `/api/v1/tasks/{id}/assignees` | Assign a user to the task. |
 | `DELETE` | `/api/v1/tasks/{id}/assignees/{user_id}` | Unassign a user from the task. |
 | `GET` | `/api/v1/projects/{id}/labels` | List taxonomy labels available in the project. |

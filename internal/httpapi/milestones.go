@@ -22,6 +22,7 @@ type milestoneItem struct {
 	Status         string  `json:"status"`
 	TotalTasks     int64   `json:"total_tasks"`
 	CompletedTasks int64   `json:"completed_tasks"`
+	CancelledTasks int64   `json:"cancelled_tasks"`
 	OpenTasks      int64   `json:"open_tasks"`
 	CreatedAt      string  `json:"created_at"`
 	UpdatedAt      string  `json:"updated_at"`
@@ -38,6 +39,7 @@ func toMilestone(m projects.Milestone) milestoneItem {
 		Status:         m.Status,
 		TotalTasks:     m.TotalTasks,
 		CompletedTasks: m.CompletedTasks,
+		CancelledTasks: m.CancelledTasks,
 		OpenTasks:      m.OpenTasks,
 		CreatedAt:      ts(m.CreatedAt),
 		UpdatedAt:      ts(m.UpdatedAt),

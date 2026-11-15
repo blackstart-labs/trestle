@@ -28,6 +28,7 @@
     WorkspaceMember,
   } from "./TaskDetailDrawer.svelte";
   import {
+    completionPercent,
     formatDueDate,
     identityHue,
     initials,
@@ -569,8 +570,15 @@
   );
 
   function getMilestonePercent(m: Milestone): number {
-    if (m.total_tasks <= 0) return 0;
-    return Math.round((m.completed_tasks / m.total_tasks) * 100);
+    return completionPercent(
+      m.completed_tasks,
+      m.total_tasks,
+      m.cancelled_tasks,
+    );
+  }
+
+  function countedMilestoneTasks(m: Milestone): number {
+    return Math.max(0, m.total_tasks - m.cancelled_tasks);
   }
 
   function filterTasksByMilestone(milestoneId: string) {
@@ -1740,10 +1748,10 @@
               </div>
 
               <div class="task-stats">
-                {#if m.total_tasks > 0}
+                {#if countedMilestoneTasks(m) > 0}
                   <span>
                     <strong class="num">{m.completed_tasks}</strong> of
-                    <span class="num">{m.total_tasks}</span>
+                    <span class="num">{countedMilestoneTasks(m)}</span>
                     completed ({getMilestonePercent(m)}%)
                   </span>
                 {:else}
@@ -1752,7 +1760,7 @@
               </div>
             </div>
 
-            {#if m.total_tasks > 0}
+            {#if countedMilestoneTasks(m) > 0}
               <div
                 class="progress-rail"
                 role="progressbar"

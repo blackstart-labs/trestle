@@ -17,7 +17,8 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Usernames: 3–64 ASCII letters, digits, '.', '_', '-', '@', '+'; canonical form is lowercase.
+// Usernames: 3–64 ASCII letters, digits, '.', '_', '-'; canonical form is lowercase.
+// This matches the users_username_ascii database constraint exactly.
 // ---------------------------------------------------------------------------
 
 const (
@@ -28,7 +29,7 @@ const (
 var (
 	ErrUsernameTooShort = fmt.Errorf("username must be at least %d characters", MinUsernameLen)
 	ErrUsernameTooLong  = fmt.Errorf("username must be at most %d characters", MaxUsernameLen)
-	ErrUsernameInvalid  = errors.New("username may only contain letters, digits, '.', '_', '-', '@', and '+'")
+	ErrUsernameInvalid  = errors.New("username may only contain letters, digits, '.', '_', and '-'")
 )
 
 // ParseUsername validates and normalizes a raw username to lowercase.
@@ -41,7 +42,7 @@ func ParseUsername(raw string) (string, error) {
 	}
 	for i := 0; i < len(raw); i++ {
 		b := raw[i]
-		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '.' || b == '_' || b == '-' || b == '@' || b == '+') {
+		if !(b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '.' || b == '_' || b == '-') {
 			return "", ErrUsernameInvalid
 		}
 	}

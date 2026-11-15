@@ -30,6 +30,9 @@ func TestValidConfigurationHasSafeDefaultsAndRedactsDatabaseOptions(t *testing.T
 	if cfg.DBTimeout.Milliseconds() != 2000 {
 		t.Errorf("timeout %v", cfg.DBTimeout)
 	}
+	if cfg.SessionTTL.Hours() != 336 {
+		t.Errorf("session ttl %v", cfg.SessionTTL)
+	}
 	for _, format := range []string{"%v", "%+v", "%s"} {
 		if s := fmt.Sprintf(format, cfg); strings.Contains(s, "private-password") {
 			t.Errorf("%s leaks the password: %s", format, s)
@@ -50,6 +53,9 @@ func TestConfigurationRejectsInvalidURLsAndOutOfRangeSettingsWithoutValues(t *te
 		{"TRESTLE_DB_TIMEOUT_MS", "99", "TRESTLE_DB_TIMEOUT_MS must be an integer from 100 to 10000"},
 		{"TRESTLE_DB_TIMEOUT_MS", "10001", "TRESTLE_DB_TIMEOUT_MS must be an integer from 100 to 10000"},
 		{"TRESTLE_DB_TIMEOUT_MS", "", "TRESTLE_DB_TIMEOUT_MS must be an integer from 100 to 10000"},
+		{"SESSION_TTL_HOURS", "0", "SESSION_TTL_HOURS must be an integer from 1 to 8760"},
+		{"SESSION_TTL_HOURS", "8761", "SESSION_TTL_HOURS must be an integer from 1 to 8760"},
+		{"SESSION_TTL_HOURS", "soon", "SESSION_TTL_HOURS must be an integer from 1 to 8760"},
 	}
 	for _, c := range cases {
 		_, err := FromPairs(map[string]string{

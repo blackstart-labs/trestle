@@ -106,6 +106,9 @@ Relevant failures:
 - Timers belong to a user, not a Workspace membership. Removing someone from a
   Workspace does not delete an already-running timer; it can still be stopped
   and logged.
+- A logged entry can be deleted by the person who logged it or by a Workspace
+  owner/admin. The delete and its `time_log.deleted` activity record commit
+  together, and other members do not see the control.
 - Timesheets, approvals, work Activities, Customers, rates and billing are not
   implemented.
 

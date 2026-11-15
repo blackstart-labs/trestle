@@ -190,6 +190,11 @@
     workspace.role === "admin" ||
     comment.user_id === currentUserId;
 
+  const canDeleteTimeLog = (log: TimeLog) =>
+    workspace.role === "owner" ||
+    workspace.role === "admin" ||
+    log.user_id === currentUserId;
+
   const priorities = [
     { value: "none", label: "None" },
     { value: "low", label: "Low" },
@@ -1587,7 +1592,7 @@
                       <span class="time-log-hours num"
                         >{Number(log.hours).toFixed(2)}h</span
                       >
-                      {#if canManage}
+                      {#if canDeleteTimeLog(log)}
                         <button
                           type="button"
                           class="chip-remove"

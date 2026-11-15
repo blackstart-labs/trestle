@@ -69,7 +69,10 @@ func TestUsernameMaximumLengthAccepted(t *testing.T) {
 
 func TestUsernameSpacesRejected(t *testing.T) { wantUsernameErr(t, "user name", ErrUsernameInvalid) }
 
-func TestUsernameAtSignAccepted(t *testing.T) { mustUsername(t, "user@example.com") }
+func TestUsernameAtSignRejected(t *testing.T) {
+	wantUsernameErr(t, "user@example.com", ErrUsernameInvalid)
+	wantUsernameErr(t, "user+ops", ErrUsernameInvalid)
+}
 
 func TestUsernameNonASCIIRejected(t *testing.T) { wantUsernameErr(t, "ûser", ErrUsernameInvalid) }
 

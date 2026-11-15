@@ -7,9 +7,9 @@ This guide covers building, configuring, deploying, and maintaining Trestle in p
 ## 1. Quickstart (Local Development)
 
 ### Prerequisites:
-- Go 1.24+
-- Node.js 20+ & npm 10+
-- PostgreSQL 15+ (running locally or in a container)
+- Go 1.27.4 (the version pinned in `go.mod`)
+- Node.js 24.21+ and npm 11.19+ (pinned in `.node-version` and `web/package.json`)
+- PostgreSQL 18 (running locally or in a container)
 
 ```bash
 # 1. Build frontend static assets into web/dist
@@ -42,11 +42,17 @@ Access the application in your browser at `http://127.0.0.1:3000`.
 | --- | --- | --- |
 | `DATABASE_URL` | *(Required)* | PostgreSQL connection URL, e.g. `postgres://user:pass@db:5432/trestle?sslmode=verify-full`. |
 | `TRESTLE_BIND_ADDR` | `127.0.0.1:3000` | Interface and port to listen on. In containers, set to `0.0.0.0:3000`. |
-| `TRESTLE_ORIGIN` | `http://127.0.0.1:3000` | Canonical public origin for SameSite cookie handling and CSRF validation. |
-| `SESSION_TTL_HOURS` | `336` (14 days) | Absolute session duration before requiring re-authentication. |
-| `LOG_LEVEL` | `info` | Structured logging verbosity (`debug`, `info`, `warn`, `error`). |
+| `TRESTLE_DEV_MODE` | `false` | Relaxes the Secure cookie flag for loopback HTTP only. It is rejected for any non-loopback bind. |
+| `SESSION_TTL_HOURS` | `336` (14 days) | Absolute session lifetime; the idle limit remains 12 hours. |
+| `TRESTLE_MAX_DB_CONNECTIONS` | `5` | Connection pool size, 1–32. |
+| `TRESTLE_DB_TIMEOUT_MS` | `2000` | Connection and readiness timeout, 100–10000 ms. |
+| `TRESTLE_ARGON2_M_COST` / `_T_COST` / `_PARALLELISM` | `65536` / `2` / `1` | Password hashing cost; raise only with a measured capacity plan. |
 | `TRESTLE_BOOTSTRAP_USERNAME` | `admin` | Optional non-interactive initial admin username. |
-| `TRESTLE_BOOTSTRAP_PASSWORD` | *(None)* | Optional initial admin password for automated provisioning. |
+| `TRESTLE_BOOTSTRAP_PASSWORD` | *(None)* | Optional initial admin password for automated provisioning. The local runner generates a random one instead of shipping a fixed default. |
+
+CSRF is validated with the `trestle-csrf` cookie and the `X-CSRF-Token` header;
+there is no `TRESTLE_ORIGIN` setting. Cookies are `SameSite=Lax`, so a public
+deployment must be served over HTTPS for browsers to send them.
 
 ---
 
@@ -80,55 +86,55 @@ trestle enableuser <username>
 ## 4. Container Deployment (Docker / Podman)
 
 ### 4.1 Multi-Stage Container Build
-The root `Dockerfile` compiles the Svelte frontend and the Go backend into a minimal non-root image:
+The root `Dockerfile` compiles the Svelte frontend and the Go backend into a minimal non-root image. The pinned base images are multi-arch, so the same file builds on amd64 and arm64:
 
 ```bash
+# Native build on the current machine
 docker build -t trestle:latest .
+
+# Explicit multi-arch build (needs buildx and QEMU on the builder)
+docker buildx build --platform linux/amd64,linux/arm64 -t your-registry/trestle:latest --push .
 ```
 
-### 4.2 Running with PostgreSQL
-
-Create a shared network and start PostgreSQL:
+For a local arm64 image on an amd64 machine:
 ```bash
-docker network create trestle-net
-
-docker run -d --name trestle-db \
-  --network trestle-net \
-  -e POSTGRES_DB=trestle \
-  -e POSTGRES_USER=trestle \
-  -e POSTGRES_PASSWORD=supersecret \
-  -v trestle_pgdata:/var/lib/postgresql/data \
-  postgres:16-alpine
+docker buildx build --platform linux/arm64 -t trestle:arm64 --load .
 ```
 
-Run schema migrations:
+### 4.2 VPS / production stack
+
+`compose.prod.yaml` runs PostgreSQL, applies migrations, then starts the app.
+The database is not published and Trestle binds to loopback so a reverse proxy
+can terminate TLS.
+
 ```bash
-docker run --rm \
-  --network trestle-net \
-  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
-  trestle:latest migrate
+cp .env.production.example .env
+# Replace the password in POSTGRES_PASSWORD and DATABASE_URL.
+docker compose -f compose.prod.yaml up -d --build
+docker compose -f compose.prod.yaml run --rm app bootstrap
 ```
 
-Bootstrap initial admin account:
-```bash
-docker run --rm -it \
-  --network trestle-net \
-  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
-  -e TRESTLE_BOOTSTRAP_USERNAME="admin" \
-  -e TRESTLE_BOOTSTRAP_PASSWORD="ChangeMePromptly123!" \
-  trestle:latest bootstrap
+Put Caddy, nginx or Traefik in front of `127.0.0.1:3000` and give it a public
+HTTPS hostname. Cookies are Secure outside `TRESTLE_DEV_MODE`, so plain HTTP on
+a public address will sign in but the browser will not send the session back.
+Example Caddyfile:
+
+```caddyfile
+trestle.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
 ```
 
-Start the application container:
-```bash
-docker run -d --name trestle-app \
-  --network trestle-net \
-  -p 127.0.0.1:3000:3000 \
-  -e DATABASE_URL="postgres://trestle:supersecret@trestle-db:5432/trestle?sslmode=disable" \
-  -e TRESTLE_BIND_ADDR="0.0.0.0:3000" \
-  -e TRESTLE_ORIGIN="https://trestle.example.com" \
-  trestle:latest
-```
+Update the stack with `docker compose -f compose.prod.yaml up -d --build`.
+`run.sh` remains the local development runner; it binds to loopback by default
+and refuses to rewrite an explicit bind address or dev-mode choice.
+
+### 4.3 Plain container run
+
+If you do not use Compose, the image still works with three commands. Create a
+database, run `migrate`, bootstrap, then serve. The container needs
+`TRESTLE_BIND_ADDR=0.0.0.0:3000`, a `DATABASE_URL` that reaches PostgreSQL, and
+`TRESTLE_DEV_MODE=false` behind HTTPS.
 
 ---
 
@@ -176,5 +182,7 @@ DATABASE_URL="postgres://.../trestle_restore_test" ./trestle migrate
 | --- | --- |
 | `database migration failed or timed out` | Check PostgreSQL connectivity and credentials. If checksum mismatch occurs, ensure migration files were not modified after application. |
 | `connection refused on port 3000` | Ensure `TRESTLE_BIND_ADDR` is set to `0.0.0.0:3000` when running inside containers. |
-| `CSRF token missing or mismatch` | Verify `TRESTLE_ORIGIN` matches the reverse proxy's public HTTPS URL, and the client passes `X-CSRF-Token` header. |
+| `CSRF token missing or mismatch` | The browser must send the `trestle-csrf` cookie and mirror it in `X-CSRF-Token`. Clear stale cookies, then confirm the proxy forwards both the cookie and that header. |
+| Sign-in succeeds but the next request is unauthenticated | Cookies are `Secure` unless `TRESTLE_DEV_MODE=true` is set on a loopback bind. Serve the public URL over HTTPS. |
+| `exec format error` on a Raspberry Pi or ARM VPS | The image was built for the wrong architecture. Build natively on the host or with `docker buildx build --platform linux/arm64`. |
 | `401 Unauthorized after container restart` | Verify session storage in PostgreSQL was persisted across container restarts (check volume mount). |

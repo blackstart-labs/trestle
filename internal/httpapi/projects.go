@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -309,6 +310,20 @@ func validHexColor(c string) bool {
 func parseDueDate(s string) (*time.Time, bool) {
 	d, err := time.Parse(time.DateOnly, strings.TrimSpace(s))
 	return &d, err == nil
+}
+
+// withTx runs one logical mutation and its audit or activity record in a
+// single transaction, so a failed record never leaves a committed change.
+func (s *Server) withTx(ctx context.Context, fn func(projects.Querier) error) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // storeError maps store errors to responses; conflictMsg is used for ErrConflict.
@@ -652,7 +667,12 @@ func (s *Server) archiveProject(w http.ResponseWriter, r *http.Request, session 
 	if !ok {
 		return
 	}
-	p, err := projects.ArchiveProject(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1])
+	var p projects.Project
+	err := s.withTx(r.Context(), func(q projects.Querier) error {
+		var err error
+		p, err = projects.ArchiveProject(r.Context(), q, &session.User.ID, ids[0], ids[1])
+		return err
+	})
 	if err != nil {
 		storeError(w, err, "failed to archive project", "")
 		return
@@ -942,7 +962,9 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request, session *Aut
 		storeError(w, err, "failed to get task for deletion", "")
 		return
 	}
-	if err := projects.DeleteTask(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2]); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.DeleteTask(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2])
+	}); err != nil {
 		storeError(w, err, "failed to delete task", "")
 		return
 	}
@@ -995,7 +1017,12 @@ func (s *Server) createLabel(w http.ResponseWriter, r *http.Request, session *Au
 		badRequest(w, "Label color must be a valid 6-digit hex code (e.g. #315b3b)")
 		return
 	}
-	l, err := projects.CreateLabel(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], name, color)
+	var l projects.Label
+	err := s.withTx(r.Context(), func(q projects.Querier) error {
+		var err error
+		l, err = projects.CreateLabel(r.Context(), q, &session.User.ID, ids[0], ids[1], name, color)
+		return err
+	})
 	if err != nil {
 		storeError(w, err, "failed to create label", "A label with this name already exists in this project")
 		return
@@ -1008,7 +1035,9 @@ func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request, session *Au
 	if !ok {
 		return
 	}
-	if err := projects.DeleteLabel(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2]); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.DeleteLabel(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2])
+	}); err != nil {
 		storeError(w, err, "failed to delete label", "")
 		return
 	}
@@ -1029,7 +1058,9 @@ func (s *Server) attachLabel(w http.ResponseWriter, r *http.Request, session *Au
 	if !ok {
 		return
 	}
-	if err := projects.AttachLabel(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2], *req.LabelID); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.AttachLabel(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2], *req.LabelID)
+	}); err != nil {
 		storeError(w, err, "failed to attach label", "")
 		return
 	}
@@ -1041,7 +1072,9 @@ func (s *Server) detachLabel(w http.ResponseWriter, r *http.Request, session *Au
 	if !ok {
 		return
 	}
-	if err := projects.DetachLabel(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2], ids[3]); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.DetachLabel(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2], ids[3])
+	}); err != nil {
 		storeError(w, err, "failed to detach label", "")
 		return
 	}
@@ -1066,7 +1099,12 @@ func (s *Server) assignUser(w http.ResponseWriter, r *http.Request, session *Aut
 	if !ok {
 		return
 	}
-	a, err := projects.AssignUser(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2], *req.UserID)
+	var a projects.TaskAssignee
+	err := s.withTx(r.Context(), func(q projects.Querier) error {
+		var err error
+		a, err = projects.AssignUser(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2], *req.UserID)
+		return err
+	})
 	if err != nil {
 		storeError(w, err, "failed to assign user", "")
 		return
@@ -1079,7 +1117,9 @@ func (s *Server) unassignUser(w http.ResponseWriter, r *http.Request, session *A
 	if !ok {
 		return
 	}
-	if err := projects.UnassignUser(r.Context(), s.Pool, &session.User.ID, ids[0], ids[1], ids[2], ids[3]); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.UnassignUser(r.Context(), q, &session.User.ID, ids[0], ids[1], ids[2], ids[3])
+	}); err != nil {
 		storeError(w, err, "failed to unassign user", "")
 		return
 	}
@@ -1135,7 +1175,12 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request, session *
 		badRequest(w, "Comment content must be between 1 and 5000 characters")
 		return
 	}
-	c, err := projects.CreateComment(r.Context(), s.Pool, session.User.ID, ids[0], ids[1], ids[2], content)
+	var c projects.TaskComment
+	err := s.withTx(r.Context(), func(q projects.Querier) error {
+		var err error
+		c, err = projects.CreateComment(r.Context(), q, session.User.ID, ids[0], ids[1], ids[2], content)
+		return err
+	})
 	if err != nil {
 		storeError(w, err, "failed to create comment", "")
 		return
@@ -1148,7 +1193,9 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request, session *
 	if !ok {
 		return
 	}
-	if err := projects.DeleteComment(r.Context(), s.Pool, session.User.ID, ids[0], ids[1], ids[2], ids[3], isManager(role)); err != nil {
+	if err := s.withTx(r.Context(), func(q projects.Querier) error {
+		return projects.DeleteComment(r.Context(), q, session.User.ID, ids[0], ids[1], ids[2], ids[3], isManager(role))
+	}); err != nil {
 		storeError(w, err, "failed to delete comment", "")
 		return
 	}

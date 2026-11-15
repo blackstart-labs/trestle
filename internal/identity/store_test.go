@@ -47,7 +47,7 @@ func TestSessionCreationResolutionAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionToken, csrfToken, err := CreateSession(ctx, pool, user.ID)
+	sessionToken, csrfToken, err := CreateSession(ctx, pool, user.ID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

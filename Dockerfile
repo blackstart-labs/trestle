@@ -17,11 +17,16 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/trestle .
 
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/trestle /app/trestle
 COPY LICENSE /app/
 USER 10001:10001
 ENV TRESTLE_BIND_ADDR=0.0.0.0:3000
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${TRESTLE_BIND_ADDR##*:}/health/ready" || exit 1
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/app/trestle"]

@@ -55,7 +55,10 @@ git clone https://github.com/blackstart-labs/trestle.git && cd trestle && ./run.
 git clone https://github.com/blackstart-labs/trestle.git; cd trestle; .\run.ps1
 ```
 
-Access the app at **`http://127.0.0.1:3000`** (Default login: `admin` / `adminpassword123`).
+Access the app at **`http://127.0.0.1:3000`**. The local runner creates an
+operator account named `admin` with a random password and prints it once; copy
+it from the terminal output and change it after signing in. Run
+`./run.sh --interactive` to choose your own credentials instead.
 
 To stop the background database:
 ```bash
@@ -66,55 +69,43 @@ To stop the background database:
 
 ## 🌐 Production Deployment
 
-Deploy Trestle in production using the official Docker Hub image:
+The repository ships `compose.prod.yaml`, a VPS-ready stack that runs PostgreSQL,
+applies migrations, then starts Trestle. The database is never published, and
+Trestle binds to loopback so a reverse proxy can terminate TLS.
 
 ```bash
-docker pull marufsarker/trestle:latest
+cp .env.production.example .env
+# Replace the placeholder password in POSTGRES_PASSWORD and DATABASE_URL.
+docker compose -f compose.prod.yaml up -d --build
+docker compose -f compose.prod.yaml run --rm app bootstrap
 ```
 
-### Docker Compose
+Put Caddy, nginx or Traefik in front of `127.0.0.1:3000` and give it a public
+HTTPS hostname. Outside `TRESTLE_DEV_MODE`, cookies are `Secure`, so plain HTTP
+on a public address will not keep you signed in.
 
-Create a `compose.yaml`:
-
-```yaml
-services:
-  db:
-    image: postgres:18-bookworm
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: trestle
-      POSTGRES_USER: trestle
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set database password}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trestle -d trestle"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  app:
-    image: marufsarker/trestle:latest
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    entrypoint: ["sh", "-c", "/app/trestle migrate && /app/trestle"]
-    environment:
-      DATABASE_URL: "postgres://trestle:${POSTGRES_PASSWORD}@db:5432/trestle?sslmode=disable"
-      TRESTLE_BIND_ADDR: "0.0.0.0:3000"
-      TRESTLE_DEV_MODE: "false"
-    ports:
-      - "3000:3000"
-
-volumes:
-  postgres-data:
+```caddyfile
+trestle.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
 ```
 
-Launch with:
+### ARM servers and Raspberry Pi
+
+The pinned base images are multi-arch. Build natively on the host, or cross-build
+from an amd64 machine with buildx and QEMU:
+
 ```bash
-docker compose up -d
+docker buildx build --platform linux/arm64,linux/amd64 \
+  -t your-registry/trestle:latest --push .
 ```
+
+Then set `TRESTLE_IMAGE_TAG` in `.env` and drop the `build:` key from your
+Compose file, or keep building on the server itself. The prebuilt Hub image
+`marufsarker/trestle:latest` is also usable.
+
+See [docs/operations.md](docs/operations.md) for the full environment table,
+health probes, backups and troubleshooting.
 
 ---
 
@@ -128,7 +119,8 @@ Configure Trestle via environment variables:
 | `TRESTLE_BIND_ADDR` | `127.0.0.1:3000` | Socket address and port to bind the HTTP server. |
 | `TRESTLE_MAX_DB_CONNECTIONS` | `5` | Maximum active database connections (range: 1–32). |
 | `TRESTLE_DB_TIMEOUT_MS` | `2000` | Database pool query timeout in milliseconds. |
-| `TRESTLE_DEV_MODE` | `false` | When `true`, relaxes `Secure` cookie flag for loopback HTTP testing. |
+| `TRESTLE_DEV_MODE` | `false` | When `true`, relaxes `Secure` cookie flag for loopback HTTP testing only. |
+| `SESSION_TTL_HOURS` | `336` | Absolute session lifetime in hours (1–8760); the idle limit stays 12 hours. |
 
 ---
 

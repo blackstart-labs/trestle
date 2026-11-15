@@ -219,7 +219,7 @@ precedence over their outdated implementation claims:
 - Pool defaults are five connections and a two-second connection/readiness timeout; authoritative code is `internal/database/database.go`, not nonexistent `db.go`/`migrate.go` files.
 - Provider secrets are plaintext in PostgreSQL, even though API reads omit them. Backup encryption/key handling is an operator responsibility today.
 - Roles are Workspace-wide; there are no private-Project grants or workspace-delete endpoint. Status management and milestone management have different role requirements.
-- `TRESTLE_ORIGIN`, `SESSION_TTL_HOURS` and `LOG_LEVEL` are not active configuration keys. Notification links currently use request/forwarded host information; a future trusted-origin/proxy policy is a real change, not a documented environment knob already in use.
+- At this baseline, `TRESTLE_ORIGIN`, `SESSION_TTL_HOURS` and `LOG_LEVEL` were not active configuration keys. `SESSION_TTL_HOURS` is now read; `TRESTLE_ORIGIN` and `LOG_LEVEL` remain absent and were removed from the operations guide. Notification links currently use request/forwarded host information; a future trusted-origin/proxy policy is a real change, not a documented environment knob already in use.
 
 Open product decisions for their first implementation PR: private-Project guest policy, invitation enrollment/delivery, timer switching and overnight allocation, approval authority, rate/currency rounding, attachment quotas/storage, document sharing/revision retention, and secret-key recovery. Default to existing public Workspace behavior and do not block this inventory on those future decisions. Customer and Activity vocabulary comes from `CONTEXT.md`; do not introduce another tenant layer.
 
