@@ -126,6 +126,9 @@
   let width = $state(1000);
   let height = $state(650);
   let camera = $state({ x: -60, y: -60, zoom: 0.75 });
+  // Until the user pans or zooms, resizing the stage re-frames the drawing so
+  // a wrapped toolbar or rotated phone never leaves the paper off-centre.
+  let cameraTouched = $state(false);
   const initialKind = untrack(() => board.kind);
   let defaults = $state<Partial<BoardObject>>({
     color: initialKind === "diagram" ? "accent" : "ink",
@@ -452,6 +455,7 @@
   }
   function zoomTo(next: number, client?: Point) {
     next = Math.max(0.15, Math.min(4, next));
+    cameraTouched = true;
     const anchor = client || { x: width / 2, y: height / 2 };
     camera = {
       x: camera.x + anchor.x / camera.zoom - anchor.x / next,
@@ -460,6 +464,7 @@
     };
   }
   function fit() {
+    cameraTouched = false;
     const area = bounds(scene.elements);
     const z = Math.max(
       0.15,
@@ -477,6 +482,7 @@
   }
   function wheel(e: WheelEvent) {
     e.preventDefault();
+    cameraTouched = true;
     if (e.ctrlKey || e.metaKey) {
       const r = stage!.getBoundingClientRect();
       zoomTo(camera.zoom * Math.exp(-e.deltaY * 0.005), {
@@ -569,12 +575,14 @@
     const p = location(e.clientX, e.clientY),
       dx = snapped(p.x - g.start.x),
       dy = snapped(p.y - g.start.y);
-    if (g.type === "pan")
+    if (g.type === "pan") {
+      cameraTouched = true;
       camera = {
         ...g.camera,
         x: g.camera.x - (e.clientX - g.client.x) / g.camera.zoom,
         y: g.camera.y - (e.clientY - g.client.y) / g.camera.zoom,
       };
+    }
     if (g.type === "move") scene = moveSelection(g.scene, g.ids, dx, dy);
     if (g.type === "marquee")
       marquee = {
@@ -978,15 +986,12 @@
   onMount(() => {
     const narrow = matchMedia("(max-width:60rem)");
     library = !narrow.matches;
-    let fitted = false;
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0].contentRect;
       width = rect.width;
       height = rect.height;
-      if (!fitted && width > 0 && height > 0) {
-        fitted = true;
-        fit();
-      }
+      // Re-frame after toolbar wrapping or rotation until the user takes over.
+      if (!cameraTouched && width > 0 && height > 0) fit();
     });
     if (stage) observer.observe(stage);
     const resetPanels = (event: MediaQueryListEvent) => {
@@ -1974,12 +1979,17 @@
       right: 0;
     }
     .editor-toolbar {
-      flex-wrap: nowrap;
-      overflow: auto;
-      min-height: 3.25rem;
+      flex-wrap: wrap;
+      overflow: visible;
+      min-height: 0;
+      align-items: flex-start;
     }
     .tool-group {
-      flex: none;
+      flex: 0 1 auto;
+      flex-wrap: wrap;
+      min-width: 0;
+      border-right: 0;
+      padding-inline: 0 var(--space-2);
     }
     .save-state {
       order: 3;

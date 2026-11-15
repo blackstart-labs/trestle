@@ -100,18 +100,20 @@
     >
   </defs>
   <rect x="-10000" y="-10000" width="24000" height="24000" class="surround" />
+  {#if grid}<rect
+      x="-10000"
+      y="-10000"
+      width="24000"
+      height="24000"
+      fill="url(#board-grid)"
+      class="grid surround-grid"
+    />{/if}
   <rect
     width={paperWidth}
     height={paperHeight}
     class="paper"
     data-board-paper
   />
-  {#if grid}<rect
-      width={paperWidth}
-      height={paperHeight}
-      fill="url(#board-grid)"
-      class="grid"
-    />{/if}
   {#each scene.elements as e (e.id)}
     {@const font = e.fontSize || 18}
     <g
@@ -159,7 +161,8 @@
               d={`M${e.x},${e.y + e.height / 3}h${e.width} M${e.x},${e.y + (e.height * 2) / 3}h${e.width} M${e.x + 44},${e.y}v${e.height}`}
             />{/if}
           {#if e.kind === "note"}<path
-              d={`M${e.x + e.width - 22},${e.y}v22h22`}
+              class="note-fold"
+              d={`M${e.x + e.width - 22},${e.y} L${e.x + e.width},${e.y + 22} L${e.x + e.width},${e.y} Z`}
             />{/if}
         {:else if e.kind === "ellipse"}<ellipse
             cx={e.x + e.width / 2}
@@ -312,10 +315,12 @@
   .surround {
     fill: var(--surface-sunken);
   }
+  /* The paper rectangle exists only as the export frame; the editor reads as
+     one continuous canvas, so no page edge is drawn. */
   .paper {
-    fill: var(--surface-raised);
-    stroke: var(--line-strong);
-    stroke-width: 1;
+    fill: transparent;
+    stroke: none;
+    pointer-events: none;
   }
   .grid {
     pointer-events: none;
@@ -372,6 +377,11 @@
     stroke: var(--ink);
     stroke-width: var(--object-line-width);
     stroke-dasharray: var(--object-dash);
+  }
+  /* A sticky note dog-ear: the page shows through the folded corner. */
+  .shape > .note-fold {
+    fill: var(--surface-raised);
+    stroke: var(--ink);
   }
   .connector > path,
   .stroke > polyline {
