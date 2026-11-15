@@ -1,0 +1,45 @@
+x-trestle: &trestle
+  image: ${TRESTLE_IMAGE:?Set TRESTLE_IMAGE to a release image}
+  environment:
+    DATABASE_URL: postgres://trestle:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/trestle?sslmode=disable
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+services:
+  db:
+    image: postgres:18-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+    environment:
+      POSTGRES_DB: trestle
+      POSTGRES_USER: trestle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "trestle", "-d", "trestle"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *trestle
+    command: ["migrate"]
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *trestle
+    ports:
+      - "127.0.0.1:${TRESTLE_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  postgres-data:

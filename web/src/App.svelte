@@ -36,6 +36,7 @@
   let taskRouteVersion = 0;
   let timerError = $state("");
   let settingsSection = $state("");
+  let domainDirty = $state(false);
   // Skip the chooser on arrival; an explicit switch always shows it.
   let autoOpenWorkspace = $state(true);
   let activeTab = $state<"overview" | "workspaces" | "signin" | "settings">(
@@ -148,12 +149,7 @@
   }
 
   async function signOut() {
-    if (
-      !window.dispatchEvent(
-        new Event("trestle:before-navigate", { cancelable: true }),
-      )
-    )
-      return;
+    if (!canLeaveDomains()) return;
     const csrfToken = getCookie("trestle-csrf");
     try {
       await fetch("/api/v1/session", {
@@ -171,13 +167,16 @@
 
   // Every change of view runs through one place, so the old page can
   // cross-fade into the new one while the shell stays still.
-  function go(update: () => void) {
-    if (
-      !window.dispatchEvent(
-        new Event("trestle:before-navigate", { cancelable: true }),
-      )
-    )
+  function canLeaveDomains() {
+    if (!domainDirty) return true;
+    if (!confirm("Leave Domains? Your unsaved changes will be lost."))
       return false;
+    domainDirty = false;
+    return true;
+  }
+
+  function go(update: () => void) {
+    if (!canLeaveDomains()) return false;
     taskRouteVersion++;
     openingTask = false;
     routeError = "";
@@ -274,6 +273,7 @@
     "appearance",
     "instance-status",
     "integration",
+    "domains",
     "workspace",
     "profile",
   ];
@@ -407,6 +407,16 @@
 
   const commands = $derived.by(() => {
     const list: Command[] = [];
+    if (user?.instance_operator) {
+      list.push({
+        id: "go-domains",
+        group: "Go to",
+        label: "Settings: Domains",
+        icon: "settings",
+        keywords: "instance public url https reverse proxy",
+        run: () => void navigateHash("domains"),
+      });
+    }
     if (user && selectedWorkspace) {
       const ws = selectedWorkspace;
       for (const p of paletteProjects) {
@@ -631,16 +641,15 @@
       checkingAuth = false;
     }
 
-    let previousHash = window.location.hash;
     const handleHash = () => {
-      const nextHash = window.location.hash;
-      if (go(() => route(nextHash.replace(/^#/, "")))) previousHash = nextHash;
-      else
-        window.history.replaceState(
-          window.history.state,
-          "",
-          `${window.location.pathname}${window.location.search}${previousHash}`,
-        );
+      const hash = window.location.hash.replace(/^#/, "");
+      if (
+        hash === "domains" &&
+        activeTab === "settings" &&
+        settingsSection === "domains"
+      )
+        return;
+      if (!go(() => route(hash))) history.replaceState(null, "", "#domains");
     };
 
     handleHash();
@@ -1017,8 +1026,13 @@
           workspace={selectedWorkspace}
           {user}
           signedIn={!!user}
+          {checkingAuth}
           initialProjectId={selectedProject?.id || ""}
-          onselectsection={(sec) => (settingsSection = sec)}
+          onselectsection={(sec) => {
+            if (sec !== settingsSection && !canLeaveDomains()) return false;
+            settingsSection = sec;
+          }}
+          ondomainedit={(dirty) => (domainDirty = dirty)}
           onselectworkspace={(ws) => (selectedWorkspace = ws)}
           onworkspaceupdated={(ws) => {
             selectedWorkspace = ws;

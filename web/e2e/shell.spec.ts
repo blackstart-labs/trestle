@@ -9,7 +9,7 @@ test.describe("touch navigation", () => {
     await page.goto("/");
     await page.getByRole("link", { name: "Settings", exact: true }).tap();
     await expect(page.getByRole("status")).toHaveText(
-      "Database connection unavailable.",
+      "Database unavailable or migration history does not match.",
     );
     const heading = page.getByRole("heading", { name: "Instance status" });
     await heading.scrollIntoViewIfNeeded();
@@ -20,7 +20,7 @@ test.describe("touch navigation", () => {
     await page.getByRole("button", { name: "Check again" }).tap();
     expect((await response).status()).toBe(503);
     await expect(page.getByRole("status")).toHaveText(
-      "Database connection unavailable.",
+      "Database unavailable or migration history does not match.",
     );
   });
 });
@@ -143,7 +143,7 @@ for (const theme of ["light", "dark"]) {
       .getByRole("radio", { name: new RegExp(`^${theme}\\b`, "i") })
       .check();
     await expect(page.getByRole("status")).toHaveText(
-      "Database connection unavailable.",
+      "Database unavailable or migration history does not match.",
     );
     // Settings carries the most controls; the overview is the landing page.
     for (const hash of ["#settings", "#overview", "#signin"]) {
@@ -179,7 +179,7 @@ for (const [width, height] of [
       page.getByRole("heading", { name: "Settings", level: 1 }),
     ).toBeFocused();
     await expect(page.getByRole("status")).toHaveText(
-      "Database connection unavailable.",
+      "Database unavailable or migration history does not match.",
     );
     await expect(page.getByRole("radio", { name: /^Light\b/ })).toBeVisible();
     expect(

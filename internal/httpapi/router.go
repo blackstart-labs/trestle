@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maruf-pfc/trestle/internal/config"
+	"github.com/maruf-pfc/trestle/internal/database"
 	"github.com/maruf-pfc/trestle/internal/identity"
 )
 
@@ -62,6 +63,8 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("POST /api/v1/session", s.login)
 	mux.HandleFunc("DELETE /api/v1/session", s.auth(s.logout))
 	mux.HandleFunc("GET /api/v1/me", s.auth(s.me))
+	mux.HandleFunc("GET /api/v1/instance/domain", s.auth(s.getInstanceDomain))
+	mux.HandleFunc("PUT /api/v1/instance/domain", s.auth(s.updateInstanceDomain))
 	mux.HandleFunc("PATCH /api/v1/me", s.auth(s.updateProfile))
 	mux.HandleFunc("GET /api/v1/me/avatar", s.getUserAvatar)
 	mux.HandleFunc("PUT /api/v1/me/avatar", s.auth(s.setUserAvatar))
@@ -273,7 +276,7 @@ func peerIP(r *http.Request) string {
 func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.Timeout)
 	defer cancel()
-	if _, err := s.Pool.Exec(ctx, "SELECT 1"); err != nil {
+	if err := database.CheckSchema(ctx, s.Pool); err != nil {
 		slog.Warn("database readiness check failed")
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "Service unavailable")
 		return

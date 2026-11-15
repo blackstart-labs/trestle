@@ -1,0 +1,23 @@
+[Unit]
+Description=Trestle web application
+Requires=trestle-migrate.service
+After=trestle-migrate.service
+
+[Container]
+Image=@TRESTLE_IMAGE@
+ContainerName=trestle-app
+Network=trestle.network
+EnvironmentFile=./trestle.env
+PublishPort=127.0.0.1:3000:3000
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+Notify=healthy
+StopTimeout=15
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target

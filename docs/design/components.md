@@ -35,22 +35,14 @@ them through real application interactions, not private internals.
 
 ## Work surfaces
 
-- **Boards**: Workspace diagrams and freehand whiteboards use a full-window
-  canvas-first editor with a collapsible shape library, formatting toolbar,
-  contained canvas stage and an optional properties panel. Semantic ink colors
-  and Mona Sans are unchanged. `boards/BoardCanvas.svelte` renders validated
-  object scenes, not user-provided SVG; `boards/BoardEditor.svelte` owns direct
-  manipulation and `boards/scene.ts` owns geometry, validation and export. The
-  properties panel supplies object selection, coordinate/size editing,
-  connection selection and coordinate-based stroke entry, so dragging is
-  optional. Keyboard shortcuts never fire in fields, dialogs or menus. Explicit
-  saves retain failed/conflicting drafts; archive is reversible and
-  manager-only. Guests can inspect/export but cannot edit. New content is empty,
-  never seeded with example business data. See [Boards](../boards.md) for limits.
-  Shell `go()` and sign-out dispatch the cancelable
-  `trestle:before-navigate` window event; the active board cancels navigation
-  during saves or when the user declines to discard a dirty draft. Page reloads
-  use `beforeunload`. Palette opening alone does not discard content.
+- **Settings → Domains** is visible to instance operators. The Public URL form
+  shows the saved HTTPS origin, uses explicit save and discard actions, preserves
+  drafts on failure, and lets operators reload the saved URL after a concurrent
+  edit. Changing sections, leaving Settings, and reloading guard unsaved changes.
+  Domains, Profile and Workspace use `.settings-panel-heading` and
+  `.settings-form-actions` for the same padded-panel headers and right-aligned
+  save actions. Reverse proxy addresses use the shared inset row treatment.
+  Domains is a Settings tab and command palette destination at `#domains`.
 
 - **Settings → Integration** selects an active Project in the current Workspace.
   Workspace owners/admins can save, replace, test, and disconnect Telegram (including optional Topic ID for forum supergroups), Slack,

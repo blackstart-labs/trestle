@@ -55,10 +55,7 @@ git clone https://github.com/blackstart-labs/trestle.git && cd trestle && ./run.
 git clone https://github.com/blackstart-labs/trestle.git; cd trestle; .\run.ps1
 ```
 
-Access the app at **`http://127.0.0.1:3000`**. The local runner creates an
-operator account named `admin` with a random password and prints it once; copy
-it from the terminal output and change it after signing in. Run
-`./run.sh --interactive` to choose your own credentials instead.
+Access the app at **`http://127.0.0.1:3000`** with the local credentials printed by the runner.
 
 To stop the background database:
 ```bash
@@ -69,36 +66,25 @@ To stop the background database:
 
 ## 🌐 Production Deployment
 
-The repository ships `compose.prod.yaml`, a VPS-ready stack that runs PostgreSQL,
-applies migrations, then starts Trestle. The database is never published, and
-Trestle binds to loopback so a reverse proxy can terminate TLS.
+On a Linux host with Docker Compose, install the latest published Trestle
+release:
 
 ```bash
-cp .env.production.example .env
-# Replace the placeholder password in POSTGRES_PASSWORD and DATABASE_URL.
-docker compose -f compose.prod.yaml up -d --build
-docker compose -f compose.prod.yaml run --rm app bootstrap
+installer=$(curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/blackstart-labs/trestle/releases/latest/download/trestle-install.sh) && bash -c "$installer"
 ```
 
-Put Caddy, nginx or Traefik in front of `127.0.0.1:3000` and give it a public
-HTTPS hostname. Outside `TRESTLE_DEV_MODE`, cookies are `Secure`, so plain HTTP
-on a public address will not keep you signed in.
+The installer verifies the deployment bundle, pulls the release image by
+digest, and prompts for the first user and Workspace. Set up an HTTPS reverse
+proxy before signing in, or set `TRESTLE_DOMAIN` to use the bundled Caddy
+proxy. For rootless Podman, use
+`TRESTLE_RUNTIME=podman bash -c "$installer"` in the same command. See
+[Operations & Deployment](docs/operations.md) for Quadlet prerequisites,
+proxy setup, backups, and upgrades on AMD64, ARM64, and RISC-V.
 
-```caddyfile
-trestle.example.com {
-    reverse_proxy 127.0.0.1:3000
-}
-```
-
-### ARM servers and Raspberry Pi
-
-The pinned base images are multi-arch. Build natively on the host, or cross-build
-from an amd64 machine with buildx and QEMU:
-
-```bash
-docker buildx build --platform linux/arm64,linux/amd64 \
-  -t your-registry/trestle:latest --push .
-```
+**Upgrading an existing deployment?** Inspect the running PostgreSQL container's
+actual data mount and verify a logical backup before recreating it. Older README
+examples mounted PostgreSQL 18 at `/var/lib/postgresql/data`, while the upstream
+image stores its data under `/var/lib/postgresql/18/docker` by default.
 
 Then set `TRESTLE_IMAGE_TAG` in `.env` and drop the `build:` key from your
 Compose file, or keep building on the server itself. The prebuilt Hub image

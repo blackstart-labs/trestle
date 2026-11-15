@@ -31,6 +31,8 @@ This document defines Trestle's security architecture, trust boundaries, access 
 
 ### Actor Categories:
 - **Host / Cluster Operator**: Controls binary, environment variables, PostgreSQL credentials, and filesystem. Has root authority over local data.
+- **Instance operator**: Can change the public URL for notification links. The host CLI grants and revokes this permission. Workspace roles do not grant it. Trestle validates the URL and uses the stored value instead of request host or forwarding headers.
+- The bundled Caddy proxy joins a dedicated ingress network shared with Trestle. It receives the configured hostname and has neither a PostgreSQL connection nor access to the app's environment file. Its administration endpoint is disabled.
 - **Workspace Owner**: Has full administrative authority over a workspace, including billing, member management, and ownership transfer.
 - **Workspace Admin**: Can manage projects, members, and project integrations, but cannot remove/demote the owner or transfer ownership.
 - **Workspace Member / Contributor**: Can view and create tasks, participate in discussions, update assigned work, and view projects in their workspace.

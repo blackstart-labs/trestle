@@ -5,6 +5,8 @@ A shared language for projects, recorded work, and connected knowledge.
 ## People and ownership
 
 **Instance**: One independently operated Trestle installation.
+**Instance operator**: A user granted permission by the host operator to manage
+instance-wide settings. Workspace roles do not grant instance operator access.
 
 **User**: A person with an identity in an instance, potentially belonging to
 several workspaces. _Avoid_: Account when referring to workspace ownership.

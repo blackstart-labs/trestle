@@ -44,11 +44,7 @@
 
     <h2>1. Signing In</h2>
     <p>Open your browser and navigate to your Trestle instance URL (typically <code>http://localhost:3000</code> in local development or your domain in production).</p>
-    <p>Enter your account credentials:</p>
-    <ul>
-      <li><strong>Default Username:</strong> <code>admin</code></li>
-      <li><strong>Default Password:</strong> <code>adminpassword123</code> (or the custom password created during bootstrap)</li>
-    </ul>
+    <p>Sign in with the credentials set during production bootstrap or shown by the local development runner.</p>
 
     <Callout type="note" title="SECURITY RECOMMENDATION">
       After your initial sign-in, change your password in <strong>Workspace Settings → Profile</strong> or run the operator CLI command <code>go run . resetpassword</code>.
@@ -435,48 +431,13 @@
 # .\\run.ps1`} />
     <p>The runner automatically handles database readiness, frontend assets, database migrations, and provisions the initial admin account.</p>
 
-    <h2>Option 2: Docker Hub & Docker Compose (Production)</h2>
-    <p>Pull the official pre-built image (~32MB) from Docker Hub:</p>
-    <CodeBlock lang="bash" code={`docker pull marufsarker/trestle:latest`} />
+    <h2>Production with Docker Compose</h2>
+    <p>Install the latest published release from a terminal on a Linux host with Docker Compose:</p>
+    <CodeBlock lang="bash" code={`installer=$(curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/blackstart-labs/trestle/releases/latest/download/trestle-install.sh) && bash -c "$installer"`} />
+    <p>Use the release image index digest. The installer starts PostgreSQL, runs migrations, and prompts for the first user and Workspace. Point your HTTPS reverse proxy at <code>127.0.0.1:3000</code>.</p>
+    <p>For rootless Podman with Quadlet, use <code>TRESTLE_RUNTIME=podman bash -c "$installer"</code> in the same command. Check the systemd and lingering prerequisites in the operations guide.</p>
+    <p>For an existing install, verify a backup of the running database before recreating its container. Follow the <a href="https://github.com/blackstart-labs/trestle/blob/main/docs/operations.md">operations guide</a> for recovery and upgrade steps.</p>
 
-    <p>Create a <code>docker-compose.yml</code> file:</p>
-    <CodeBlock lang="yaml" code={`version: '3.8'
-
-services:
-  db:
-    image: postgres:18-bookworm
-    restart: always
-    environment:
-      POSTGRES_DB: trestle
-      POSTGRES_USER: trestle
-      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?Password required}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trestle -d trestle"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  app:
-    image: marufsarker/trestle:latest
-    restart: always
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://trestle:\${POSTGRES_PASSWORD}@db:5432/trestle
-      TRESTLE_BIND_ADDR: 0.0.0.0:3000
-      TRESTLE_DEV_MODE: "false"
-    ports:
-      - "127.0.0.1:3000:3000"
-
-volumes:
-  pgdata:`} />
-
-    <p>Start the services in background mode:</p>
-    <CodeBlock lang="bash" code={`docker compose up -d`} />
-    <p>Your Trestle instance is now accessible at <code>http://localhost:3000</code>.</p>
   {/if}
 </div>
 

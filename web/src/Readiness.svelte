@@ -4,7 +4,7 @@
   import Feedback from "./ui/Feedback.svelte";
 
   let checking = $state(false);
-  let status = $state("Checking database connection…");
+  let status = $state("Checking database readiness…");
   let active: AbortController | undefined;
   let tone = $state<"neutral" | "success" | "warning" | "danger">("neutral");
   let lastChecked = $state<Date | null>(null);
@@ -13,7 +13,7 @@
     if (checking) return;
     checking = true;
     tone = "neutral";
-    status = "Checking database connection…";
+    status = "Checking database readiness…";
     const controller = new AbortController();
     active = controller;
     const deadline = setTimeout(() => controller.abort(), 5000);
@@ -23,7 +23,7 @@
         cache: "no-store",
       });
       if (response.status === 503) {
-        status = "Database connection unavailable.";
+        status = "Database unavailable or migration history does not match.";
         tone = "warning";
       } else if (
         response.status === 200 &&
@@ -31,7 +31,7 @@
           "application/json" &&
         (await response.json())?.status === "ok"
       ) {
-        status = "Database connection ready.";
+        status = "Database is ready.";
         tone = "success";
       } else {
         status = "Could not check readiness. Try again.";
@@ -71,8 +71,7 @@
   </div>
 
   <p class="note">
-    Readiness checks connectivity only, not schema compatibility or product
-    availability.
+    Readiness checks the database connection and applied migrations.
     {#if lastChecked}
       Last checked at
       <time datetime={lastChecked.toISOString()}

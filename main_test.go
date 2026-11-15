@@ -22,6 +22,24 @@ var configKeys = []string{
 	"TRESTLE_DEV_MODE", "TRESTLE_ARGON2_M_COST", "TRESTLE_ARGON2_T_COST", "TRESTLE_ARGON2_PARALLELISM",
 }
 
+func TestProbeReadinessRequiresHTTP200(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusFound, http.StatusServiceUnavailable} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/health/ready" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Location", "/")
+			w.WriteHeader(status)
+		}))
+		err := probeReadiness(server.URL + "/health/ready")
+		server.Close()
+		if (err == nil) != (status == http.StatusOK) {
+			t.Errorf("probe status %d returned %v", status, err)
+		}
+	}
+}
+
 // runWithEnv runs the executable's entry point in-process with only env set,
 // and returns its error plus everything it logged (what main would print).
 func runWithEnv(t *testing.T, env map[string]string, args ...string) (error, string) {

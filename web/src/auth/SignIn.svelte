@@ -11,6 +11,7 @@
     locale: string;
     timezone: string;
     avatar_url?: string | null;
+    instance_operator?: boolean;
   }
 
   let {

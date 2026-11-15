@@ -1,0 +1,32 @@
+services:
+  app:
+    ports: !reset []
+    networks:
+      default:
+      ingress:
+        aliases: [trestle-app]
+
+  caddy:
+    image: caddy:2.11-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    environment:
+      TRESTLE_DOMAIN: ${TRESTLE_DOMAIN:?Set TRESTLE_DOMAIN to a public DNS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    tmpfs: [/config]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    networks: [ingress]
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  ingress:
+
+volumes:
+  caddy-data:

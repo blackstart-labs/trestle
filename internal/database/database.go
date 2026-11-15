@@ -2,6 +2,7 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha512"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -38,13 +40,16 @@ func Pool(cfg config.Config) *pgxpool.Pool {
 }
 
 type migration struct {
-	version     int64
-	description string
-	sql         string
-	checksum    []byte
+	version      int64
+	description  string
+	sql          string
+	checksum     []byte
+	crlfChecksum []byte
 }
 
-func load() ([]migration, error) {
+var load = sync.OnceValues(loadMigrations)
+
+func loadMigrations() ([]migration, error) {
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	if err != nil {
 		return nil, err
@@ -62,10 +67,65 @@ func load() ([]migration, error) {
 		if err != nil {
 			return nil, err
 		}
-		sum := sha512.Sum384(body)
-		out = append(out, migration{version, strings.ReplaceAll(desc, "_", " "), string(body), sum[:]})
+		sql := strings.ReplaceAll(string(body), "\r\n", "\n")
+		sum := sha512.Sum384([]byte(sql))
+		// Earlier builds hashed checkout bytes, which could have CRLF line endings.
+		crlf := sha512.Sum384([]byte(strings.ReplaceAll(sql, "\n", "\r\n")))
+		out = append(out, migration{version, strings.ReplaceAll(desc, "_", " "), sql, sum[:], crlf[:]})
 	}
 	return out, nil
+}
+
+// CheckSchema verifies the database's migration history against this build.
+func CheckSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	all, err := load()
+	if err != nil {
+		return err
+	}
+	applied, err := appliedMigrations(ctx, pool, all)
+	if err != nil {
+		return err
+	}
+	if len(applied) != len(all) {
+		return errors.New("database schema does not match this build")
+	}
+	return nil
+}
+
+type migrationReader interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func appliedMigrations(ctx context.Context, db migrationReader, all []migration) (map[int64]bool, error) {
+	expected := make(map[int64]migration, len(all))
+	for _, m := range all {
+		expected[m.version] = m
+	}
+	rows, err := db.Query(ctx, "SELECT version, success, checksum FROM _sqlx_migrations ORDER BY version")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	applied := make(map[int64]bool, len(all))
+	for rows.Next() {
+		var version int64
+		var success bool
+		var checksum []byte
+		if err := rows.Scan(&version, &success, &checksum); err != nil {
+			return nil, err
+		}
+		m, known := expected[version]
+		switch {
+		case !success:
+			return nil, fmt.Errorf("migration %d is partially applied; fix and remove it from _sqlx_migrations", version)
+		case !known:
+			return nil, fmt.Errorf("migration %d was applied but is missing from this build", version)
+		case !bytes.Equal(checksum, m.checksum) && !bytes.Equal(checksum, m.crlfChecksum):
+			return nil, fmt.Errorf("migration %d was modified after it was applied", version)
+		}
+		applied[version] = true
+	}
+	return applied, rows.Err()
 }
 
 // Migrate applies pending migrations. Serving HTTP never invokes this function.
@@ -103,48 +163,13 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	var dirty int64
-	err = conn.QueryRow(ctx, "SELECT version FROM _sqlx_migrations WHERE success = false ORDER BY version LIMIT 1").Scan(&dirty)
-	if err == nil {
-		return fmt.Errorf("migration %d is partially applied; fix and remove it from _sqlx_migrations", dirty)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
-
-	rows, err := conn.Query(ctx, "SELECT version, checksum FROM _sqlx_migrations ORDER BY version")
+	applied, err := appliedMigrations(ctx, conn, all)
 	if err != nil {
 		return err
 	}
-	applied := map[int64][]byte{}
-	for rows.Next() {
-		var v int64
-		var sum []byte
-		if err := rows.Scan(&v, &sum); err != nil {
-			rows.Close()
-			return err
-		}
-		applied[v] = sum
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	known := map[int64]bool{}
-	for _, m := range all {
-		known[m.version] = true
-	}
-	for v := range applied {
-		if !known[v] {
-			return fmt.Errorf("migration %d was applied but is missing from this build", v)
-		}
-	}
 
 	for _, m := range all {
-		if sum, ok := applied[m.version]; ok {
-			if string(sum) != string(m.checksum) {
-				return fmt.Errorf("migration %d was modified after it was applied", m.version)
-			}
+		if applied[m.version] {
 			continue
 		}
 		started := time.Now()
