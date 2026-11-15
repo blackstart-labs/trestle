@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -29,6 +32,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Runner dependency refresh regression
         run: node --test tests/runner-frontend.test.mjs
+      - name: Hosted installer regression
+        run: bash tests/release-installer.sh
+      - name: Runtime installer regression
+        run: bash tests/quadlet-installer.sh
       - name: Format check
         working-directory: web
         run: npm run format:check
@@ -199,6 +206,7 @@ jobs:
   # ----------------------------------------------------------------------------
   package:
     name: Release & Container Build
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: [frontend, go-lint, backend-test]
@@ -217,5 +225,13 @@ jobs:
           cache: true
       - name: Release binary build
         run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o trestle .
-      - name: Container build verification
-        run: docker build --tag trestle:ci .
+      - name: Container build and deployment smoke test
+        run: |
+          docker buildx create --use --driver docker-container
+          docker buildx build --load --tag trestle:ci .
+          bash tests/deployment-smoke.sh trestle:ci
+          bash tests/managed-caddy-smoke.sh trestle:ci
+      - name: Verify release image builds for all target architectures
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64,linux/riscv64 \
+            --output "type=oci,dest=$RUNNER_TEMP/trestle.oci.tar" .

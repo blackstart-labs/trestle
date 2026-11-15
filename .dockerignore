@@ -11,5 +11,6 @@
 !web/**
 web/node_modules/
 web/dist/
+web/.env*
 web/test-results/
 web/playwright-report/

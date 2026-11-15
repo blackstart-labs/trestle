@@ -1,0 +1,20 @@
+[Unit]
+Description=Trestle database migrations
+Requires=trestle-db.service
+After=trestle-db.service
+
+[Container]
+Image=@TRESTLE_IMAGE@
+ContainerName=trestle-migrate
+Network=trestle.network
+EnvironmentFile=./trestle.env
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+HealthCmd=none
+Exec=migrate
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=180

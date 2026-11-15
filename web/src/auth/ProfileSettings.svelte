@@ -148,7 +148,7 @@
 </script>
 
 <section class="panel panel-pad" aria-labelledby="profile-heading">
-  <div class="pref-head">
+  <div class="settings-panel-heading">
     <h2 id="profile-heading" tabindex="-1">Profile</h2>
     <p>Your personal account details and avatar.</p>
   </div>
@@ -236,7 +236,7 @@
       </p>
     </div>
 
-    <div class="form-actions">
+    <div class="settings-form-actions">
       <Button
         type="submit"
         variant="primary"
@@ -249,19 +249,6 @@
 </section>
 
 <style>
-  .pref-head {
-    margin-bottom: var(--space-5);
-  }
-  .pref-head h2 {
-    font-size: var(--text-lg);
-    font-weight: 520;
-    margin: 0 0 var(--space-1) 0;
-  }
-  .pref-head p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-  }
   .avatar-uploader {
     display: flex;
     align-items: center;
@@ -322,10 +309,5 @@
     flex-direction: column;
     gap: var(--space-4);
     margin-top: var(--space-4);
-  }
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: var(--space-2);
   }
 </style>

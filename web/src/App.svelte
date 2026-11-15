@@ -32,6 +32,7 @@
   let taskRouteVersion = 0;
   let timerError = $state("");
   let settingsSection = $state("");
+  let domainDirty = $state(false);
   // Skip the chooser on arrival; an explicit switch always shows it.
   let autoOpenWorkspace = $state(true);
   let activeTab = $state<"overview" | "workspaces" | "signin" | "settings">(
@@ -142,6 +143,7 @@
   }
 
   async function signOut() {
+    if (!canLeaveDomains()) return;
     const csrfToken = getCookie("trestle-csrf");
     try {
       await fetch("/api/v1/session", {
@@ -159,7 +161,16 @@
 
   // Every change of view runs through one place, so the old page can
   // cross-fade into the new one while the shell stays still.
+  function canLeaveDomains() {
+    if (!domainDirty) return true;
+    if (!confirm("Leave Domains? Your unsaved changes will be lost."))
+      return false;
+    domainDirty = false;
+    return true;
+  }
+
   function go(update: () => void) {
+    if (!canLeaveDomains()) return false;
     taskRouteVersion++;
     openingTask = false;
     routeError = "";
@@ -167,6 +178,7 @@
       update();
       await tick();
     });
+    return true;
   }
 
   function handleLoginSuccess(authenticatedUser: User) {
@@ -253,6 +265,7 @@
     "appearance",
     "instance-status",
     "integration",
+    "domains",
     "workspace",
     "profile",
   ];
@@ -386,6 +399,16 @@
 
   const commands = $derived.by(() => {
     const list: Command[] = [];
+    if (user?.instance_operator) {
+      list.push({
+        id: "go-domains",
+        group: "Go to",
+        label: "Settings: Domains",
+        icon: "settings",
+        keywords: "instance public url https reverse proxy",
+        run: () => void navigateHash("domains"),
+      });
+    }
     if (user && selectedWorkspace) {
       const ws = selectedWorkspace;
       for (const p of paletteProjects) {
@@ -600,8 +623,16 @@
       checkingAuth = false;
     }
 
-    const handleHash = () =>
-      go(() => route(window.location.hash.replace(/^#/, "")));
+    const handleHash = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      if (
+        hash === "domains" &&
+        activeTab === "settings" &&
+        settingsSection === "domains"
+      )
+        return;
+      if (!go(() => route(hash))) history.replaceState(null, "", "#domains");
+    };
 
     handleHash();
     window.addEventListener("hashchange", handleHash);
@@ -953,8 +984,13 @@
           workspace={selectedWorkspace}
           {user}
           signedIn={!!user}
+          {checkingAuth}
           initialProjectId={selectedProject?.id || ""}
-          onselectsection={(sec) => (settingsSection = sec)}
+          onselectsection={(sec) => {
+            if (sec !== settingsSection && !canLeaveDomains()) return false;
+            settingsSection = sec;
+          }}
+          ondomainedit={(dirty) => (domainDirty = dirty)}
           onselectworkspace={(ws) => (selectedWorkspace = ws)}
           onworkspaceupdated={(ws) => {
             selectedWorkspace = ws;

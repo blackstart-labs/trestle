@@ -55,7 +55,7 @@ git clone https://github.com/blackstart-labs/trestle.git && cd trestle && ./run.
 git clone https://github.com/blackstart-labs/trestle.git; cd trestle; .\run.ps1
 ```
 
-Access the app at **`http://127.0.0.1:3000`** (Default login: `admin` / `adminpassword123`).
+Access the app at **`http://127.0.0.1:3000`** with the local credentials printed by the runner.
 
 To stop the background database:
 ```bash
@@ -66,55 +66,25 @@ To stop the background database:
 
 ## 🌐 Production Deployment
 
-Deploy Trestle in production using the official Docker Hub image:
+On a Linux host with Docker Compose, install the latest published Trestle
+release:
 
 ```bash
-docker pull marufsarker/trestle:latest
+installer=$(curl -fsSL --proto '=https' --proto-redir '=https' https://github.com/blackstart-labs/trestle/releases/latest/download/trestle-install.sh) && bash -c "$installer"
 ```
 
-### Docker Compose
+The installer verifies the deployment bundle, pulls the release image by
+digest, and prompts for the first user and Workspace. Set up an HTTPS reverse
+proxy before signing in, or set `TRESTLE_DOMAIN` to use the bundled Caddy
+proxy. For rootless Podman, use
+`TRESTLE_RUNTIME=podman bash -c "$installer"` in the same command. See
+[Operations & Deployment](docs/operations.md) for Quadlet prerequisites,
+proxy setup, backups, and upgrades on AMD64, ARM64, and RISC-V.
 
-Create a `compose.yaml`:
-
-```yaml
-services:
-  db:
-    image: postgres:18-bookworm
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: trestle
-      POSTGRES_USER: trestle
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set database password}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trestle -d trestle"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  app:
-    image: marufsarker/trestle:latest
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    entrypoint: ["sh", "-c", "/app/trestle migrate && /app/trestle"]
-    environment:
-      DATABASE_URL: "postgres://trestle:${POSTGRES_PASSWORD}@db:5432/trestle?sslmode=disable"
-      TRESTLE_BIND_ADDR: "0.0.0.0:3000"
-      TRESTLE_DEV_MODE: "false"
-    ports:
-      - "3000:3000"
-
-volumes:
-  postgres-data:
-```
-
-Launch with:
-```bash
-docker compose up -d
-```
+**Upgrading an existing deployment?** Inspect the running PostgreSQL container's
+actual data mount and verify a logical backup before recreating it. Older README
+examples mounted PostgreSQL 18 at `/var/lib/postgresql/data`, while the upstream
+image stores its data under `/var/lib/postgresql/18/docker` by default.
 
 ---
 

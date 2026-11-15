@@ -1,0 +1,7 @@
+{
+	admin off
+}
+
+{$TRESTLE_DOMAIN} {
+	reverse_proxy trestle-app:3000
+}
