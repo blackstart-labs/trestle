@@ -42,6 +42,7 @@ func TestMilestoneLifecycleAndTaskRollup(t *testing.T) {
 	ptEq(t, "status", created["status"], "open")
 	ptEq(t, "total_tasks", created["total_tasks"], 0)
 	ptEq(t, "completed_tasks", created["completed_tasks"], 0)
+	ptEq(t, "cancelled_tasks", created["cancelled_tasks"], 0)
 	ptEq(t, "open_tasks", created["open_tasks"], 0)
 
 	// Create tasks associated with this milestone
@@ -61,6 +62,13 @@ func TestMilestoneLifecycleAndTaskRollup(t *testing.T) {
 	}), http.StatusCreated).JSON(t)
 	ptEq(t, "t2 milestone_id", t2["milestone_id"], mid)
 
+	t3 := ptExpect(t, c.do("POST", projectPath+"/tasks", map[string]any{
+		"title":        "Task 3",
+		"status":       "cancelled",
+		"milestone_id": mid,
+	}), http.StatusCreated).JSON(t)
+	ptEq(t, "t3 milestone_id", t3["milestone_id"], mid)
+
 	// Unrelated task
 	ptExpect(t, c.do("POST", projectPath+"/tasks", map[string]any{
 		"title": "Unrelated Task",
@@ -68,15 +76,16 @@ func TestMilestoneLifecycleAndTaskRollup(t *testing.T) {
 
 	// Get milestone rollup
 	got := ptExpect(t, c.do("GET", projectPath+"/milestones/"+mid, nil), http.StatusOK).JSON(t)
-	ptEq(t, "total_tasks", got["total_tasks"], 2)
+	ptEq(t, "total_tasks", got["total_tasks"], 3)
 	ptEq(t, "completed_tasks", got["completed_tasks"], 1)
+	ptEq(t, "cancelled_tasks", got["cancelled_tasks"], 1)
 	ptEq(t, "open_tasks", got["open_tasks"], 1)
 
 	// Filter tasks by milestone_id
 	listFiltered := ptExpect(t, c.do("GET", projectPath+"/tasks?milestone_id="+mid, nil), http.StatusOK).JSON(t)
 	tasks := listFiltered["tasks"].([]any)
-	if len(tasks) != 2 {
-		t.Fatalf("expected 2 tasks for milestone, got %d", len(tasks))
+	if len(tasks) != 3 {
+		t.Fatalf("expected 3 tasks for milestone, got %d", len(tasks))
 	}
 
 	// Update task milestone (clear milestone_id)
@@ -98,7 +107,8 @@ func TestMilestoneLifecycleAndTaskRollup(t *testing.T) {
 	ptEq(t, "title", updatedM["title"], "v1.0 Final")
 	ptEq(t, "color", updatedM["color"], "#26633b")
 	ptEq(t, "start_date", updatedM["start_date"], "2026-11-05")
-	ptEq(t, "total_tasks", updatedM["total_tasks"], 1)
+	ptEq(t, "total_tasks", updatedM["total_tasks"], 2)
+	ptEq(t, "cancelled_tasks", updatedM["cancelled_tasks"], 1)
 
 	// Delete milestone
 	ptExpect(t, c.do("DELETE", projectPath+"/milestones/"+mid, nil), http.StatusNoContent)

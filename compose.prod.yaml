@@ -1,0 +1,58 @@
+# Production stack for a VPS or home server. The database is never published;
+# Trestle listens on loopback so a reverse proxy can terminate TLS.
+#
+#   cp .env.production.example .env
+#   docker compose -f compose.prod.yaml up -d --build
+#   docker compose -f compose.prod.yaml run --rm app bootstrap
+#
+# Works on amd64 and arm64 hosts (Raspberry Pi, Hetzner CAX, Oracle Ampere).
+services:
+  db:
+    image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trestle
+      POSTGRES_USER: trestle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U trestle -d trestle"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 30s
+
+  migrate:
+    image: trestle:${TRESTLE_IMAGE_TAG:-local}
+    build: .
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+
+  app:
+    image: trestle:${TRESTLE_IMAGE_TAG:-local}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${TRESTLE_HTTP_BIND:-127.0.0.1:3000}:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      TRESTLE_BIND_ADDR: 0.0.0.0:3000
+      TRESTLE_DEV_MODE: "false"
+      TRESTLE_MAX_DB_CONNECTIONS: ${TRESTLE_MAX_DB_CONNECTIONS:-10}
+      TRESTLE_DB_TIMEOUT_MS: ${TRESTLE_DB_TIMEOUT_MS:-2000}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-336}
+    stop_grace_period: 15s
+
+volumes:
+  postgres-data:

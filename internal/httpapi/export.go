@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/maruf-pfc/trestle/internal/boards"
 	"github.com/maruf-pfc/trestle/internal/identity"
 	"github.com/maruf-pfc/trestle/internal/projects"
 )
@@ -30,6 +31,7 @@ type workspaceExportData struct {
 	Workspace  workspaceItem       `json:"workspace"`
 	Members    []memberItem        `json:"members"`
 	Projects   []projectExportData `json:"projects"`
+	Boards     []boards.Board      `json:"boards"`
 }
 
 func readProjectExport(ctx context.Context, db projects.Querier, ws, id uuid.UUID) (projectExportData, error) {
@@ -133,6 +135,11 @@ func (s *Server) exportWorkspace(w http.ResponseWriter, r *http.Request, session
 		return
 	}
 	out.Members = mapSlice(members, toMember)
+	out.Boards, err = boards.Export(r.Context(), tx, ids[0])
+	if err != nil {
+		internal(w, "failed to export boards", err)
+		return
+	}
 	list, err := projects.ListProjects(r.Context(), tx, ids[0], true)
 	if err != nil {
 		internal(w, "failed to list projects", err)

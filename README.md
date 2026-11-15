@@ -86,6 +86,13 @@ actual data mount and verify a logical backup before recreating it. Older README
 examples mounted PostgreSQL 18 at `/var/lib/postgresql/data`, while the upstream
 image stores its data under `/var/lib/postgresql/18/docker` by default.
 
+Then set `TRESTLE_IMAGE_TAG` in `.env` and drop the `build:` key from your
+Compose file, or keep building on the server itself. The prebuilt Hub image
+`marufsarker/trestle:latest` is also usable.
+
+See [docs/operations.md](docs/operations.md) for the full environment table,
+health probes, backups and troubleshooting.
+
 ---
 
 ## ⚙️ Configuration
@@ -98,7 +105,8 @@ Configure Trestle via environment variables:
 | `TRESTLE_BIND_ADDR` | `127.0.0.1:3000` | Socket address and port to bind the HTTP server. |
 | `TRESTLE_MAX_DB_CONNECTIONS` | `5` | Maximum active database connections (range: 1–32). |
 | `TRESTLE_DB_TIMEOUT_MS` | `2000` | Database pool query timeout in milliseconds. |
-| `TRESTLE_DEV_MODE` | `false` | When `true`, relaxes `Secure` cookie flag for loopback HTTP testing. |
+| `TRESTLE_DEV_MODE` | `false` | When `true`, relaxes `Secure` cookie flag for loopback HTTP testing only. |
+| `SESSION_TTL_HOURS` | `336` | Absolute session lifetime in hours (1–8760); the idle limit stays 12 hours. |
 
 ---
 

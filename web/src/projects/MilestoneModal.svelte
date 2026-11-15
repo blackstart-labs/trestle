@@ -7,7 +7,7 @@
   import Select from "../ui/Select.svelte";
   import Feedback from "../ui/Feedback.svelte";
   import Icon from "../ui/Icon.svelte";
-  import { formatDueDate } from "../lib/identity";
+  import { completionPercent, formatDueDate } from "../lib/identity";
 
   export interface Milestone {
     id: string;
@@ -22,6 +22,7 @@
     status: "open" | "closed";
     total_tasks: number;
     completed_tasks: number;
+    cancelled_tasks: number;
     open_tasks: number;
     created_at: string;
     updated_at: string;
@@ -240,8 +241,15 @@
   }
 
   function getProgressPercent(m: Milestone): number {
-    if (m.total_tasks <= 0) return 0;
-    return Math.round((m.completed_tasks / m.total_tasks) * 100);
+    return completionPercent(
+      m.completed_tasks,
+      m.total_tasks,
+      m.cancelled_tasks,
+    );
+  }
+
+  function countedTasks(m: Milestone): number {
+    return Math.max(0, m.total_tasks - m.cancelled_tasks);
   }
 </script>
 
@@ -512,9 +520,9 @@
                   </div>
 
                   <div class="task-stats">
-                    {#if m.total_tasks > 0}
+                    {#if countedTasks(m) > 0}
                       <span>
-                        {m.completed_tasks} of {m.total_tasks} completed ({getProgressPercent(
+                        {m.completed_tasks} of {countedTasks(m)} completed ({getProgressPercent(
                           m,
                         )}%)
                       </span>
@@ -524,7 +532,7 @@
                   </div>
                 </div>
 
-                {#if m.total_tasks > 0}
+                {#if countedTasks(m) > 0}
                   <div
                     class="progress-rail"
                     role="progressbar"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -220,7 +221,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		invalidCredentials(w)
 		return
 	}
-	sessionToken, csrfToken, err := identity.CreateSession(ctx, s.Pool, userID)
+	sessionToken, csrfToken, err := identity.CreateSession(ctx, s.Pool, userID, s.Config.SessionTTL)
 	if err != nil {
 		internal(w, "failed to create session", err)
 		return
@@ -232,9 +233,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = identity.RecordAuditEvent(ctx, s.Pool, &userID, "session.created", map[string]any{"method": "password"})
 
-	w.Header().Add("Set-Cookie", "trestle-session="+sessionToken+"; HttpOnly"+s.secure()+"; SameSite=Lax; Path=/; Max-Age=604800")
+	maxAge := int(s.Config.SessionTTL.Seconds())
+	if maxAge <= 0 {
+		maxAge = int(identity.SessionMaxAge.Seconds())
+	}
+	w.Header().Add("Set-Cookie", "trestle-session="+sessionToken+"; HttpOnly"+s.secure()+"; SameSite=Lax; Path=/; Max-Age="+strconv.Itoa(maxAge))
 	// Not HttpOnly: the frontend reads it and sends it back as X-CSRF-Token.
-	w.Header().Add("Set-Cookie", "trestle-csrf="+csrfToken+s.secure()+"; SameSite=Lax; Path=/; Max-Age=604800")
+	w.Header().Add("Set-Cookie", "trestle-csrf="+csrfToken+s.secure()+"; SameSite=Lax; Path=/; Max-Age="+strconv.Itoa(maxAge))
 	writeJSON(w, http.StatusOK, toUserResponse(user))
 }
 

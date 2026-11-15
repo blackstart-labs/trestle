@@ -22,6 +22,7 @@ type Milestone struct {
 	Status         string // "open" | "closed"
 	TotalTasks     int64
 	CompletedTasks int64
+	CancelledTasks int64
 	OpenTasks      int64
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -50,7 +51,7 @@ func scanMilestone(row pgx.Row) (Milestone, error) {
 	var m Milestone
 	err := row.Scan(
 		&m.ID, &m.WorkspaceID, &m.ProjectID, &m.Title, &m.Description,
-		&m.StartDate, &m.DueDate, &m.Status, &m.Color, &m.TotalTasks, &m.CompletedTasks, &m.OpenTasks,
+		&m.StartDate, &m.DueDate, &m.Status, &m.Color, &m.TotalTasks, &m.CompletedTasks, &m.CancelledTasks, &m.OpenTasks,
 		&m.CreatedAt, &m.UpdatedAt,
 	)
 	return m, mapErr(err)
@@ -60,6 +61,7 @@ const milestoneColumns = `m.id, m.workspace_id, m.project_id, m.title, m.descrip
 	m.start_date, m.due_date, m.status, m.color,
 	COALESCE(COUNT(t.id), 0) AS total_tasks,
 	COALESCE(COUNT(CASE WHEN t.status = 'completed' THEN 1 END), 0) AS completed_tasks,
+	COALESCE(COUNT(CASE WHEN t.status = 'cancelled' THEN 1 END), 0) AS cancelled_tasks,
 	COALESCE(COUNT(CASE WHEN t.status IN ('backlog', 'unstarted', 'started') THEN 1 END), 0) AS open_tasks,
 	m.created_at, m.updated_at
 	FROM milestones m

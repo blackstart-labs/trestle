@@ -41,6 +41,10 @@ or cancelled. _Avoid_: Inferring completion from a status's display name.
 **Milestone**: A planning target grouping tasks toward an outcome and date.
 _Avoid_: Treating every milestone as an actionable task.
 
+**Dependency**: A directed link saying one task is blocked by another.
+Dependencies work across Projects in one Workspace and never replace a parent
+relationship. _Avoid_: Using a dependency to mean a subtask or a milestone.
+
 **Cycle**: A bounded planning period for project work. _Avoid_: Sprint as a
 second resource type with identical meaning.
 
@@ -53,6 +57,7 @@ resources, not a copy of those resources.
 duration, and optional task association.
 
 **Running timer**: A time entry whose work interval has started but not ended.
+It is stored on the server; one user has at most one running timer.
 
 **Timesheet**: A period-based view or submission of a user's time entries.
 _Avoid_: Using timesheet to mean every individual time entry.
@@ -64,6 +69,15 @@ associated metadata. _Avoid_: A folder path as its sole identity.
 
 **Structured collection**: A set of user-defined records and typed properties.
 _Avoid_: Database when confused with Trestle's persistence database.
+
+**Board**: A Workspace-owned visual canvas, saved as editable objects rather
+than a flattened image. All Workspace members can read it; guests cannot edit.
+
+**Diagram**: A Board for labeled shapes and directed connections, such as a
+flowchart. It is not a Task Board view or a second Task store.
+
+**Whiteboard**: A Board for freehand strokes, text and shapes. It shares the
+Diagram's storage, permissions and export format.
 
 **Automation rule**: An authorized trigger, conditions, and actions with
 recorded execution. It is not unrestricted user code.

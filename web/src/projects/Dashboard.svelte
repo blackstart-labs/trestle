@@ -50,6 +50,7 @@
 
   let projects = $state<Project[]>([]);
   let tasksByProject = $state<Record<string, Task[]>>({});
+  let failedProjectIds = $state<string[]>([]);
   let truncated = $state(false);
   let loading = $state(true);
   let errorMessage = $state<string | null>(null);
@@ -171,6 +172,13 @@
     }),
   );
 
+  const failedSet = $derived(new Set(failedProjectIds));
+  const failedNames = $derived(
+    failedProjectIds
+      .map((id) => projectById[id]?.name)
+      .filter((name): name is string => Boolean(name)),
+  );
+
   const projectRows = $derived(
     projects.map((p) => {
       const list = tasksByProject[p.id] ?? [];
@@ -183,6 +191,7 @@
         open,
         total: list.length,
         pct: counted > 0 ? Math.round((done / counted) * 100) : 0,
+        unavailable: failedSet.has(p.id),
       };
     }),
   );
@@ -232,16 +241,26 @@
             `/api/v1/workspaces/${workspace.id}/projects/${p.id}/tasks?limit=${TASK_CAP}&offset=0`,
             { headers: { Accept: "application/json" }, cache: "no-store" },
           );
-          if (!r.ok) return [p.id, [] as Task[], 0] as const;
+          if (!r.ok)
+            return { id: p.id, tasks: [] as Task[], total: 0, failed: true };
           const body = await r.json();
-          return [p.id, (body.tasks || []) as Task[], body.total || 0] as const;
+          return {
+            id: p.id,
+            tasks: (body.tasks || []) as Task[],
+            total: body.total || 0,
+            failed: false,
+          };
         }),
       );
+      const loaded = results.filter((result) => !result.failed);
+      failedProjectIds = results
+        .filter((result) => result.failed)
+        .map((result) => result.id);
       truncated =
         projects.length > PROJECT_CAP ||
-        results.some(([, list, total]) => total > list.length);
+        loaded.some((result) => result.total > result.tasks.length);
       tasksByProject = Object.fromEntries(
-        results.map(([id, list]) => [id, list]),
+        loaded.map((result) => [result.id, result.tasks]),
       );
     } catch {
       errorMessage = "Could not load this workspace. Check your connection.";
@@ -316,6 +335,22 @@
       </Button>
     </div>
   {:else}
+    {#if failedProjectIds.length > 0}
+      <div class="stack">
+        <Feedback tone="warning" announcement="alert">
+          Could not load {failedProjectIds.length === 1
+            ? "one project"
+            : `${failedProjectIds.length} projects`}{failedNames.length > 0
+            ? ` (${failedNames.join(", ")})`
+            : ""}. The figures below exclude them.
+        </Feedback>
+        <div>
+          <Button onclick={load}>
+            {#snippet children()}Retry loading projects{/snippet}
+          </Button>
+        </div>
+      </div>
+    {/if}
     <div class="stats">
       <article class="card stat">
         <header class="stat-head">
@@ -572,15 +607,19 @@
                   >Updated {relativeTime(row.project.updated_at)}</span
                 >
               </span>
-              <span class="pr-open num">
-                <strong>{row.open}</strong> open
-              </span>
-              <span class="pr-progress">
-                <span class="bar" aria-hidden="true">
-                  <span style:width="{row.pct}%"></span>
+              {#if row.unavailable}
+                <span class="pr-open muted">Unavailable</span>
+              {:else}
+                <span class="pr-open num">
+                  <strong>{row.open}</strong> open
                 </span>
-                <span class="num pct">{row.pct}%</span>
-              </span>
+                <span class="pr-progress">
+                  <span class="bar" aria-hidden="true">
+                    <span style:width="{row.pct}%"></span>
+                  </span>
+                  <span class="num pct">{row.pct}%</span>
+                </span>
+              {/if}
               <Icon name="chevron-right" size={16} class="pr-chevron" />
             </button>
           </li>

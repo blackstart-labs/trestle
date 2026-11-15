@@ -28,6 +28,7 @@
     WorkspaceMember,
   } from "./TaskDetailDrawer.svelte";
   import {
+    completionPercent,
     formatDueDate,
     identityHue,
     initials,
@@ -151,6 +152,19 @@
       successMessage = "Time logged to task.";
     } else {
       errorMessage = res.error || "Failed to log time.";
+    }
+  }
+
+  async function handleStartLiveTimer(task: Task) {
+    const res = await liveTimer.start({
+      id: task.id,
+      human_key: task.human_key,
+      title: task.title,
+      project_id: project.id,
+      workspace_id: workspace.id,
+    });
+    if (!res.ok && !res.cancelled) {
+      errorMessage = res.error || "Could not start the timer.";
     }
   }
   let moreRight = $state(false);
@@ -556,8 +570,15 @@
   );
 
   function getMilestonePercent(m: Milestone): number {
-    if (m.total_tasks <= 0) return 0;
-    return Math.round((m.completed_tasks / m.total_tasks) * 100);
+    return completionPercent(
+      m.completed_tasks,
+      m.total_tasks,
+      m.cancelled_tasks,
+    );
+  }
+
+  function countedMilestoneTasks(m: Milestone): number {
+    return Math.max(0, m.total_tasks - m.cancelled_tasks);
   }
 
   function filterTasksByMilestone(milestoneId: string) {
@@ -1727,10 +1748,10 @@
               </div>
 
               <div class="task-stats">
-                {#if m.total_tasks > 0}
+                {#if countedMilestoneTasks(m) > 0}
                   <span>
                     <strong class="num">{m.completed_tasks}</strong> of
-                    <span class="num">{m.total_tasks}</span>
+                    <span class="num">{countedMilestoneTasks(m)}</span>
                     completed ({getMilestonePercent(m)}%)
                   </span>
                 {:else}
@@ -1739,7 +1760,7 @@
               </div>
             </div>
 
-            {#if m.total_tasks > 0}
+            {#if countedMilestoneTasks(m) > 0}
               <div
                 class="progress-rail"
                 role="progressbar"
@@ -1897,13 +1918,7 @@
                   title="Start live timer on {task.human_key}"
                   aria-label="Start live timer on {task.human_key}"
                   onclick={() => {
-                    liveTimer.start({
-                      id: task.id,
-                      human_key: task.human_key,
-                      title: task.title,
-                      project_id: project.id,
-                      workspace_id: workspace.id,
-                    });
+                    void handleStartLiveTimer(task);
                   }}
                 >
                   <Icon name="play" size={14} />
@@ -2096,13 +2111,7 @@
                       title="Start live timer on {task.human_key}"
                       aria-label="Start live timer on {task.human_key}"
                       onclick={() => {
-                        liveTimer.start({
-                          id: task.id,
-                          human_key: task.human_key,
-                          title: task.title,
-                          project_id: project.id,
-                          workspace_id: workspace.id,
-                        });
+                        void handleStartLiveTimer(task);
                       }}
                     >
                       <Icon name="play" size={12} />

@@ -570,6 +570,19 @@ func ListTasks(ctx context.Context, db Querier, workspaceID, projectID uuid.UUID
 	return PaginatedTasks{Tasks: tasks, Total: total, Limit: limit, Offset: offset}, nil
 }
 
+// SearchWorkspaceTasks finds tasks by title or human key across the workspace.
+// An empty query returns the most recently updated tasks, which gives pickers a
+// useful starting list instead of an empty panel.
+func SearchWorkspaceTasks(ctx context.Context, db Querier, workspaceID uuid.UUID, query string, limit int64) ([]Task, error) {
+	limit = min(max(limit, 1), 50)
+	query = strings.TrimSpace(query)
+	return queryTasks(ctx, db, `WHERE t.workspace_id = $1 AND p.archived_at IS NULL
+		AND ($2 = ''
+			OR strpos(lower(t.title), lower($2)) > 0
+			OR strpos(lower(p.key || '-' || t.task_number::text), lower($2)) > 0)
+		ORDER BY t.updated_at DESC, t.task_number DESC LIMIT $3`, workspaceID, query, limit)
+}
+
 // GetTask returns ErrNotFound when the task is not in the project and workspace.
 func GetTask(ctx context.Context, db Querier, workspaceID, projectID, taskID uuid.UUID) (Task, error) {
 	tasks, err := queryTasks(ctx, db, "WHERE t.id = $1 AND t.project_id = $2 AND t.workspace_id = $3", taskID, projectID, workspaceID)

@@ -11,6 +11,7 @@
   import ProjectsView, { type Project } from "./projects/ProjectsView.svelte";
   import TasksView from "./projects/TasksView.svelte";
   import Dashboard from "./projects/Dashboard.svelte";
+  import BoardsView from "./boards/BoardsView.svelte";
   import Icon from "./ui/Icon.svelte";
   import Avatar from "./ui/Avatar.svelte";
   import BrandMark from "./ui/BrandMark.svelte";
@@ -24,8 +25,11 @@
   let user = $state<User | null>(null);
   let selectedWorkspace = $state<Workspace | null>(null);
   let selectedProject = $state<Project | null>(null);
+  let boardEditing = $state(false);
   let openTaskId = $state<string | null>(null);
-  let workspaceTab = $state<"dashboard" | "projects" | "members">("dashboard");
+  let workspaceTab = $state<"dashboard" | "projects" | "members" | "boards">(
+    "dashboard",
+  );
   let checkingAuth = $state(true);
   let openingTask = $state(false);
   let routeError = $state("");
@@ -47,9 +51,10 @@
   let toastMessage = $state<string | null>(null);
 
   function navigateToActiveTask() {
-    if (!liveTimer.active) return;
-    route(
-      `task/${liveTimer.active.workspaceId}/${liveTimer.active.projectId}/${liveTimer.active.taskId}`,
+    const timer = liveTimer.active;
+    if (!timer) return;
+    go(() =>
+      route(`task/${timer.workspaceId}/${timer.projectId}/${timer.taskId}`),
     );
   }
 
@@ -117,6 +122,7 @@
         const data = await response.json();
         if (data && typeof data.username === "string") {
           user = data as User;
+          void liveTimer.load();
           if (activeTab === "signin" || activeTab === "overview") {
             activeTab = "workspaces";
           }
@@ -206,7 +212,9 @@
     });
   }
 
-  function openWorkspaceView(tab: "dashboard" | "projects" | "members") {
+  function openWorkspaceView(
+    tab: "dashboard" | "projects" | "members" | "boards",
+  ) {
     go(() => {
       activeTab = "workspaces";
       workspaceTab = tab;
@@ -361,7 +369,7 @@
   }
 
   function navigateHash(hash: string) {
-    if (window.location.hash === `#${hash}`) route(hash);
+    if (window.location.hash === `#${hash}`) go(() => route(hash));
     else window.location.hash = hash;
   }
 
@@ -436,6 +444,14 @@
           label: "All projects",
           icon: "layers",
           run: () => openWorkspaceView("projects"),
+        },
+        {
+          id: "go-boards",
+          group: "Go to",
+          label: "Boards",
+          icon: "workflow",
+          keywords: "diagram flowchart whiteboard sketch drawing",
+          run: () => openWorkspaceView("boards"),
         },
         {
           id: "go-members",
@@ -605,6 +621,8 @@
       if (!selectedWorkspace) place = "Workspaces";
       else if (workspaceTab === "members")
         place = `Members · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "boards")
+        place = `Boards · ${selectedWorkspace.name}`;
       else if (workspaceTab === "dashboard")
         place = `Dashboard · ${selectedWorkspace.name}`;
       else if (selectedProject) place = selectedProject.name;
@@ -643,7 +661,7 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <a class="skip-link" href="#main">Skip to content</a>
-<div class="shell">
+<div class="shell" class:board-focus={boardEditing}>
   <aside class="sidebar">
     <div class="sidebar-brand">
       <BrandMark />
@@ -711,6 +729,17 @@
           >
             <Icon name="users" size={18} />
             <span>Members</span>
+          </a>
+          <a
+            href="#workspaces"
+            class:selected={navIsWorkspace && workspaceTab === "boards"}
+            aria-current={navIsWorkspace && workspaceTab === "boards"
+              ? "page"
+              : undefined}
+            onclick={() => openWorkspaceView("boards")}
+          >
+            <Icon name="workflow" size={18} />
+            <span>Boards</span>
           </a>
         {:else}
           <a
@@ -794,6 +823,8 @@
           <Icon name="chevron-right" size={14} class="crumb-sep" />
           {#if workspaceTab === "members"}
             <span class="crumb crumb-current">Members</span>
+          {:else if workspaceTab === "boards"}
+            <span class="crumb crumb-current">Boards</span>
           {:else if workspaceTab === "dashboard"}
             <span class="crumb crumb-current">Dashboard</span>
           {:else if selectedProject}
@@ -844,9 +875,13 @@
               type="button"
               class="btn-quiet btn-icon live-timer-discard"
               disabled={liveTimer.saving}
-              onclick={() => {
-                if (confirm("Discard this timer? Unlogged time will be lost."))
-                  liveTimer.discard();
+              onclick={async () => {
+                if (!confirm("Discard this timer? Unlogged time will be lost."))
+                  return;
+                const result = await liveTimer.discard();
+                if (!result.ok)
+                  timerError =
+                    result.error || "Could not discard the timer. Try again.";
               }}
               title="Discard timer"
               aria-label="Discard timer"
@@ -967,6 +1002,13 @@
               onselectproject={(proj) => openProject(proj)}
             />
           {/if}
+        {:else if workspaceTab === "boards"}
+          {#key selectedWorkspace.id}
+            <BoardsView
+              workspace={selectedWorkspace}
+              oneditingchange={(editing) => (boardEditing = editing)}
+            />
+          {/key}
         {:else if workspaceTab === "members"}
           <WorkspaceMembers
             workspace={selectedWorkspace}
@@ -1622,5 +1664,30 @@
     main {
       padding-top: var(--space-5);
     }
+  }
+  .shell.board-focus {
+    display: block;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .board-focus .sidebar,
+  .board-focus .topbar,
+  .board-focus .canvas::before {
+    display: none;
+  }
+  .board-focus .canvas {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .board-focus main {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    overflow: hidden;
   }
 </style>

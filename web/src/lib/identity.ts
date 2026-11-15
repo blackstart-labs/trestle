@@ -68,3 +68,16 @@ export function isOverdue(value: string | null, today = new Date()): boolean {
   );
   return due < start;
 }
+
+/**
+ * Completion is always completed ÷ (all − cancelled). A milestone with one
+ * completed and one cancelled task is 100%, not 50%.
+ */
+export function completionPercent(
+  completed: number,
+  total: number,
+  cancelled = 0,
+): number {
+  const counted = total - cancelled;
+  return counted > 0 ? Math.round((completed / counted) * 100) : 0;
+}

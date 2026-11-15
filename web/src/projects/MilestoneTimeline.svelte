@@ -4,7 +4,7 @@
   import Button from "../ui/Button.svelte";
   import Icon from "../ui/Icon.svelte";
   import Select, { type SelectOption } from "../ui/Select.svelte";
-  import { formatDueDate, isOverdue } from "../lib/identity";
+  import { completionPercent, formatDueDate, isOverdue } from "../lib/identity";
 
   let {
     milestones,
@@ -32,8 +32,11 @@
   ];
 
   function getPercent(m: Milestone): number {
-    if (!m.total_tasks || m.total_tasks <= 0) return 0;
-    return Math.round((m.completed_tasks / m.total_tasks) * 100);
+    return completionPercent(
+      m.completed_tasks,
+      m.total_tasks,
+      m.cancelled_tasks,
+    );
   }
 
   function parseDate(val?: string | null): Date | null {

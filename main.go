@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Embedded so named user time zones work in the slim container.
 
 	"golang.org/x/term"
 

@@ -45,7 +45,7 @@ This document defines Trestle's security architecture, trust boundaries, access 
 
 ### Credential Handling
 - **Usernames**: 3–64 ASCII alphanumeric characters plus `.`, `_`, and `-`. Stored and matched case-insensitively using lowercase canonicalization.
-- **Argon2id Hashing**: Passwords are never stored in plaintext. They are salted with unique cryptographic randomness and hashed using Argon2id (`time=1`, `memory=64MB`, `threads=4`).
+- **Argon2id Hashing**: Passwords are never stored in plaintext. They are salted with unique cryptographic randomness and hashed using Argon2id (`time=2`, `memory=64MB`, `threads=1` by default).
 - **Timing Leak Prevention**: Login verification uses constant-time comparison. When an unknown username is supplied, a dummy verification pass is executed to ensure equivalent response latency.
 
 ### Sessions

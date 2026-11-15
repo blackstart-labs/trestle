@@ -190,6 +190,11 @@
     workspace.role === "admin" ||
     comment.user_id === currentUserId;
 
+  const canDeleteTimeLog = (log: TimeLog) =>
+    workspace.role === "owner" ||
+    workspace.role === "admin" ||
+    log.user_id === currentUserId;
+
   const priorities = [
     { value: "none", label: "None" },
     { value: "low", label: "Low" },
@@ -408,15 +413,18 @@
 
   let stoppingLiveTimer = $state(false);
 
-  function handleStartLiveTimer() {
+  async function handleStartLiveTimer() {
     if (!currentTask?.id) return;
-    liveTimer.start({
+    const res = await liveTimer.start({
       id: currentTask.id,
       human_key: currentTask.human_key,
       title: currentTask.title,
       project_id: project.id,
       workspace_id: workspace.id,
     });
+    if (!res.ok && !res.cancelled) {
+      showNotice(res.error || "Could not start the timer.", "danger");
+    }
   }
 
   async function handleStopLiveTimer() {
@@ -431,6 +439,232 @@
       ontaskupdated?.(currentTask);
     } else {
       showNotice(res.error || "Failed to log time.", "danger");
+    }
+  }
+
+  // ---- Dependencies -------------------------------------------------------
+
+  interface DependencyTask {
+    id: string;
+    workspace_id: string;
+    project_id: string;
+    project_name?: string;
+    project_key: string;
+    task_number: number;
+    human_key: string;
+    title: string;
+    status: string;
+    status_name?: string | null;
+    status_color?: string | null;
+    project_archived?: boolean;
+  }
+
+  interface DependencyLink {
+    id: string;
+    task: DependencyTask;
+    created_at: string;
+  }
+
+  let dependencies = $state<{
+    blocked_by: DependencyLink[];
+    blocks: DependencyLink[];
+  }>({ blocked_by: [], blocks: [] });
+  let loadingDependencies = $state(true);
+  let dependencyError = $state("");
+  let dependencyDirection = $state<"blocked_by" | "blocks">("blocked_by");
+  let dependencySearch = $state("");
+  let dependencyResults = $state<DependencyTask[]>([]);
+  let searchingDependencies = $state(false);
+  let addingDependency = $state(false);
+  let removingDependencyId = $state("");
+  let dependencySearchTimer: ReturnType<typeof setTimeout> | null = null;
+  let dependencySearchSeq = 0;
+
+  const dependencyDirectionOptions: SelectOption[] = [
+    {
+      value: "blocked_by",
+      label: "is blocked by",
+      description: "This task waits for the other one.",
+    },
+    {
+      value: "blocks",
+      label: "blocks",
+      description: "The other task waits for this one.",
+    },
+  ];
+
+  const dependencyTotal = $derived(
+    dependencies.blocked_by.length + dependencies.blocks.length,
+  );
+
+  export async function loadDependencies() {
+    loadingDependencies = true;
+    dependencyError = "";
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/dependencies`,
+        { headers: { Accept: "application/json" }, cache: "no-store" },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        dependencies = {
+          blocked_by: data.blocked_by || [],
+          blocks: data.blocks || [],
+        };
+      } else {
+        dependencyError =
+          "Could not load dependencies. Check your access and retry.";
+      }
+    } catch {
+      dependencyError =
+        "Could not load dependencies. Check your connection and retry.";
+    } finally {
+      loadingDependencies = false;
+    }
+  }
+
+  function dependencyStatusLabel(task: DependencyTask): string {
+    if (task.status_name) return task.status_name;
+    return (
+      statusCategories.find((c) => c.value === task.status)?.label ??
+      task.status
+    );
+  }
+
+  function dependencyStatusColor(task: DependencyTask): string {
+    return task.status_color || `var(--cat-${task.status})`;
+  }
+
+  function queueDependencySearch(value: string) {
+    dependencySearch = value;
+    if (dependencySearchTimer) clearTimeout(dependencySearchTimer);
+    const term = value.trim();
+    if (term.length === 0) {
+      dependencyResults = [];
+      searchingDependencies = false;
+      return;
+    }
+    dependencySearchTimer = setTimeout(
+      () => void searchDependencyTasks(term),
+      250,
+    );
+  }
+
+  async function searchDependencyTasks(term: string) {
+    const seq = ++dependencySearchSeq;
+    searchingDependencies = true;
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/tasks?query=${encodeURIComponent(term)}&limit=10`,
+        { headers: { Accept: "application/json" }, cache: "no-store" },
+      );
+      if (!res.ok) throw new Error("search failed");
+      const data = await res.json();
+      if (seq !== dependencySearchSeq) return;
+      const linked = new Set([
+        currentTask.id,
+        ...dependencies.blocked_by.map((l) => l.task.id),
+        ...dependencies.blocks.map((l) => l.task.id),
+      ]);
+      dependencyResults = (data.tasks ?? []).filter(
+        (t: DependencyTask) => !linked.has(t.id),
+      );
+    } catch {
+      if (seq === dependencySearchSeq) dependencyResults = [];
+    } finally {
+      if (seq === dependencySearchSeq) searchingDependencies = false;
+    }
+  }
+
+  async function handleAddDependency(task: DependencyTask) {
+    if (addingDependency) return;
+    const csrf = getCsrfToken();
+    if (!csrf) {
+      showNotice(
+        "Your session expired. Reload the page and sign in again.",
+        "danger",
+      );
+      return;
+    }
+    addingDependency = true;
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/dependencies`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+          },
+          body: JSON.stringify({
+            related_task_id: task.id,
+            direction: dependencyDirection,
+          }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        showNotice(
+          data?.error?.message || "Could not link those tasks. Try again.",
+          "danger",
+        );
+        return;
+      }
+      dependencySearch = "";
+      dependencyResults = [];
+      await loadDependencies();
+      showNotice(
+        dependencyDirection === "blocked_by"
+          ? `This task is now blocked by ${task.human_key}.`
+          : `This task now blocks ${task.human_key}.`,
+        "success",
+      );
+    } catch {
+      showNotice(
+        "Could not reach the server. Check your connection and try again.",
+        "danger",
+      );
+    } finally {
+      addingDependency = false;
+    }
+  }
+
+  async function handleRemoveDependency(link: DependencyLink) {
+    if (removingDependencyId) return;
+    const csrf = getCsrfToken();
+    if (!csrf) {
+      showNotice(
+        "Your session expired. Reload the page and sign in again.",
+        "danger",
+      );
+      return;
+    }
+    removingDependencyId = link.id;
+    try {
+      const res = await fetch(
+        `/api/v1/workspaces/${workspace.id}/projects/${project.id}/tasks/${currentTask.id}/dependencies/${link.id}`,
+        { method: "DELETE", headers: { "X-CSRF-Token": csrf } },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showNotice(
+          data?.error?.message || "Could not remove the dependency.",
+          "danger",
+        );
+        return;
+      }
+      dependencies = {
+        blocked_by: dependencies.blocked_by.filter((l) => l.id !== link.id),
+        blocks: dependencies.blocks.filter((l) => l.id !== link.id),
+      };
+      showNotice(`Removed the link to ${link.task.human_key}.`, "success");
+    } catch {
+      showNotice(
+        "Could not reach the server. The dependency is unchanged.",
+        "danger",
+      );
+    } finally {
+      removingDependencyId = "";
     }
   }
 
@@ -879,6 +1113,10 @@
       void loadComments();
       void loadActivities();
       void loadTimeLogs();
+      void loadDependencies();
+      dependencySearch = "";
+      dependencyResults = [];
+      dependencySearchSeq += 1;
     });
   });
 
@@ -979,6 +1217,7 @@
     drawerElement?.focus();
     return () => {
       unregTimer();
+      if (dependencySearchTimer) clearTimeout(dependencySearchTimer);
       if (opener && document.contains(opener)) opener.focus();
     };
   });
@@ -1283,13 +1522,19 @@
                       </Button>
                       <Button
                         variant="quiet"
-                        onclick={() => {
+                        onclick={async () => {
                           if (
                             confirm(
                               "Discard this timer? Unlogged time will be lost.",
                             )
-                          )
-                            liveTimer.discard();
+                          ) {
+                            const res = await liveTimer.discard();
+                            if (!res.ok)
+                              showNotice(
+                                res.error || "Could not discard the timer.",
+                                "danger",
+                              );
+                          }
                         }}
                         disabled={stoppingLiveTimer || liveTimer.saving}
                       >
@@ -1347,7 +1592,7 @@
                       <span class="time-log-hours num"
                         >{Number(log.hours).toFixed(2)}h</span
                       >
-                      {#if canManage}
+                      {#if canDeleteTimeLog(log)}
                         <button
                           type="button"
                           class="chip-remove"
@@ -1413,6 +1658,152 @@
                       : "Log time"}{/snippet}
                 </Button>
               </form>
+            {/if}
+          </div>
+        </section>
+
+        <section class="block" aria-labelledby="dependencies-heading">
+          <div class="block-head">
+            <h3 id="dependencies-heading">Dependencies</h3>
+            {#if dependencyTotal > 0}
+              <span class="count-pill num">{dependencyTotal}</span>
+            {/if}
+          </div>
+
+          <div class="dependencies inset">
+            {#snippet dependencyList(
+              links: DependencyLink[],
+              emptyText: string,
+              removeLabel: (task: DependencyTask) => string,
+            )}
+              {#if links.length === 0}
+                <p class="empty-note">{emptyText}</p>
+              {:else}
+                <ul class="dep-list" role="list">
+                  {#each links as link (link.id)}
+                    <li class="dep-row" in:appear>
+                      <span class="dep-key num">{link.task.human_key}</span>
+                      <span class="dep-title">{link.task.title}</span>
+                      {#if link.task.project_id !== project.id}
+                        <span class="dep-project"
+                          >{link.task.project_name ||
+                            link.task.project_key}</span
+                        >
+                      {/if}
+                      {#if link.task.project_archived}
+                        <span class="dep-project">Archived project</span>
+                      {/if}
+                      <span class="status-chip dep-status">
+                        <span
+                          class="dot"
+                          style:--status-color={dependencyStatusColor(
+                            link.task,
+                          )}
+                        ></span>
+                        {dependencyStatusLabel(link.task)}
+                      </span>
+                      {#if canManage}
+                        <button
+                          type="button"
+                          class="chip-remove"
+                          onclick={() => handleRemoveDependency(link)}
+                          disabled={removingDependencyId === link.id}
+                          aria-label={removeLabel(link.task)}
+                          title="Remove dependency"
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/snippet}
+
+            {#if loadingDependencies}
+              <Feedback announcement="status">Loading dependencies…</Feedback>
+            {:else if dependencyError}
+              <Feedback tone="danger" announcement="alert">
+                {dependencyError}
+                <Button variant="quiet" onclick={loadDependencies}>
+                  {#snippet children()}Retry{/snippet}
+                </Button>
+              </Feedback>
+            {:else}
+              <div class="dep-group">
+                <h4 class="dep-heading">Blocked by</h4>
+                {@render dependencyList(
+                  dependencies.blocked_by,
+                  "Nothing blocks this task.",
+                  (task) => `Remove blocker ${task.human_key}`,
+                )}
+              </div>
+              <div class="dep-group">
+                <h4 class="dep-heading">Blocks</h4>
+                {@render dependencyList(
+                  dependencies.blocks,
+                  "This task blocks nothing.",
+                  (task) => `Remove blocked task ${task.human_key}`,
+                )}
+              </div>
+            {/if}
+
+            {#if canManage}
+              <div class="dep-add">
+                <div class="dep-controls">
+                  <div class="dep-field dep-field-direction">
+                    <label for="dep-direction">Link a task that</label>
+                    <Select
+                      id="dep-direction"
+                      variant="field"
+                      label="Relationship"
+                      value={dependencyDirection}
+                      options={dependencyDirectionOptions}
+                      onchange={(v) =>
+                        (dependencyDirection = v as "blocked_by" | "blocks")}
+                    />
+                  </div>
+                  <div class="dep-field dep-field-search">
+                    <label for="dep-search">Search tasks</label>
+                    <input
+                      id="dep-search"
+                      type="search"
+                      value={dependencySearch}
+                      placeholder="Title or key, e.g. CORE-12"
+                      autocomplete="off"
+                      oninput={(e) =>
+                        queueDependencySearch(e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+
+                {#if searchingDependencies}
+                  <p class="empty-note" role="status">Searching…</p>
+                {:else if dependencySearch.trim() && dependencyResults.length === 0}
+                  <p class="empty-note">
+                    No matching tasks. Try a title or key.
+                  </p>
+                {:else if dependencyResults.length > 0}
+                  <ul class="dep-results" role="list">
+                    {#each dependencyResults as task (task.id)}
+                      <li>
+                        <button
+                          type="button"
+                          class="dep-result"
+                          onclick={() => handleAddDependency(task)}
+                          disabled={addingDependency ||
+                            removingDependencyId !== ""}
+                        >
+                          <span class="dep-key num">{task.human_key}</span>
+                          <span class="dep-title">{task.title}</span>
+                          <span class="dep-project">{task.project_key}</span>
+                          <Icon name="plus" size={14} />
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
             {/if}
           </div>
         </section>
@@ -1742,6 +2133,10 @@
                         added subtask "{act.details?.title || ""}"
                       {:else if act.action === "comment.added"}
                         added a comment
+                      {:else if act.action === "dependency.added"}
+                        linked {act.details?.task_key || "a task"} as a blocker
+                      {:else if act.action === "dependency.removed"}
+                        removed the link to {act.details?.task_key || "a task"}
                       {:else}
                         {act.action}
                       {/if}
@@ -2144,6 +2539,134 @@
   .meta-empty {
     font-size: var(--text-small);
     color: var(--text-muted);
+  }
+
+  .dependencies {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .dep-group {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .dep-heading {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: 620;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .dep-list,
+  .dep-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .dep-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+  }
+
+  .dep-key {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 560;
+    color: var(--text-secondary);
+  }
+
+  .dep-title {
+    flex: 1 1 10rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--text-small);
+    color: var(--text);
+  }
+
+  .dep-project {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .dep-status {
+    flex-shrink: 0;
+  }
+
+  .dep-add {
+    display: grid;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: var(--border-width) solid var(--line);
+  }
+
+  .dep-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+
+  .dep-field {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .dep-field label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .dep-field-direction {
+    flex: 0 1 12rem;
+  }
+
+  .dep-field-search {
+    flex: 1 1 14rem;
+  }
+
+  .dep-result {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: var(--space-2);
+    border: var(--border-width) solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--text-small);
+    text-align: left;
+    box-shadow: none;
+  }
+
+  .dep-result:hover:not(:disabled) {
+    background: var(--selected);
+  }
+
+  .dep-result:disabled {
+    opacity: 0.6;
+  }
+
+  .dep-result .dep-title {
+    flex: 1;
+    text-align: left;
   }
 
   .subtasks .empty-note {
