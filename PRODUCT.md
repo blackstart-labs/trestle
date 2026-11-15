@@ -48,7 +48,14 @@ stops and cross-tab/device reload. Pause/resume, timesheets,
 Customers, work Activities, rates and billing are not implemented. Project-level
 membership/private visibility and invitations are also not implemented.
 
-Goals, cycles, modules, dependencies, saved views, full Task calendar/Gantt,
+Task Dependencies are implemented: directed blocks/blocked-by links between
+tasks in one Workspace, including across Projects, with duplicate and cycle
+rejection, workspace search, guest read-only access and activity history. They
+do not change completion math or schedule work; a Gantt view, critical path and
+lead/lag time are not implemented. See
+[Dependencies](docs/dependencies.md).
+
+Goals, cycles, modules, saved views, full Task calendar/Gantt,
 Documents, connected knowledge, collections, GitHub integration, professional
 reports and automation remain planned. The source-backed inventory and proposed
 delivery order are in [Phase 0](docs/phase-0-gap-analysis.md); no plan entry is a

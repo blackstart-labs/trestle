@@ -715,6 +715,39 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request, session *Auth
 	})
 }
 
+// searchWorkspaceTasks powers pickers that can reach across projects, such as
+// dependencies. It returns non-archived projects only.
+func (s *Server) searchWorkspaceTasks(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, ok := pathIDs(w, r, "workspace_id")
+	if !ok {
+		return
+	}
+	if _, ok := s.membership(w, r, ids[0], session.User.ID); !ok {
+		return
+	}
+	q := r.URL.Query()
+	query := strings.TrimSpace(q.Get("query"))
+	if utf8.RuneCountInString(query) > 100 {
+		badRequest(w, "Search query cannot exceed 100 characters")
+		return
+	}
+	limit := int64(20)
+	if q.Has("limit") {
+		n, err := strconv.ParseInt(q.Get("limit"), 10, 64)
+		if err != nil {
+			badRequest(w, "Invalid query parameter: limit")
+			return
+		}
+		limit = n
+	}
+	tasks, err := projects.SearchWorkspaceTasks(r.Context(), s.Pool, ids[0], query, limit)
+	if err != nil {
+		internal(w, "failed to search tasks", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": mapSlice(tasks, toTask)})
+}
+
 type createTaskRequest struct {
 	Title       *string     `json:"title"`
 	Description *string     `json:"description"`

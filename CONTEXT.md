@@ -39,6 +39,10 @@ or cancelled. _Avoid_: Inferring completion from a status's display name.
 **Milestone**: A planning target grouping tasks toward an outcome and date.
 _Avoid_: Treating every milestone as an actionable task.
 
+**Dependency**: A directed link saying one task is blocked by another.
+Dependencies work across Projects in one Workspace and never replace a parent
+relationship. _Avoid_: Using a dependency to mean a subtask or a milestone.
+
 **Cycle**: A bounded planning period for project work. _Avoid_: Sprint as a
 second resource type with identical meaning.
 

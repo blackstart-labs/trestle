@@ -79,7 +79,7 @@ const rules = [
   {
     id: "font-family",
     scope: "style",
-    test: (line) => /font-family:\s*(?!var\(|inherit)/.test(line),
+    test: (line) => /font-family:(?!\s*(?:var\(|inherit))/.test(line),
     message:
       "font-family in a component. Use var(--font-body) / var(--font-mono).",
   },
