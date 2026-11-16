@@ -69,9 +69,18 @@ func TestUsernameMaximumLengthAccepted(t *testing.T) {
 
 func TestUsernameSpacesRejected(t *testing.T) { wantUsernameErr(t, "user name", ErrUsernameInvalid) }
 
-func TestUsernameAtSignRejected(t *testing.T) {
-	wantUsernameErr(t, "user@example.com", ErrUsernameInvalid)
-	wantUsernameErr(t, "user+ops", ErrUsernameInvalid)
+func TestUsernameEmailCharactersAccepted(t *testing.T) {
+	if mustUsername(t, "user@example.com") != "user@example.com" {
+		t.Error("user@example.com not accepted")
+	}
+	if mustUsername(t, "user+ops@example.com") != "user+ops@example.com" {
+		t.Error("user+ops@example.com not accepted")
+	}
+}
+
+func TestUsernameSpecialCharactersRejected(t *testing.T) {
+	wantUsernameErr(t, "user#123", ErrUsernameInvalid)
+	wantUsernameErr(t, "user$ops", ErrUsernameInvalid)
 }
 
 func TestUsernameNonASCIIRejected(t *testing.T) { wantUsernameErr(t, "ûser", ErrUsernameInvalid) }
