@@ -17,8 +17,8 @@
   const piers = [
     { name: "Plan", detail: "Projects, tasks and workflows", ready: true },
     { name: "Work", detail: "Boards, assignees and discussion", ready: true },
-    { name: "Record", detail: "Timers and timesheets", ready: false },
-    { name: "Know", detail: "Linked documents", ready: false },
+    { name: "Record", detail: "Timers and manual time logs", ready: true },
+    { name: "Know", detail: "Markdown pages and backlinks", ready: true },
   ];
 </script>
 

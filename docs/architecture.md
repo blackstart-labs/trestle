@@ -93,3 +93,16 @@ User ──< WorkspaceMembership >── Workspace ──< Project
 - **Bounded Pools**: The `pgxpool` configuration enforces explicit connection limits (`MinConns = 0`, bounded `MaxConns`, `ConnectTimeout`).
 - **Server-Side Deadlines**: Queries run with `statement_timeout=5000` and `lock_timeout=5000` to prevent stalled locks from exhausting connection capacity.
 - **Critically Damped Motion**: Frontend transitions run through `web/src/lib/motion.ts` using spring physics (`--ease-spring`) without overshooting or layout cascading.
+
+## Incremental knowledge, planning and reports
+
+`internal/documents` owns Workspace Markdown pages, immutable revisions and
+resolved UUID links. `internal/planning` owns typed strategic hierarchy and
+associations to existing tasks. Neither creates a parallel user/project/task
+identity. Their HTTP adapters reuse session, CSRF and Workspace membership
+checks. The existing timer domain owns pause/resume; time reports aggregate
+canonical time logs within one repeatable-read snapshot. Frontend modules use
+the existing shell, semantic tokens and shared controls. See
+[implementation status](../IMPLEMENTATION_STATUS.md) for delivered scope and
+remaining roadmap, and [planning and reports](planning-and-reports.md) for
+contracts and calculation semantics.

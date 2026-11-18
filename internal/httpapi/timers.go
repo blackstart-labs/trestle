@@ -233,3 +233,31 @@ func (s *Server) updateTimerNote(w http.ResponseWriter, r *http.Request, session
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"timer": timer})
 }
+
+func (s *Server) pauseTimer(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	var req struct {
+		TimerID *string `json:"timer_id"`
+		Paused  *bool   `json:"paused"`
+	}
+	if !decodeJSON(w, r, &req) || !required(w, req.TimerID, req.Paused) {
+		return
+	}
+	id, ok := parseTimerID(w, req.TimerID)
+	if !ok {
+		return
+	}
+	timer, err := projects.SetTimerPaused(r.Context(), s.Pool, session.User.ID, id, *req.Paused)
+	if errors.Is(err, projects.ErrNotFound) {
+		notFound(w)
+		return
+	}
+	if errors.Is(err, projects.ErrTimerStopped) {
+		conflict(w, "This timer is no longer active. Reload timer state.")
+		return
+	}
+	if err != nil {
+		internal(w, "failed to pause or resume timer", err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"timer": timer, "server_now": time.Now().UTC()})
+}

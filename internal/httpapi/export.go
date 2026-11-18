@@ -9,7 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/maruf-pfc/trestle/internal/boards"
+	"github.com/maruf-pfc/trestle/internal/documents"
 	"github.com/maruf-pfc/trestle/internal/identity"
+	"github.com/maruf-pfc/trestle/internal/planning"
 	"github.com/maruf-pfc/trestle/internal/projects"
 )
 
@@ -27,11 +29,13 @@ type taskExportItem struct {
 }
 
 type workspaceExportData struct {
-	ExportedAt string              `json:"exported_at"`
-	Workspace  workspaceItem       `json:"workspace"`
-	Members    []memberItem        `json:"members"`
-	Projects   []projectExportData `json:"projects"`
-	Boards     []boards.Board      `json:"boards"`
+	Planning   []planning.ExportItem `json:"planning"`
+	Documents  []documents.Document  `json:"documents"`
+	ExportedAt string                `json:"exported_at"`
+	Workspace  workspaceItem         `json:"workspace"`
+	Members    []memberItem          `json:"members"`
+	Projects   []projectExportData   `json:"projects"`
+	Boards     []boards.Board        `json:"boards"`
 }
 
 func readProjectExport(ctx context.Context, db projects.Querier, ws, id uuid.UUID) (projectExportData, error) {
@@ -138,6 +142,16 @@ func (s *Server) exportWorkspace(w http.ResponseWriter, r *http.Request, session
 	out.Boards, err = boards.Export(r.Context(), tx, ids[0])
 	if err != nil {
 		internal(w, "failed to export boards", err)
+		return
+	}
+	out.Documents, err = documents.Export(r.Context(), tx, ids[0])
+	if err != nil {
+		internal(w, "failed to export documents", err)
+		return
+	}
+	out.Planning, err = planning.Export(r.Context(), tx, ids[0])
+	if err != nil {
+		internal(w, "failed to export planning", err)
 		return
 	}
 	list, err := projects.ListProjects(r.Context(), tx, ids[0], true)

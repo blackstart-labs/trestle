@@ -73,10 +73,28 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET /api/v1/workspaces", s.auth(s.listWorkspaces))
 	mux.HandleFunc("POST /api/v1/workspaces", s.auth(s.createWorkspace))
 	const ws = "/api/v1/workspaces/{workspace_id}"
+	mux.HandleFunc("GET "+ws+"/planning", s.auth(s.listPlans))
+	mux.HandleFunc("POST "+ws+"/planning", s.auth(s.savePlan))
+	mux.HandleFunc("GET "+ws+"/planning/{plan_id}", s.auth(s.getPlan))
+	mux.HandleFunc("PUT "+ws+"/planning/{plan_id}", s.auth(s.savePlan))
+	mux.HandleFunc("GET "+ws+"/planning/{plan_id}/{relation}", s.auth(s.planRelations))
+	mux.HandleFunc("PUT "+ws+"/planning/{plan_id}/tasks/{task_id}", s.auth(s.linkPlanTask))
+	mux.HandleFunc("DELETE "+ws+"/planning/{plan_id}/tasks/{task_id}", s.auth(s.linkPlanTask))
+	mux.HandleFunc("GET "+ws+"/time-report", s.auth(s.timeReport))
+	mux.HandleFunc("GET "+ws+"/documents/graph", s.auth(s.documentGraph))
+	mux.HandleFunc("GET "+ws+"/documents", s.auth(s.listDocuments))
+	mux.HandleFunc("POST "+ws+"/documents", s.auth(s.saveDocument))
+	mux.HandleFunc("GET "+ws+"/documents/{document_id}", s.auth(s.getDocument))
+	mux.HandleFunc("PUT "+ws+"/documents/{document_id}", s.auth(s.saveDocument))
+	mux.HandleFunc("DELETE "+ws+"/documents/{document_id}", s.auth(s.deleteDocument))
+	mux.HandleFunc("GET "+ws+"/documents/{document_id}/versions", s.auth(s.documentHistory))
+	mux.HandleFunc("GET "+ws+"/documents/{document_id}/versions/{version}", s.auth(s.documentHistory))
+	mux.HandleFunc("GET "+ws+"/documents/{document_id}/backlinks", s.auth(s.documentBacklinks))
 	mux.HandleFunc("GET "+ws+"/boards", s.auth(s.listBoards))
 	mux.HandleFunc("POST "+ws+"/boards", s.auth(s.saveBoard))
 	mux.HandleFunc("GET "+ws+"/boards/{board_id}", s.auth(s.getBoard))
 	mux.HandleFunc("PUT "+ws+"/boards/{board_id}", s.auth(s.saveBoard))
+	mux.HandleFunc("DELETE "+ws+"/boards/{board_id}", s.auth(s.deleteBoard))
 	mux.HandleFunc("PATCH "+ws, s.auth(s.updateWorkspace))
 	mux.HandleFunc("GET "+ws+"/image", s.auth(s.getWorkspaceImage))
 	mux.HandleFunc("PUT "+ws+"/image", s.auth(s.setWorkspaceImage))
@@ -121,6 +139,7 @@ func Router(pool *pgxpool.Pool, timeout time.Duration, cfg config.Config, assets
 	mux.HandleFunc("GET /api/v1/timer", s.auth(s.getTimer))
 	mux.HandleFunc("POST /api/v1/timer", s.auth(s.startTimer))
 	mux.HandleFunc("PATCH /api/v1/timer", s.auth(s.updateTimerNote))
+	mux.HandleFunc("POST /api/v1/timer/pause", s.auth(s.pauseTimer))
 	mux.HandleFunc("POST /api/v1/timer/stop", s.auth(s.stopTimer))
 	mux.HandleFunc("POST /api/v1/timer/discard", s.auth(s.discardTimer))
 
@@ -383,7 +402,13 @@ func extractUploadedImage(w http.ResponseWriter, r *http.Request) ([]byte, strin
 	var mime string
 	var err error
 	if strings.HasPrefix(ct, "multipart/form-data") {
-		if err := r.ParseMultipartForm(5 << 20); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, (5<<20)+(64<<10))
+		defer func() {
+			if r.MultipartForm != nil {
+				r.MultipartForm.RemoveAll()
+			}
+		}()
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			badRequest(w, "Failed to parse upload form")
 			return nil, "", false
 		}
@@ -396,7 +421,7 @@ func extractUploadedImage(w http.ResponseWriter, r *http.Request) ([]byte, strin
 			return nil, "", false
 		}
 		defer file.Close()
-		data, err = io.ReadAll(file)
+		data, err = io.ReadAll(io.LimitReader(file, (5<<20)+1))
 		if err != nil {
 			badRequest(w, "Failed to read uploaded image")
 			return nil, "", false
@@ -443,13 +468,12 @@ func extractUploadedImage(w http.ResponseWriter, r *http.Request) ([]byte, strin
 		badRequest(w, "Image exceeds maximum allowed size of 5MB")
 		return nil, "", false
 	}
-	if mime == "" || mime == "application/octet-stream" {
-		mime = http.DetectContentType(data)
-	}
-	if !strings.HasPrefix(mime, "image/") {
-		badRequest(w, "Uploaded file is not a supported image")
+	mime, err = validatedImageType(data)
+	if err != nil {
+		badRequest(w, err.Error())
 		return nil, "", false
 	}
+
 	return data, mime, true
 }
 

@@ -418,6 +418,68 @@
       Every theme and accent combination satisfies WCAG 2.2 AA contrast standards (minimum 4.5:1 for body copy and 3:1 for interactive controls).
     </Callout>
 
+  {:else if sectionId === "boards"}
+    <h1>Diagrams & Whiteboards</h1>
+    <p class="lead">Native visual workspaces for software architectures, system flowcharts, and freeform brainstorming — without external cloud dependencies or relaxed security policies.</p>
+
+    <h2>Visual Gallery & Dual Views</h2>
+    <p>Open <strong>Diagrams</strong> or <strong>Whiteboards</strong> from the sidebar navigation. The gallery supports two viewing modes:</p>
+    <ul>
+      <li><strong>Grid View (Default):</strong> High-density cards showing board previews, kind badges, and relative modification recency.</li>
+      <li><strong>List View:</strong> Linear row layout with quick-action Open and Delete buttons pinned to the right side.</li>
+    </ul>
+
+    <h2>Diagram Architecture & Flowcharts</h2>
+    <p>Create clean, precise system architectures, database ER diagrams, and process flowcharts:</p>
+    <ul>
+      <li><strong>Shape Library:</strong> Rectangles, rounded boxes, diamonds (decisions), cylinders (databases), sticky notes, and text blocks.</li>
+      <li><strong>Smart Connectors:</strong> Dynamic arrows that attach to shapes and route automatically (straight, orthogonal elbow, or curved bezier paths).</li>
+      <li><strong>Alignment & Layering:</strong> Distribute evenly, snap to grid, group/ungroup, and reorder z-index layers.</li>
+    </ul>
+
+    <h2>Infinite Whiteboard Sketching</h2>
+    <p>Brainstorm, sketch wireframes, and collaborate on an infinite digital canvas:</p>
+    <ul>
+      <li><strong>Drawing Tools:</strong> Freehand vector pen, geometric primitives, sticky notes, and text labels.</li>
+      <li><strong>Right-Hand Properties Palette:</strong> Always-accessible color swatches, stroke styles, fills, and font properties.</li>
+      <li><strong>Infinite Navigation:</strong> Smooth pan with <kbd>Space</kbd> + drag or scroll wheel, pointer-centered zoom, and fit-to-drawing.</li>
+    </ul>
+
+    <h2>Import, Export & Portability</h2>
+    <p>Maintain complete ownership of your visual artifacts with standard formats:</p>
+    <ul>
+      <li><strong>Export Formats:</strong> Export drawings as standalone vector <code>.svg</code>, high-resolution <code>.png</code>, or full JSON/XML source.</li>
+      <li><strong>Import Support:</strong> Import standard diagram XML or whiteboard JSON files directly into your workspace.</li>
+      <li><strong>Permanent Deletion:</strong> Safely archive or permanently delete drawings with audit logging and modal confirmations.</li>
+    </ul>
+
+  {:else if sectionId === "documents"}
+    <h1>Documents & Knowledge Base</h1>
+    <p class="lead">A Trilium-inspired 3-pane knowledge management environment combining nested document trees, bi-directional backlinks, and live Markdown editing.</p>
+
+    <h2>3-Pane Architecture</h2>
+    <p>Trestle’s document view is organized into three intuitive panels:</p>
+    <ul>
+      <li><strong>Left Pane (Tree Navigation):</strong> Deeply nested, collapsible document hierarchy with instant search and inline <code>+</code> child note creation.</li>
+      <li><strong>Center Pane (Editor & Reader):</strong> Breadcrumb ancestry path, document title, word count / reading time stats, and live Markdown editor with instant preview.</li>
+      <li><strong>Right Pane (Attributes & Inspector):</strong> Note metadata, tag management, parent note relationship, sub-notes directory, and incoming bi-directional backlinks.</li>
+    </ul>
+
+    <h2>Bi-Directional Backlinks & Wiki Links</h2>
+    <p>Connect your thoughts and build an interconnected knowledge web:</p>
+    <ul>
+      <li>Click <strong>Copy link</strong> in any document to copy its canonical identifier.</li>
+      <li>Paste <code>[[UUID|Title]]</code> anywhere in Markdown content to create clickable cross-references.</li>
+      <li>The right-hand inspector automatically indexes incoming references under <strong>Backlinks</strong>.</li>
+    </ul>
+
+    <h2>Revisions, Graph & Safe Deletion</h2>
+    <ul>
+      <li><strong>Immutable Revisions:</strong> Every save creates a restorable snapshot in the revision history modal.</li>
+      <li><strong>Knowledge Graph:</strong> View an interactive SVG network visualization of your workspace’s document connections.</li>
+      <li><strong>Sub-Tree Safe Deletion:</strong> Deleting a parent document automatically re-parents its child notes to prevent orphaned data.</li>
+    </ul>
+
   {:else if sectionId === "self-hosting"}
     <h1>Self-Hosting & Docker</h1>
     <p class="lead">Concise instructions to run Trestle on your own server or local machine using Docker or the automated runner.</p>

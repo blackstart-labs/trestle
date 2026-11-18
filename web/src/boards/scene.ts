@@ -465,3 +465,227 @@ export async function pngExport(svg: SVGSVGElement) {
     URL.revokeObjectURL(url);
   }
 }
+
+export function diagramExport(title: string, scene: Scene): string {
+  const cells = scene.elements
+    .map((e) => {
+      if (e.kind === "arrow") {
+        return `        <mxCell id="${e.id}" value="${e.text || ""}" edge="1" parent="1" source="${e.from || ""}" target="${e.to || ""}">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>`;
+      }
+      let style = "rounded=1;whiteSpace=wrap;html=1;";
+      if (e.kind === "diamond") style = "rhombus;whiteSpace=wrap;html=1;";
+      else if (e.kind === "ellipse") style = "ellipse;whiteSpace=wrap;html=1;";
+      else if (e.kind === "database")
+        style =
+          "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;";
+      else if (e.kind === "note")
+        style =
+          "shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;";
+      else if (e.kind === "text")
+        style =
+          "text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;";
+      return `        <mxCell id="${e.id}" value="${e.text || ""}" style="${style}" vertex="1" parent="1">
+          <mxGeometry x="${e.x}" y="${e.y}" width="${e.width}" height="${e.height}" as="geometry"/>
+        </mxCell>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="Trestle" type="device">
+  <diagram id="trestle-diagram" name="${title}">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+${cells}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+export const drawioExport = diagramExport;
+
+export function whiteboardExport(title: string, scene: Scene): string {
+  const elements = scene.elements.map((e) => {
+    const isFree = e.kind === "stroke";
+    return {
+      id: e.id,
+      type: isFree ? "freedraw" : e.kind,
+      x: e.x,
+      y: e.y,
+      width: e.width,
+      height: e.height,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor:
+        e.fill && e.fill !== "none"
+          ? "rgba(24, 119, 242, 0.15)"
+          : "transparent",
+      fillStyle: "hachure",
+      strokeWidth: e.strokeWidth || 2,
+      strokeStyle: e.dashed ? "dashed" : "solid",
+      roughness: 1,
+      opacity: 100,
+      groupIds: [],
+      frameId: null,
+      roundness: { type: 3 },
+      seed: 123456,
+      version: 1,
+      versionNonce: 1,
+      isDeleted: false,
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: !!e.locked,
+      text: e.text || "",
+      fontSize: e.fontSize || 18,
+      fontFamily: 1,
+      textAlign: e.align || "center",
+      verticalAlign: "middle",
+      points: e.points
+        ? e.points.map((p) => [p.x - e.x, p.y - e.y])
+        : undefined,
+    };
+  });
+  return JSON.stringify(
+    {
+      type: "whiteboard",
+      version: 2,
+      source: "https://trestle.local",
+      elements,
+      appState: { viewBackgroundColor: "#ffffff", gridModeEnabled: false },
+      files: {},
+    },
+    null,
+    2,
+  );
+}
+
+export const excalidrawExport = whiteboardExport;
+
+export function convertWhiteboardJSON(elements: any[]): BoardObject[] {
+  const out: BoardObject[] = [];
+  for (const e of elements) {
+    if (e.isDeleted) continue;
+    const x = Math.max(0, Math.min(3900, Math.round(Number(e.x) || 0)));
+    const y = Math.max(0, Math.min(3900, Math.round(Number(e.y) || 0)));
+    const w = Math.max(20, Math.min(1000, Math.round(Number(e.width) || 100)));
+    const h = Math.max(20, Math.min(1000, Math.round(Number(e.height) || 60)));
+    if (e.type === "freedraw" || e.type === "line" || e.type === "arrow") {
+      const pts: Point[] = (e.points || []).map((p: any) => ({
+        x: Math.max(
+          0,
+          Math.min(4000, Math.round(x + (Array.isArray(p) ? p[0] : p.x || 0))),
+        ),
+        y: Math.max(
+          0,
+          Math.min(4000, Math.round(y + (Array.isArray(p) ? p[1] : p.y || 0))),
+        ),
+      }));
+      if (pts.length >= 2) {
+        out.push({
+          id: crypto.randomUUID(),
+          kind: "stroke",
+          x,
+          y,
+          width: w,
+          height: h,
+          text: "",
+          color: "ink",
+          strokeWidth: Math.min(
+            8,
+            Math.max(1, Math.round(Number(e.strokeWidth) || 2)),
+          ),
+          dashed: e.strokeStyle === "dashed",
+          points: pts,
+        });
+      }
+    } else {
+      const kind: ObjectKind =
+        e.type === "diamond"
+          ? "diamond"
+          : e.type === "ellipse"
+            ? "ellipse"
+            : e.type === "text"
+              ? "text"
+              : "rectangle";
+      out.push({
+        id: crypto.randomUUID(),
+        kind,
+        x,
+        y,
+        width: w,
+        height: h,
+        text: String(e.text || "").slice(0, 200),
+        color: "ink",
+        fill:
+          e.backgroundColor && e.backgroundColor !== "transparent"
+            ? "accent"
+            : "none",
+        strokeWidth: Math.min(
+          8,
+          Math.max(1, Math.round(Number(e.strokeWidth) || 2)),
+        ),
+        dashed: e.strokeStyle === "dashed",
+      });
+    }
+  }
+  return out.slice(0, 500);
+}
+
+export const convertExcalidraw = convertWhiteboardJSON;
+
+export function convertDiagramXML(xmlText: string): BoardObject[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  const cells = doc.querySelectorAll("mxCell");
+  const out: BoardObject[] = [];
+  cells.forEach((cell) => {
+    const vertex = cell.getAttribute("vertex");
+    const geom = cell.querySelector("mxGeometry");
+    if (vertex === "1" && geom) {
+      const x = Math.max(
+        0,
+        Math.min(3900, Math.round(Number(geom.getAttribute("x") || 0))),
+      );
+      const y = Math.max(
+        0,
+        Math.min(3900, Math.round(Number(geom.getAttribute("y") || 0))),
+      );
+      const w = Math.max(
+        20,
+        Math.min(1000, Math.round(Number(geom.getAttribute("width") || 120))),
+      );
+      const h = Math.max(
+        20,
+        Math.min(1000, Math.round(Number(geom.getAttribute("height") || 60))),
+      );
+      const value = cell.getAttribute("value") || "";
+      const style = cell.getAttribute("style") || "";
+      let kind: ObjectKind = "rectangle";
+      if (style.includes("rhombus")) kind = "diamond";
+      else if (style.includes("ellipse")) kind = "ellipse";
+      else if (style.includes("cylinder")) kind = "database";
+      else if (style.includes("shape=note")) kind = "note";
+      else if (style.includes("text")) kind = "text";
+      out.push({
+        id: crypto.randomUUID(),
+        kind,
+        x,
+        y,
+        width: w,
+        height: h,
+        text: value.replace(/<[^>]*>/g, "").slice(0, 200),
+        color: "ink",
+        fill: "none",
+        strokeWidth: 2,
+      });
+    }
+  });
+  return out.slice(0, 500);
+}
+
+export const convertDrawIO = convertDiagramXML;

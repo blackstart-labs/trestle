@@ -23,6 +23,8 @@ permissions and secret storage. The Phase 0 plan does not implement new features
 | [Boards: Diagrams & Whiteboards](boards.md) | Native visual editing, permissions, persistence, JSON/SVG export, API contracts and real browser/database testing. |
 | [Running Timers & Task Time](time-tracking.md) | Server-authoritative timer, one-active-timer rule, idempotent stop, timezone logging, API contracts and testing. |
 | [Task Dependencies](dependencies.md) | Directed blocks/blocked-by links, cycle rejection, cross-Project search, permissions, API contracts and testing. |
+| [Documents & Knowledge Base](documents.md) | Trilium-inspired 3-pane note architecture, hierarchical note trees, bi-directional backlinks, safe child re-parenting, and markdown editor. |
+| [Planning & Time Reports](planning-and-reports.md) | Project roadmap milestones, resource planning, and aggregate timesheet reporting per user and task. |
 
 ---
 

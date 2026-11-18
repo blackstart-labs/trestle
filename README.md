@@ -20,6 +20,10 @@
 
 </div>
 
+> **Updated source package:** Start with [START_HERE.md](START_HERE.md) for this
+> version and [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for its scope
+> and validation limits. Published upstream images do not include these changes.
+
 ## 📌 Overview
 
 **Trestle** is built for developers, indie creators, and teams who want complete data ownership over their everyday work without SaaS bloat or telemetry.
@@ -33,11 +37,13 @@ It couples a high-performance **Go (`net/http`) backend** with a reactive **Svel
 - **🏢 Multi-Tenant Workspaces:** Isolated workspaces with role-based permissions (`Owner`, `Admin`, `Member`), custom workflow pipelines, and seamless switching.
 - **📋 Canonical Projects & Tasks:** Atomic project-scoped keys (`API-1`, `WEB-42`), custom priorities, due dates, estimates, and Markdown task descriptions.
 - **🔄 Dual Views (List & Kanban):** Switch instantly between high-density tabular list views and visual drag-and-drop Kanban boards with inline status editing.
-- **⏱️ Live Task Time Tracking:** Persistent live stopwatch that survives browser restarts, header readout, timesheet logging, and board workload badges.
-- **🗺️ Milestone Roadmaps:** Interactive Gantt timelines, milestone completion math, and progress tracking rails.
+- **📐 Visual Diagrams & Whiteboards:** Full-featured diagramming and infinite whiteboard sketching tools with vector shapes, sticky notes, connectors, freehand drawing, full import/export (.diagram.xml, .whiteboard.json), always-accessible properties palette, and Grid/List workspace views with last modified recency.
+- **📚 Hierarchical Documents & Knowledge Base:** Trilium-inspired 3-pane note system featuring a nested document tree, parent-child inheritance, bi-directional backlinks (`[[id|title]]`), live markdown reader/editor, attributes inspector, revision history, and child-safe tree deletion.
+- **⏱️ Live Task Time Tracking & Pause:** Persistent live stopwatch that survives browser restarts, start/pause/resume states, timesheet reporting, and project workload aggregations.
+- **🗺️ Milestone Roadmaps & Planning:** Interactive Gantt timelines, milestone completion math, progress tracking rails, and dedicated project resource planning.
 - **🤖 Chat & Webhook Alerts:** Real-time task notification cards sent to Telegram (with forum topic ID support), Discord, and Slack.
-- **📦 Complete Data Portability:** 1-click full JSON export for workspaces and individual projects for safe backups and zero lock-in.
-- **🎨 Themeable & Accessible:** Dark and light modes with 5 accent presets, custom avatars, spring motion, and WCAG 2.2 AA compliance.
+- **📦 Data Portability & Safety:** JSON snapshots for workspaces and projects; PostgreSQL backups preserve complete database history. Permanent deletion with sub-tree safety and in-app modal confirmation.
+- **🎨 Themeable & Accessible:** Dark and light modes with 5 accent presets, custom avatars, spring motion, and shared accessibility-oriented controls. Final WCAG conformance is not verified.
 
 ---
 
@@ -132,6 +138,8 @@ Visit the interactive user manual at **[tresstle.vercel.app](https://tresstle.ve
 - **[Architecture & Design](docs/architecture.md)** — Monolith structure, boundaries, and data flow.
 - **[REST API Reference](docs/api.md)** — Complete endpoint specifications, CSRF defense, and envelopes.
 - **[Database Schema](docs/database.md)** — PostgreSQL tables, indices, and migration lifecycles.
+- **[Boards: Diagrams & Whiteboards](docs/boards.md)** — Visual editing, Grid/List layouts, vector export, and architecture.
+- **[Documents & Knowledge Base](docs/documents.md)** — Trilium-inspired 3-pane note hierarchy, backlinks, and markdown editor.
 - **[Operations & Backups](docs/operations.md)** — Reverse proxies (Caddy, Nginx), backups, and recovery.
 - **[Design System & Tokens](docs/design/design-tokens.md)** — Semantic tokens, motion curves, and accessibility.
 

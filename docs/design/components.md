@@ -96,3 +96,13 @@ The task list responds to available container width, including enlarged text,
 so its columns become stacked rows before fixed columns overflow the page.
 Segmented controls and narrow task action rows wrap when enlarged text needs another line; project header actions use whole, readable buttons rather than squeezing labels into vertical fragments.
 Preview links open in a new tab with opener/referrer isolation, preserving drafts.
+
+## Documents
+
+`documents/DocumentsView.svelte` reuses Button, Select, MarkdownEditor, Feedback,
+Toast and the existing panel tokens. Navigation and the command palette expose
+Documents. The editor/property columns stack below 65rem; actions wrap. Explicit
+saves show unsaved state, preserve failed drafts, and use version preconditions.
+The shell dispatches a cancelable `trestle:before-navigate` event before changing
+views or signing out; boards and documents veto navigation while saving or when
+the user declines to discard a draft. See [Documents](../documents.md).

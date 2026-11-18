@@ -7,6 +7,18 @@
     type Scene,
     type Point,
   } from "./scene";
+  export interface ShapePreview {
+    kind: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color?: string;
+    fill?: string;
+    strokeWidth?: number;
+    dashed?: boolean;
+    points?: Point[];
+  }
   let {
     scene,
     selected = "",
@@ -15,10 +27,12 @@
     viewBox = "0 0 1600 1000",
     scale = 1,
     grid = true,
+    sketchy = false,
     connecting = false,
     marquee = null,
     wire = null,
     preview = null,
+    shapePreview = null,
     onpointerdown,
     onpointermove,
     onpointerup,
@@ -33,10 +47,12 @@
     viewBox?: string;
     scale?: number;
     grid?: boolean;
+    sketchy?: boolean;
     connecting?: boolean;
     marquee?: { x: number; y: number; width: number; height: number } | null;
     wire?: { from: Point; to: Point } | null;
     preview?: { points: Point[]; color: string; width: number } | null;
+    shapePreview?: ShapePreview | null;
     onpointerdown?: (e: PointerEvent) => void;
     onpointermove?: (e: PointerEvent) => void;
     onpointerup?: (e: PointerEvent) => void;
@@ -71,6 +87,7 @@
   aria-label="Board canvas"
   aria-describedby="board-canvas-help"
   tabindex="0"
+  class:sketchy
   {onpointerdown}
   {onpointermove}
   {onpointerup}
@@ -81,6 +98,21 @@
 >
   <title>Board canvas</title>
   <defs>
+    <filter id="sketchy-filter" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.04"
+        numOctaves="2"
+        result="noise"
+      />
+      <feDisplacementMap
+        in="SourceGraphic"
+        in2="noise"
+        scale="2"
+        xChannelSelector="R"
+        yChannelSelector="G"
+      />
+    </filter>
     <marker
       id="board-arrow"
       viewBox="0 0 10 10"
@@ -227,6 +259,47 @@
         points={preview.points.map((p) => `${p.x},${p.y}`).join(" ")}
       /></g
     >{/if}
+  {#if shapePreview}<g
+      data-editor-only
+      data-ink={shapePreview.color || "ink"}
+      data-fill={shapePreview.fill || "none"}
+      class="shape preview-shape"
+      style:--object-line-width={shapePreview.strokeWidth || 2}
+      style:--object-dash={shapePreview.dashed ? "8 5" : "none"}
+    >
+      {#if shapePreview.kind === "rectangle" || shapePreview.kind === "note"}
+        <rect
+          x={shapePreview.x}
+          y={shapePreview.y}
+          width={shapePreview.width}
+          height={shapePreview.height}
+          rx={shapePreview.kind === "note" ? 2 : 4}
+        />
+      {:else if shapePreview.kind === "ellipse"}
+        <ellipse
+          cx={shapePreview.x + shapePreview.width / 2}
+          cy={shapePreview.y + shapePreview.height / 2}
+          rx={shapePreview.width / 2}
+          ry={shapePreview.height / 2}
+        />
+      {:else if shapePreview.kind === "diamond"}
+        <polygon
+          points={`${shapePreview.x + shapePreview.width / 2},${shapePreview.y} ${shapePreview.x + shapePreview.width},${shapePreview.y + shapePreview.height / 2} ${shapePreview.x + shapePreview.width / 2},${shapePreview.y + shapePreview.height} ${shapePreview.x},${shapePreview.y + shapePreview.height / 2}`}
+        />
+      {:else if shapePreview.kind === "line" && shapePreview.points && shapePreview.points.length >= 2}
+        <polyline
+          points={shapePreview.points.map((p) => `${p.x},${p.y}`).join(" ")}
+        />
+      {:else if shapePreview.kind === "arrow" && shapePreview.points && shapePreview.points.length >= 2}
+        <line
+          x1={shapePreview.points[0].x}
+          y1={shapePreview.points[0].y}
+          x2={shapePreview.points[1].x}
+          y2={shapePreview.points[1].y}
+          marker-end="url(#board-arrow)"
+        />
+      {/if}
+    </g>{/if}
   <g data-editor-only class="editor-overlay">
     {#each scene.elements.filter((e) => selection.includes(e.id)) as e (e.id)}
       {@const box = bounds([e])}
@@ -311,6 +384,10 @@
     height: 100%;
     touch-action: none;
     user-select: none;
+    outline: none;
+  }
+  svg:focus {
+    outline: none;
   }
   .surround {
     fill: var(--surface-sunken);
@@ -377,6 +454,16 @@
     stroke: var(--ink);
     stroke-width: var(--object-line-width);
     stroke-dasharray: var(--object-dash);
+  }
+  .sketchy :is(.shape, .stroke, .connector):not([data-editor-only]) {
+    filter: url(#sketchy-filter);
+  }
+  .preview-shape > :is(rect, ellipse, polygon, path, line, polyline) {
+    fill: var(--fill);
+    stroke: var(--ink);
+    stroke-width: var(--object-line-width);
+    stroke-dasharray: var(--object-dash);
+    opacity: 0.85;
   }
   /* A sticky note dog-ear: the page shows through the folded corner. */
   .shape > .note-fold {

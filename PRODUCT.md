@@ -44,8 +44,9 @@ instructions.
 
 Basic time logging is implemented: task-scoped manual hours, notes, dates and a
 server-authoritative running timer with one active timer per user, idempotent
-stops and cross-tab/device reload. Pause/resume, timesheets,
-Customers, work Activities, rates and billing are not implemented. Project-level
+stops, pause/resume and cross-tab/device reload. Date/project/member time reports
+and CSV timesheets are available. Customers, work Activities, rates and billing
+are not implemented. Project-level
 membership/private visibility and invitations are also not implemented.
 
 Task Dependencies are implemented: directed blocks/blocked-by links between
@@ -55,8 +56,17 @@ do not change completion math or schedule work; a Gantt view, critical path and
 lead/lag time are not implemented. See
 [Dependencies](docs/dependencies.md).
 
-Goals, cycles, modules, saved views, full Task calendar/Gantt,
-Documents, connected knowledge, collections, GitHub integration, professional
+Documents now provide portable Markdown, nested pages, tags, title/content search,
+revision snapshots and restoration, archive/restore, UUID links/backlinks, and
+Markdown import/export, plus a bounded filterable knowledge graph. Read-only guests and workspace isolation are enforced by
+the API. See [Documents](docs/documents.md) for scope and limitations.
+
+Goals/objectives/key results and project-bound cycles/modules now provide
+versioned metadata, dates, owners, task links and measured progress.
+See [planning and reports](docs/planning-and-reports.md).
+
+Saved views, full Task calendar/Gantt,
+Collections, GitHub integration, professional
 reports and automation remain planned. The source-backed inventory and proposed
 delivery order are in [Phase 0](docs/phase-0-gap-analysis.md); no plan entry is a
 claim of an available feature.

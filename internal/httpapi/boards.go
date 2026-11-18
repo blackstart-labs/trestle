@@ -24,7 +24,8 @@ func (s *Server) listBoards(w http.ResponseWriter, r *http.Request, session *Aut
 			return
 		}
 	}
-	list, more, err := boards.List(r.Context(), s.Pool, ids[0], r.URL.Query().Get("archived") == "true", offset)
+	kind := r.URL.Query().Get("kind")
+	list, more, err := boards.List(r.Context(), s.Pool, ids[0], r.URL.Query().Get("archived") == "true", offset, kind)
 	if err != nil {
 		internal(w, "failed to list boards", err)
 		return
@@ -126,4 +127,21 @@ func (s *Server) saveBoard(w http.ResponseWriter, r *http.Request, session *Auth
 		return
 	}
 	writeJSON(w, status, b)
+}
+
+func (s *Server) deleteBoard(w http.ResponseWriter, r *http.Request, session *AuthenticatedSession) {
+	ids, _, ok := s.scope(w, r, session, false, "board_id")
+	if !ok {
+		return
+	}
+	err := boards.Delete(r.Context(), s.Pool, session.User.ID, ids[0], ids[1])
+	if errors.Is(err, pgx.ErrNoRows) {
+		notFound(w)
+		return
+	}
+	if err != nil {
+		internal(w, "failed to delete board", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

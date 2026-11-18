@@ -267,6 +267,45 @@ export const SECTIONS: DocSection[] = [
     ]
   },
   {
+    id: "boards",
+    title: "Diagrams & Whiteboards",
+    category: "Productivity",
+    badge: "Visual",
+    summary: "Visual architecture diagrams and infinite whiteboard canvases with import/export, grid & list views.",
+    metaTitle: "Diagrams & Whiteboards: Visual Architecture & Sketching | Trestle Documentation",
+    metaDescription: "Design system architectures, flowcharts, and brainstorm on infinite digital whiteboards with vector shapes, full XML/JSON export, and persistent properties palettes.",
+    keywords: [
+      "diagrams",
+      "whiteboard",
+      "flowcharts",
+      "architecture diagram",
+      "visual collaboration",
+      "infinite canvas",
+      "svg export",
+      "grid view",
+      "list view"
+    ]
+  },
+  {
+    id: "documents",
+    title: "Documents & Knowledge Base",
+    category: "Productivity",
+    badge: "Knowledge",
+    summary: "Trilium-inspired 3-pane note hierarchy with markdown editor, bi-directional backlinks, and tags.",
+    metaTitle: "Documents & Knowledge Base: 3-Pane Markdown Notes | Trestle Documentation",
+    metaDescription: "Organize team knowledge with Trilium-inspired nested note trees, bi-directional backlinks, live markdown editing, reading statistics, and safe sub-tree deletion.",
+    keywords: [
+      "documents",
+      "knowledge base",
+      "markdown notes",
+      "trilium alternative",
+      "note tree",
+      "backlinks",
+      "wiki links",
+      "nested notes"
+    ]
+  },
+  {
     id: "self-hosting",
     title: "Self-Hosting & Docker",
     category: "Deployment",

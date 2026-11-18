@@ -262,7 +262,11 @@
     gap: var(--space-4);
   }
 
-  .ws-card {
+  button.ws-card {
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    cursor: pointer;
     background:
       var(--card-fill) padding-box,
       var(--card-edge) border-box;
@@ -277,24 +281,28 @@
     gap: var(--space-2) var(--space-3);
     padding: var(--space-5);
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
     text-align: left;
     white-space: normal;
     font-weight: 400;
-  }
-
-  .ws-card {
     transition:
       transform var(--duration-slow) var(--ease-spring),
-      box-shadow var(--duration) var(--ease-out);
+      box-shadow var(--duration) var(--ease-out),
+      border-color var(--duration) var(--ease-out);
   }
 
-  .ws-card:hover:not(:disabled) {
+  button.ws-card:hover:not(:disabled) {
     transform: translateY(-3px);
     background: var(--surface-raised);
     border-color: var(--accent);
     box-shadow:
       var(--shadow-card),
       0 16px 40px -24px var(--accent-glow);
+  }
+
+  button.ws-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .ws-card.skeleton {
