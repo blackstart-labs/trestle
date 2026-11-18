@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -72,43 +71,20 @@ func toProject(p projects.Project) projectItem {
 }
 
 func parseImageData(raw string) ([]byte, string, error) {
-	mimeType := "image/png"
 	b64 := raw
-	if idx := strings.Index(raw, ","); idx != -1 {
-		header := raw[:idx]
-		b64 = raw[idx+1:]
-		if strings.HasPrefix(header, "data:") {
-			mimeType = strings.TrimPrefix(header, "data:")
-			if semi := strings.Index(mimeType, ";"); semi != -1 {
-				mimeType = mimeType[:semi]
-			}
-		}
+	if idx := strings.Index(raw, ";base64,"); idx != -1 {
+		b64 = raw[idx+8:]
+	}
+	if len(b64) > base64.StdEncoding.EncodedLen(5<<20) {
+		return nil, "", errors.New("image size exceeds 5MB")
 	}
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return nil, "", errors.New("invalid base64 image data")
 	}
-	if len(data) > 5*1024*1024 {
-		return nil, "", errors.New("image size exceeds 5MB")
-	}
-	validMimes := map[string]bool{
-		"image/png":     true,
-		"image/jpeg":    true,
-		"image/jpg":     true,
-		"image/webp":    true,
-		"image/gif":     true,
-		"image/svg+xml": true,
-	}
-	detected := http.DetectContentType(data)
-	if detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || detected == "image/webp" {
-		mimeType = detected
-	} else if strings.HasPrefix(strings.TrimSpace(string(data)), "<svg") || strings.HasPrefix(strings.TrimSpace(string(data)), "<?xml") {
-		mimeType = "image/svg+xml"
-	}
-	if !validMimes[mimeType] {
-		return nil, "", errors.New("unsupported image format. Allowed: PNG, JPEG, WebP, GIF, SVG")
-	}
-	return data, mimeType, nil
+	kind, err := validatedImageType(data)
+	return data, kind, err
+
 }
 
 type labelItem struct {
@@ -557,7 +533,7 @@ func (s *Server) getProjectImage(w http.ResponseWriter, r *http.Request, session
 		return
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("ETag", fmt.Sprintf("\"%s-%d\"", ids[1].String(), updatedAt.UnixNano()))
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
@@ -568,72 +544,8 @@ func (s *Server) setProjectImage(w http.ResponseWriter, r *http.Request, session
 	if !ok {
 		return
 	}
-	ct := r.Header.Get("Content-Type")
-	var data []byte
-	var mime string
-	var err error
-	if strings.HasPrefix(ct, "multipart/form-data") {
-		if err := r.ParseMultipartForm(5 << 20); err != nil {
-			badRequest(w, "Failed to parse upload form")
-			return
-		}
-		file, header, ferr := r.FormFile("file")
-		if ferr != nil {
-			file, header, ferr = r.FormFile("image")
-		}
-		if ferr != nil {
-			badRequest(w, "No image file provided in upload")
-			return
-		}
-		defer file.Close()
-		data, err = io.ReadAll(file)
-		if err != nil {
-			badRequest(w, "Failed to read uploaded image")
-			return
-		}
-		mime = header.Header.Get("Content-Type")
-	} else if strings.HasPrefix(ct, "application/json") {
-		var req struct {
-			Image string `json:"image"`
-		}
-		if !decodeJSON(w, r, &req) {
-			return
-		}
-		data, mime, err = parseImageData(req.Image)
-		if err != nil {
-			badRequest(w, err.Error())
-			return
-		}
-	} else {
-		data, err = io.ReadAll(http.MaxBytesReader(w, r.Body, 5<<20))
-		if err != nil {
-			badRequest(w, "Image size exceeds 5MB")
-			return
-		}
-		mime = ct
-	}
-
-	if len(data) == 0 {
-		badRequest(w, "Image cannot be empty")
-		return
-	}
-
-	validMimes := map[string]bool{
-		"image/png":     true,
-		"image/jpeg":    true,
-		"image/jpg":     true,
-		"image/webp":    true,
-		"image/gif":     true,
-		"image/svg+xml": true,
-	}
-	detected := http.DetectContentType(data)
-	if detected == "image/png" || detected == "image/jpeg" || detected == "image/gif" || detected == "image/webp" {
-		mime = detected
-	} else if strings.HasPrefix(strings.TrimSpace(string(data)), "<svg") || strings.HasPrefix(strings.TrimSpace(string(data)), "<?xml") {
-		mime = "image/svg+xml"
-	}
-	if !validMimes[mime] {
-		badRequest(w, "Unsupported image format. Allowed: PNG, JPEG, WebP, GIF, SVG")
+	data, mime, ok := extractUploadedImage(w, r)
+	if !ok {
 		return
 	}
 

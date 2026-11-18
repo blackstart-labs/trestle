@@ -2,7 +2,13 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  use: { baseURL: "http://127.0.0.1:4317", browserName: "chromium" },
+  use: {
+    baseURL: "http://127.0.0.1:4317",
+    browserName: "chromium",
+    launchOptions: {
+      executablePath: process.env.TRESTLE_BROWSER_EXECUTABLE || undefined,
+    },
+  },
   webServer: {
     command: "go run ..",
     url: "http://127.0.0.1:4317/health/live",

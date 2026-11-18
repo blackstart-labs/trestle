@@ -76,7 +76,13 @@
     | "fit"
     | "download"
     | "lock"
-    | "unlock";
+    | "unlock"
+    | "line"
+    | "type"
+    | "eraser"
+    | "share"
+    | "wand"
+    | "sidebar";
 </script>
 
 <script lang="ts">
@@ -165,6 +171,21 @@
     />{#if name === "lock"}<path d="M7 10V7a5 5 0 0 1 10 0v3" />{:else}<path
         d="M7 10V7a5 5 0 0 1 10 0"
       />{/if}
+  {:else if name === "line"}<path d="M5 19 19 5" />
+  {:else if name === "type"}<path d="M4 7V4h16v3M12 4v16M8 20h8" />
+  {:else if name === "eraser"}<path
+      d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9"
+    />
+  {:else if name === "share"}<circle cx="18" cy="5" r="3" /><circle
+      cx="6"
+      cy="12"
+      r="3"
+    /><circle cx="18" cy="19" r="3" /><line
+      x1="8.59"
+      y1="13.51"
+      x2="15.42"
+      y2="17.49"
+    /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
   {:else if name === "calendar"}
     <rect x="3" y="4.5" width="18" height="16.5" rx="2.5" />
     <path d="M16 2.5v4M8 2.5v4M3 10h18" />
@@ -333,6 +354,12 @@
   {:else if name === "pause"}
     <rect x="6" y="4" width="4" height="16" rx="1" />
     <rect x="14" y="4" width="4" height="16" rx="1" />
+  {:else if name === "wand"}
+    <path d="m15 4 5 5-11 11H4v-5L15 4z" />
+    <path d="M18 2v3M2 18h3M21 7h-3M7 21v-3" />
+  {:else if name === "sidebar"}
+    <rect x="3" y="3" width="18" height="18" rx="2.5" />
+    <path d="M15 3v18" />
   {/if}
 </svg>
 

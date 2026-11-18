@@ -118,3 +118,17 @@ func TestConcurrentBoardSaves(t *testing.T) {
 		t.Fatalf("concurrent results: %v", counts)
 	}
 }
+
+func TestBoardDelete(t *testing.T) {
+	app := newApp(t)
+	_, ws := ptBootstrap(app, "owner", "board-password", "Owner", "Studio", "studio")
+	c := app.login("owner", "board-password")
+	base := fmt.Sprintf("/api/v1/workspaces/%s/boards", ws)
+	body := map[string]any{"title": "To Delete", "kind": "diagram", "scene": map[string]any{"version": 1, "elements": []any{}}, "creation_key": uuid.NewString()}
+	b := ptExpect(t, c.do("POST", base, body), http.StatusCreated).JSON(t)
+	id := b["id"].(string)
+
+	ptExpect(t, c.do("DELETE", base+"/"+id, nil), http.StatusNoContent)
+	ptExpect(t, c.do("GET", base+"/"+id, nil), http.StatusNotFound)
+	ptExpect(t, c.do("DELETE", base+"/"+id, nil), http.StatusNotFound)
+}

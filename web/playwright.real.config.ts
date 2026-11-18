@@ -14,7 +14,13 @@ export default defineConfig({
   testDir: "./e2e-real",
   globalSetup: "./e2e-real/setup.ts",
   workers: 1,
-  use: { baseURL: "http://127.0.0.1:4318", browserName: "chromium" },
+  use: {
+    baseURL: "http://127.0.0.1:4318",
+    browserName: "chromium",
+    launchOptions: {
+      executablePath: process.env.TRESTLE_BROWSER_EXECUTABLE || undefined,
+    },
+  },
   webServer: {
     command: "go run ..",
     url: "http://127.0.0.1:4318/health/live",

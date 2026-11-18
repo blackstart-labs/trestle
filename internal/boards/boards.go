@@ -162,8 +162,18 @@ func scan(row pgx.Row, withScene bool) (Board, error) {
 	return b, err
 }
 
-func List(ctx context.Context, pool *pgxpool.Pool, ws uuid.UUID, archived bool, offset int) ([]Board, bool, error) {
-	rows, err := pool.Query(ctx, "SELECT "+columns+" FROM boards WHERE workspace_id=$1 AND archived=$2 ORDER BY updated_at DESC, id LIMIT 51 OFFSET $3", ws, archived, offset)
+func List(ctx context.Context, pool *pgxpool.Pool, ws uuid.UUID, archived bool, offset int, kind ...string) ([]Board, bool, error) {
+	k := ""
+	if len(kind) > 0 {
+		k = kind[0]
+	}
+	var rows pgx.Rows
+	var err error
+	if k != "" && (k == "diagram" || k == "whiteboard") {
+		rows, err = pool.Query(ctx, "SELECT "+columns+" FROM boards WHERE workspace_id=$1 AND archived=$2 AND kind=$3 ORDER BY updated_at DESC, id LIMIT 51 OFFSET $4", ws, archived, k, offset)
+	} else {
+		rows, err = pool.Query(ctx, "SELECT "+columns+" FROM boards WHERE workspace_id=$1 AND archived=$2 ORDER BY updated_at DESC, id LIMIT 51 OFFSET $3", ws, archived, offset)
+	}
 	if err != nil {
 		return nil, false, err
 	}
@@ -264,4 +274,28 @@ func Save(ctx context.Context, pool *pgxpool.Pool, actor, ws, id, creationKey uu
 		return Board{}, fmt.Errorf("record board change: %w", err)
 	}
 	return b, tx.Commit(ctx)
+}
+
+// Delete permanently removes a board and records the audit event.
+func Delete(ctx context.Context, pool *pgxpool.Pool, actor, ws, id uuid.UUID) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, "DELETE FROM boards WHERE workspace_id=$1 AND id=$2", ws, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	metadata, err := json.Marshal(map[string]any{"workspace_id": ws, "board_id": id})
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO security_audit_events (actor_id,event_type,metadata) VALUES ($1,$2,$3)", actor, "board.deleted", metadata); err != nil {
+		return fmt.Errorf("record board delete: %w", err)
+	}
+	return tx.Commit(ctx)
 }

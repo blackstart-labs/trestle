@@ -33,10 +33,10 @@ This document defines Trestle's security architecture, trust boundaries, access 
 - **Host / Cluster Operator**: Controls binary, environment variables, PostgreSQL credentials, and filesystem. Has root authority over local data.
 - **Instance operator**: Can change the public URL for notification links. The host CLI grants and revokes this permission. Workspace roles do not grant it. Trestle validates the URL and uses the stored value instead of request host or forwarding headers.
 - The bundled Caddy proxy joins a dedicated ingress network shared with Trestle. It receives the configured hostname and has neither a PostgreSQL connection nor access to the app's environment file. Its administration endpoint is disabled.
-- **Workspace Owner**: Has full administrative authority over a workspace, including billing, member management, and ownership transfer.
+- **Workspace Owner**: Has full administrative authority over a workspace, including member management and ownership transfer. Billing is not implemented.
 - **Workspace Admin**: Can manage projects, members, and project integrations, but cannot remove/demote the owner or transfer ownership.
 - **Workspace Member / Contributor**: Can view and create tasks, participate in discussions, update assigned work, and view projects in their workspace.
-- **Workspace Guest / Viewer**: Read-only participant with explicit grants to specific projects.
+- **Workspace Guest / Viewer**: Workspace-wide reader who may participate in task comments. Private-project grants are not implemented.
 - **Untrusted Caller**: Any unauthenticated network client submitting HTTP requests to the public listener.
 
 ---
@@ -59,7 +59,7 @@ This document defines Trestle's security architecture, trust boundaries, access 
   - Password change or operator reset revokes all active sessions for that account.
 
 ### CSRF Protection
-- State-changing operations (`POST`, `PUT`, `PATCH`, `DELETE`) require an `X-CSRF-Token` HTTP header matching the value stored in the `trestle-csrf` cookie.
+- State-changing operations (`POST`, `PUT`, `PATCH`, `DELETE`) require an `X-CSRF-Token` HTTP header validated against the authenticated session; the browser reads its token from the `trestle-csrf` cookie.
 - Validated via constant-time string comparison (`subtle.ConstantTimeCompare`) before routing to handlers.
 
 ---
@@ -69,14 +69,15 @@ This document defines Trestle's security architecture, trust boundaries, access 
 | Operation | Workspace Owner | Workspace Admin | Workspace Member | Workspace Guest |
 | --- | :---: | :---: | :---: | :---: |
 | Transfer workspace ownership | **Yes** (Owner only) | No | No | No |
-| Delete workspace | **Yes** (Owner only) | No | No | No |
+| Delete workspace | Not implemented | Not implemented | Not implemented | Not implemented |
 | Add / remove workspace members | **Yes** | **Yes** (cannot demote owner) | No | No |
 | Create / archive projects | **Yes** | **Yes** | No | No |
 | Configure project integrations | **Yes** | **Yes** | No | No |
-| Manage custom statuses & milestones | **Yes** | **Yes** | **Yes** | No |
+| Manage custom statuses | **Yes** | **Yes** | No | No |
+| Manage milestones | **Yes** | **Yes** | **Yes** | No |
 | Create / edit tasks | **Yes** | **Yes** | **Yes** | No |
-| View tasks & project contents | **Yes** | **Yes** | **Yes** | Granted projects only |
-| Add comments | **Yes** | **Yes** | **Yes** | Granted projects only |
+| View tasks & project contents | **Yes** | **Yes** | **Yes** | Workspace-wide |
+| Add comments | **Yes** | **Yes** | **Yes** | Workspace-wide |
 | Delete own comments | **Yes** | **Yes** | **Yes** | **Yes** |
 | Delete any comment | **Yes** | **Yes** | No | No |
 | Revoke own sessions | **Yes** | **Yes** | **Yes** | **Yes** |
@@ -114,3 +115,9 @@ Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'
 - **No Remote CDNs**: All scripts, styles, and fonts (Mona Sans) are self-hosted and bundled.
 - **No Inline Styles**: The CSP explicitly forbids `style="..."` attributes. Dynamic properties are passed through Svelte CSS variables (`style:--status-color`).
 - **Markdown Sanitization**: User-submitted markdown (descriptions, comments) is rendered with an allowlist-based HTML sanitizer. Raw `<script>`, `<iframe>`, and dangerous attributes (`onclick`, `javascript:`) are stripped.
+
+## Document and upload boundaries
+
+Documents are private to the Workspace; guests can read/export but cannot mutate. Owner/admin roles archive and restore. Any non-guest may create/edit active pages. Every save checks the supplied version; conflicting saves return 409. History and backlinks use the same Workspace scope. Content is portable Markdown, rendered by the existing sanitizer; raw HTML and external images are not executed or fetched. UUID links to other Workspaces are never resolved into backlinks. No public document sharing is implemented.
+
+Uploads are bounded before multipart parsing, temporary parts are cleaned up, and MIME types are determined from bytes rather than trusted request metadata. SVG is limited to passive geometry with a strict element/attribute allowlist; scripts, links, external resources, styles and DTDs are rejected. Protected Workspace/Project image responses use private/no-store cache policy. Existing stored images are not retroactively rewritten. Provider credentials remain plaintext at rest in PostgreSQL; use restricted database access and encrypted backups.

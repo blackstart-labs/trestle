@@ -17,6 +17,7 @@
     download,
     svgExport,
     pngExport,
+    diagramExport,
     type Board,
     type Scene,
     type BoardObject,
@@ -39,6 +40,7 @@
     onback,
     onsave,
     onreload,
+    ondelete,
   }: {
     board: Board;
     workspaceName: string;
@@ -52,7 +54,10 @@
     onback: () => void;
     onsave: (archived?: boolean) => void;
     onreload: () => void;
+    ondelete?: () => void;
   } = $props();
+
+  let showDeleteConfirm = $state(false);
 
   const catalog: {
     kind: ObjectKind;
@@ -810,13 +815,6 @@
   }
   function setTool(next: Tool) {
     finishText();
-    if (
-      next === "eraser" &&
-      !confirm(
-        "Erase whole objects with a tap or click? Undo can restore them in this editing session.",
-      )
-    )
-      return;
     tool = next;
     from = "";
   }
@@ -883,9 +881,18 @@
           "application/json",
           "trestle-board.json",
         );
+      if (action === "xml" || action === "drawio")
+        download(
+          diagramExport(title, scene),
+          "application/xml",
+          `${title.toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "diagram"}.diagram.xml`,
+        );
       if (action === "svg")
         download(svgExport(svg), "image/svg+xml", "trestle-board.svg");
       if (action === "png") await pngExport(svg);
+      if (action === "delete") {
+        showDeleteConfirm = true;
+      }
     } catch {
       localError =
         "Could not export this drawing. Try SVG or JSON to preserve your work.";
@@ -894,13 +901,6 @@
     }
   }
   function template(kind: string) {
-    if (
-      scene.elements.length &&
-      !confirm(
-        "Replace this drawing with the template? Undo can restore the current drawing before you leave.",
-      )
-    )
-      return;
     const start = {
       ...make("terminator"),
       x: 160,
@@ -1062,6 +1062,7 @@
       disabled={exporting}
       options={[
         { value: "json", label: "Export JSON draft", icon: "download" },
+        { value: "xml", label: "Export diagram XML", icon: "download" },
         { value: "svg", label: "Export SVG", icon: "image" },
         { value: "png", label: "Export PNG", icon: "image" },
         ...(canArchive && board.id
@@ -1071,6 +1072,12 @@
                 label: board.archived ? "Restore board" : "Archive board",
                 icon: "archive" as IconName,
                 disabled: saving || dirty,
+              },
+              {
+                value: "delete",
+                label: "Delete diagram",
+                icon: "trash" as IconName,
+                disabled: saving,
               },
             ]
           : []),
@@ -1636,15 +1643,37 @@
       >
     </div></Modal
   >{/if}
+{#if showDeleteConfirm}
+  <Modal
+    title="Delete diagram"
+    description={`Are you sure you want to delete “${title}”? This action cannot be undone.`}
+    onclose={() => (showDeleteConfirm = false)}
+  >
+    <div class="dialog-actions">
+      <Button variant="quiet" onclick={() => (showDeleteConfirm = false)}
+        >Cancel</Button
+      >
+      <Button
+        variant="danger"
+        onclick={() => {
+          showDeleteConfirm = false;
+          ondelete?.();
+        }}>Delete diagram</Button
+      >
+    </div>
+  </Modal>
+{/if}
 
 <style>
   .board-editor {
     display: flex;
     flex-direction: column;
-    height: 100dvh;
+    height: 100%;
+    flex: 1;
     min-height: 0;
     background: var(--surface);
     color: var(--text);
+    outline: none;
   }
   .editor-head {
     display: flex;
@@ -1846,6 +1875,7 @@
     min-height: 0;
     overflow: hidden;
     background: var(--surface-sunken);
+    outline: none;
   }
   .editor-stage.panning {
     cursor: grab;

@@ -12,6 +12,9 @@
   import TasksView from "./projects/TasksView.svelte";
   import Dashboard from "./projects/Dashboard.svelte";
   import BoardsView from "./boards/BoardsView.svelte";
+  import DocumentsView from "./documents/DocumentsView.svelte";
+  import PlanningView from "./planning/PlanningView.svelte";
+  import TimeReports from "./reports/TimeReports.svelte";
   import Icon from "./ui/Icon.svelte";
   import Avatar from "./ui/Avatar.svelte";
   import BrandMark from "./ui/BrandMark.svelte";
@@ -27,9 +30,17 @@
   let selectedProject = $state<Project | null>(null);
   let boardEditing = $state(false);
   let openTaskId = $state<string | null>(null);
-  let workspaceTab = $state<"dashboard" | "projects" | "members" | "boards">(
-    "dashboard",
-  );
+  let workspaceTab = $state<
+    | "dashboard"
+    | "projects"
+    | "members"
+    | "diagrams"
+    | "whiteboards"
+    | "boards"
+    | "documents"
+    | "planning"
+    | "reports"
+  >("dashboard");
   let checkingAuth = $state(true);
   let openingTask = $state(false);
   let routeError = $state("");
@@ -150,6 +161,12 @@
 
   async function signOut() {
     if (!canLeaveDomains()) return;
+    if (
+      !window.dispatchEvent(
+        new Event("trestle:before-navigate", { cancelable: true }),
+      )
+    )
+      return;
     const csrfToken = getCookie("trestle-csrf");
     try {
       await fetch("/api/v1/session", {
@@ -177,6 +194,12 @@
 
   function go(update: () => void) {
     if (!canLeaveDomains()) return false;
+    if (
+      !window.dispatchEvent(
+        new Event("trestle:before-navigate", { cancelable: true }),
+      )
+    )
+      return false;
     taskRouteVersion++;
     openingTask = false;
     routeError = "";
@@ -213,7 +236,16 @@
   }
 
   function openWorkspaceView(
-    tab: "dashboard" | "projects" | "members" | "boards",
+    tab:
+      | "dashboard"
+      | "projects"
+      | "members"
+      | "diagrams"
+      | "whiteboards"
+      | "boards"
+      | "documents"
+      | "planning"
+      | "reports",
   ) {
     go(() => {
       activeTab = "workspaces";
@@ -357,8 +389,12 @@
       settingsSection = "";
       activeTab = "settings";
       void focusSection("settings-heading");
-    } else if (hash === "signin" || hash === "workspaces") {
+    } else if (hash === "signin") {
       activeTab = hash;
+    } else if (hash === "workspaces") {
+      selectedWorkspace = null;
+      selectedProject = null;
+      activeTab = "workspaces";
     } else if (SETTINGS_SECTIONS.includes(hash)) {
       settingsSection = hash;
       activeTab = "settings";
@@ -444,6 +480,43 @@
           label: "All projects",
           icon: "layers",
           run: () => openWorkspaceView("projects"),
+        },
+        {
+          id: "go-planning",
+          label: "Planning",
+          group: "Workspace",
+          icon: "workflow",
+          run: () => openWorkspaceView("planning"),
+        },
+        {
+          id: "go-reports",
+          label: "Time reports",
+          group: "Workspace",
+          icon: "clock",
+          run: () => openWorkspaceView("reports"),
+        },
+        {
+          id: "go-documents",
+          label: "Documents",
+          group: "Workspace",
+          icon: "layers",
+          run: () => openWorkspaceView("documents"),
+        },
+        {
+          id: "go-diagrams",
+          label: "Diagrams",
+          group: "Workspace",
+          icon: "workflow",
+          keywords: "diagram architecture flowchart schema xml",
+          run: () => openWorkspaceView("diagrams"),
+        },
+        {
+          id: "go-whiteboards",
+          label: "Whiteboards",
+          group: "Workspace",
+          icon: "palette",
+          keywords: "whiteboard sketch drawing notes canvas",
+          run: () => openWorkspaceView("whiteboards"),
         },
         {
           id: "go-boards",
@@ -621,6 +694,16 @@
       if (!selectedWorkspace) place = "Workspaces";
       else if (workspaceTab === "members")
         place = `Members · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "planning")
+        place = `Planning · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "reports")
+        place = `Time reports · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "documents")
+        place = `Documents · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "diagrams")
+        place = `Diagrams · ${selectedWorkspace.name}`;
+      else if (workspaceTab === "whiteboards")
+        place = `Whiteboards · ${selectedWorkspace.name}`;
       else if (workspaceTab === "boards")
         place = `Boards · ${selectedWorkspace.name}`;
       else if (workspaceTab === "dashboard")
@@ -641,6 +724,7 @@
       checkingAuth = false;
     }
 
+    let acceptedHash = window.location.hash;
     const handleHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       if (
@@ -649,7 +733,9 @@
         settingsSection === "domains"
       )
         return;
-      if (!go(() => route(hash))) history.replaceState(null, "", "#domains");
+      if (!go(() => route(hash)))
+        history.replaceState(null, "", acceptedHash || "#workspaces");
+      else acceptedHash = window.location.hash;
     };
 
     handleHash();
@@ -670,7 +756,13 @@
     </div>
 
     {#if user && selectedWorkspace}
-      <div class="ws-switcher">
+      <button
+        type="button"
+        class="ws-switcher"
+        onclick={switchWorkspace}
+        aria-label={`Current workspace: ${selectedWorkspace.name}. Switch workspace.`}
+        title="Switch workspace"
+      >
         <Avatar
           id={selectedWorkspace.id}
           name={selectedWorkspace.name}
@@ -681,16 +773,10 @@
           <span class="ws-name">{selectedWorkspace.name}</span>
           <span class="ws-role">{selectedWorkspace.role}</span>
         </span>
-        <button
-          type="button"
-          class="btn-quiet btn-icon ws-switch-btn"
-          onclick={switchWorkspace}
-          aria-label="Switch workspace"
-          title="Switch workspace"
-        >
+        <span class="ws-switch-icon" aria-hidden="true">
           <Icon name="chevron-up-down" size={16} />
-        </button>
-      </div>
+        </span>
+      </button>
     {/if}
 
     <nav aria-label="Application" bind:this={navEl}>
@@ -703,7 +789,10 @@
             aria-current={navIsWorkspace && workspaceTab === "dashboard"
               ? "page"
               : undefined}
-            onclick={() => openWorkspaceView("dashboard")}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("dashboard");
+            }}
           >
             <Icon name="grid" size={18} />
             <span>Dashboard</span>
@@ -714,7 +803,10 @@
             aria-current={navIsWorkspace && workspaceTab === "projects"
               ? "page"
               : undefined}
-            onclick={() => openWorkspaceView("projects")}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("projects");
+            }}
           >
             <Icon name="folder" size={18} />
             <span>Projects</span>
@@ -725,22 +817,69 @@
             aria-current={navIsWorkspace && workspaceTab === "members"
               ? "page"
               : undefined}
-            onclick={() => openWorkspaceView("members")}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("members");
+            }}
           >
             <Icon name="users" size={18} />
             <span>Members</span>
           </a>
           <a
             href="#workspaces"
-            class:selected={navIsWorkspace && workspaceTab === "boards"}
-            aria-current={navIsWorkspace && workspaceTab === "boards"
+            class:selected={navIsWorkspace && workspaceTab === "planning"}
+            aria-current={navIsWorkspace && workspaceTab === "planning"
               ? "page"
               : undefined}
-            onclick={() => openWorkspaceView("boards")}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("planning");
+            }}><Icon name="workflow" size={18} /><span>Planning</span></a
           >
-            <Icon name="workflow" size={18} />
-            <span>Boards</span>
-          </a>
+          <a
+            href="#workspaces"
+            class:selected={navIsWorkspace && workspaceTab === "reports"}
+            aria-current={navIsWorkspace && workspaceTab === "reports"
+              ? "page"
+              : undefined}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("reports");
+            }}><Icon name="clock" size={18} /><span>Time reports</span></a
+          >
+          <a
+            href="#workspaces"
+            class:selected={navIsWorkspace && workspaceTab === "documents"}
+            aria-current={navIsWorkspace && workspaceTab === "documents"
+              ? "page"
+              : undefined}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("documents");
+            }}><Icon name="layers" size={18} /><span>Documents</span></a
+          >
+          <a
+            href="#workspaces"
+            class:selected={navIsWorkspace && workspaceTab === "diagrams"}
+            aria-current={navIsWorkspace && workspaceTab === "diagrams"
+              ? "page"
+              : undefined}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("diagrams");
+            }}><Icon name="workflow" size={18} /><span>Diagrams</span></a
+          >
+          <a
+            href="#workspaces"
+            class:selected={navIsWorkspace && workspaceTab === "whiteboards"}
+            aria-current={navIsWorkspace && workspaceTab === "whiteboards"
+              ? "page"
+              : undefined}
+            onclick={(e) => {
+              e.preventDefault();
+              openWorkspaceView("whiteboards");
+            }}><Icon name="palette" size={18} /><span>Whiteboards</span></a
+          >
         {:else}
           <a
             href="#workspaces"
@@ -823,6 +962,18 @@
           <Icon name="chevron-right" size={14} class="crumb-sep" />
           {#if workspaceTab === "members"}
             <span class="crumb crumb-current">Members</span>
+          {:else if workspaceTab === "planning"}<span
+              class="crumb crumb-current">Planning</span
+            >
+          {:else if workspaceTab === "reports"}<span class="crumb crumb-current"
+              >Time reports</span
+            >
+          {:else if workspaceTab === "documents"}
+            <span class="crumb crumb-current">Documents</span>
+          {:else if workspaceTab === "diagrams"}
+            <span class="crumb crumb-current">Diagrams</span>
+          {:else if workspaceTab === "whiteboards"}
+            <span class="crumb crumb-current">Whiteboards</span>
           {:else if workspaceTab === "boards"}
             <span class="crumb crumb-current">Boards</span>
           {:else if workspaceTab === "dashboard"}
@@ -855,11 +1006,26 @@
             >
               <span class="live-timer-key">{liveTimer.active.taskHumanKey}</span
               >
-              <span class="live-timer-label">Tracking</span>
+              <span class="live-timer-label"
+                >{liveTimer.active.pausedAt ? "Paused" : "Tracking"}</span
+              >
               <span class="live-timer-time num"
                 >{liveTimer.formattedDuration}</span
               >
             </button>
+            <button
+              type="button"
+              class="btn-quiet live-timer-btn"
+              disabled={liveTimer.saving}
+              onclick={async () => {
+                timerError = "";
+                const result = await liveTimer.setPaused(
+                  !liveTimer.active?.pausedAt,
+                );
+                if (!result.ok)
+                  timerError = result.error || "Could not change timer state.";
+              }}>{liveTimer.active.pausedAt ? "Resume" : "Pause"}</button
+            >
             <button
               type="button"
               class="btn-quiet live-timer-btn"
@@ -1002,10 +1168,37 @@
               onselectproject={(proj) => openProject(proj)}
             />
           {/if}
+        {:else if workspaceTab === "planning"}{#key selectedWorkspace.id}<PlanningView
+              workspace={selectedWorkspace}
+            />{/key}
+        {:else if workspaceTab === "reports"}{#key selectedWorkspace.id}<TimeReports
+              workspace={selectedWorkspace}
+            />{/key}
+        {:else if workspaceTab === "documents"}
+          {#key selectedWorkspace.id}<DocumentsView
+              workspace={selectedWorkspace}
+            />{/key}
+        {:else if workspaceTab === "diagrams"}
+          {#key selectedWorkspace.id}
+            <BoardsView
+              workspace={selectedWorkspace}
+              mode="diagram"
+              oneditingchange={(editing) => (boardEditing = editing)}
+            />
+          {/key}
+        {:else if workspaceTab === "whiteboards"}
+          {#key selectedWorkspace.id}
+            <BoardsView
+              workspace={selectedWorkspace}
+              mode="whiteboard"
+              oneditingchange={(editing) => (boardEditing = editing)}
+            />
+          {/key}
         {:else if workspaceTab === "boards"}
           {#key selectedWorkspace.id}
             <BoardsView
               workspace={selectedWorkspace}
+              mode="all"
               oneditingchange={(editing) => (boardEditing = editing)}
             />
           {/key}
@@ -1105,7 +1298,11 @@
     white-space: nowrap;
   }
 
-  .ws-switcher {
+  button.ws-switcher {
+    all: unset;
+    box-sizing: border-box;
+    width: 100%;
+    cursor: pointer;
     background:
       var(--inset-fill) padding-box,
       var(--inset-edge) border-box;
@@ -1113,10 +1310,26 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3);
     margin-bottom: var(--space-2);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
+    text-align: left;
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  button.ws-switcher:hover {
+    background: var(--surface-raised);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  button.ws-switcher:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   :global(.ws-switcher .ws-avatar) {
@@ -1144,8 +1357,16 @@
     text-transform: capitalize;
   }
 
-  .ws-switch-btn {
+  .ws-switch-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  button.ws-switcher:hover .ws-switch-icon {
+    color: var(--text);
   }
 
   nav {
@@ -1564,8 +1785,9 @@
       display: none;
     }
 
-    .ws-switcher {
+    button.ws-switcher {
       flex-shrink: 0;
+      width: auto;
       margin: 0;
       padding: 0 0 0 var(--space-2);
       gap: var(--space-2);
@@ -1666,28 +1888,28 @@
     }
   }
   .shell.board-focus {
-    display: block;
     height: 100dvh;
     overflow: hidden;
-  }
-  .board-focus .sidebar,
-  .board-focus .topbar,
-  .board-focus .canvas::before {
-    display: none;
   }
   .board-focus .canvas {
     margin: 0;
     padding: 0;
-    width: 100%;
-    height: 100dvh;
     min-height: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   .board-focus main {
     margin: 0;
     padding: 0;
     width: 100%;
     max-width: none;
-    height: 100dvh;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    outline: none;
   }
 </style>

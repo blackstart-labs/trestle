@@ -6,13 +6,13 @@ Trestle uses PostgreSQL (15+) as its single source of truth for application stat
 
 ## 1. Connection Management (`pgxpool`)
 
-Database connections are managed in `internal/database/db.go`.
+Database connections are managed in `internal/database/database.go`.
 
 - **Lazy Connection**: The application creates the connection pool without immediately blocking on connection establishment. This ensures that the HTTP server can bind ports and respond to liveness probes (`/health/live`) even if PostgreSQL is temporarily starting up or recovering.
 - **Connection Bounds**:
   - `MinConns = 0`: Allows the pool to contract completely during idle periods.
-  - `MaxConns`: Defaults to 25 (or configured via environment), preventing connection exhaustion on the PostgreSQL server.
-  - `ConnectTimeout`: Configured (default 5s) to fail fast on network isolation.
+  - `MaxConns`: Defaults to 5 (or configured via environment), preventing connection exhaustion on the PostgreSQL server.
+  - `ConnectTimeout`: Configured (default 2s) to fail fast on network isolation.
 - **Session Protections**:
   - `statement_timeout = 5000`: Protects against runaway queries locking CPU and connection slots.
   - `lock_timeout = 5000`: Aborts transactions that cannot acquire table or row locks within 5 seconds, preventing cascading deadlocks.
@@ -21,7 +21,7 @@ Database connections are managed in `internal/database/db.go`.
 
 ## 2. Migration Engine & Lifecycle
 
-Schema migrations are managed in `internal/database/migrate.go` and stored as SQL files in `migrations/`:
+Schema migrations are managed in `internal/database/database.go` and stored as SQL files in `migrations/`:
 
 ```text
 migrations/
@@ -85,7 +85,7 @@ users
 | `task_labels` | `(task_id, label_id)` | `task_id` (FK), `label_id` (FK) | Association of labels to tasks. |
 | `task_comments` | `id` (UUID) | `task_id` (FK), `created_at` | Task discussion thread. |
 | `task_activity` | `id` (UUID) | `task_id` (FK), `created_at` | Audit log of property changes and task lifecycle events. |
-| `project_integrations` | `(project_id, provider)` | `project_id` (FK), `provider` (`telegram`, `slack`, `discord`) | Webhook delivery configuration and encrypted credentials. |
+| `project_integrations` | `(project_id, provider)` | `project_id` (FK), `provider` (`telegram`, `slack`, `discord`) | Webhook delivery configuration; credentials are write-only in the API but plaintext in PostgreSQL. |
 
 ---
 
@@ -118,3 +118,18 @@ $$\text{Completion Rate} = \frac{\text{Completed}}{\text{All Tasks} - \text{Canc
 - Deleting a Task cascades to its assignees, labels, comments, and activity audit logs.
 - Archive operations (`archived = true` on `projects`) are preferred over destructive deletion.
 
+
+## Documents (migration 202611160017)
+
+`documents` holds workspace-scoped Markdown, tags, parent links, archive state and an optimistic version counter. `document_versions` records immutable snapshots on each save. `document_links` has composite foreign keys that prevent cross-workspace edges. Mutations, revisions, links and security audit events commit together. Hierarchy changes lock the Workspace row to prevent concurrent reparenting cycles. See [Documents](documents.md).
+
+The migration tree above is historical, not exhaustive; the authoritative inventory is `migrations/*.sql`. Current additions also include Workspace boards, running timers, dependencies, instance domains and avatars.
+
+### Planning and timer pause
+
+`202611170018_planning.sql` adds typed `planning_items` and `planning_tasks`.
+Composite foreign keys keep projects, parents and task links in one Workspace;
+partial unique indexes permit one cycle and one module per canonical task.
+Versions guard lost updates. `202611170019_timer_pause.sql` adds `paused_at` and
+nonnegative finite `paused_seconds` while retaining the unique active timer
+slot. No baseline migration is rewritten. See [planning and reports](planning-and-reports.md).

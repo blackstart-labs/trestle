@@ -12,6 +12,8 @@ export interface ActiveTimerData {
   projectId: string;
   workspaceId: string;
   startTime: number;
+  pausedAt?: number | null;
+  pausedSeconds?: number;
   description: string;
 }
 
@@ -74,7 +76,13 @@ export class LiveTimer {
 
   get elapsedSeconds(): number {
     if (!this.active) return 0;
-    return Math.max(0, Math.floor((this.now - this.active.startTime) / 1000));
+    return Math.max(
+      0,
+      Math.floor(
+        ((this.active.pausedAt ?? this.now) - this.active.startTime) / 1000 -
+          (this.active.pausedSeconds || 0),
+      ),
+    );
   }
 
   get formattedDuration(): string {
@@ -150,6 +158,10 @@ export class LiveTimer {
       startTime:
         (Number.isFinite(started) ? started : Date.now()) + this.serverOffset,
       description: timer.note || "",
+      pausedAt: timer.paused_at
+        ? Date.parse(timer.paused_at) + this.serverOffset
+        : null,
+      pausedSeconds: Number(timer.paused_seconds) || 0,
     };
     this.startTicker();
   }
@@ -325,6 +337,42 @@ export class LiveTimer {
     return () => {
       this.listeners = this.listeners.filter((l) => l !== fn);
     };
+  }
+
+  async setPaused(paused: boolean): Promise<TimerResult> {
+    if (!this.active || this.saving) return { ok: false };
+    this.saving = true;
+    try {
+      const res = await fetch("/api/v1/timer/pause", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": readCookie("trestle-csrf"),
+        },
+        body: JSON.stringify({ timer_id: this.active.id, paused }),
+      });
+      if (!res.ok)
+        return {
+          ok: false,
+          error: await errorMessage(
+            res,
+            "Could not change timer state. Retry.",
+          ),
+        };
+      const data = await res.json();
+      this.serverOffset = Date.now() - Date.parse(data.server_now);
+      this.applyTimer(data.timer);
+      this.notify();
+      return { ok: true };
+    } catch {
+      return {
+        ok: false,
+        error:
+          "Could not reach the server. Reload timer state before retrying.",
+      };
+    } finally {
+      this.saving = false;
+    }
   }
 
   async stopAndLog(csrfToken: string): Promise<TimerResult> {

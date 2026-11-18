@@ -361,7 +361,7 @@ func (s *Server) getWorkspaceImage(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Last-Modified", updated.Format(http.TimeFormat))
 	_, _ = w.Write(data)
 }

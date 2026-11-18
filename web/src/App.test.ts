@@ -202,3 +202,57 @@ test("a pending check prevents duplicates and is aborted after five seconds", as
     vi.useRealTimers();
   }
 });
+
+test("workspace navigation respects document drafts and names the destination", async () => {
+  window.location.hash = "#workspaces";
+  document.cookie = "trestle-csrf=test; path=/";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      const url = String(input);
+      let data: unknown = {};
+      if (url.endsWith("/me"))
+        data = { id: "user", username: "owner", display_name: "Owner" };
+      else if (url.endsWith("/workspaces"))
+        data = {
+          workspaces: [
+            {
+              id: "ws",
+              name: "Engineering",
+              slug: "engineering",
+              role: "owner",
+            },
+          ],
+        };
+      else if (url.includes("/documents"))
+        data = { documents: [], has_more: false };
+      else if (url.endsWith("/projects")) data = { projects: [] };
+      else if (url.endsWith("/timer")) data = { timer: null };
+      return new Response(JSON.stringify(data), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+  try {
+    render(App);
+    await fireEvent.click(
+      await screen.findByRole("link", { name: "Documents" }),
+    );
+    await screen.findByText("Build your knowledge base");
+    expect(document.title).toBe("Documents · Engineering — Trestle");
+    await fireEvent.click(screen.getByRole("button", { name: "New document" }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+    expect(screen.getByLabelText("Title", { exact: true })).toBeTruthy();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    confirm.mockReturnValue(true);
+    await fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Document content", { exact: true }),
+      ).toBeNull(),
+    );
+  } finally {
+    document.cookie = "trestle-csrf=; Max-Age=0; path=/";
+  }
+});

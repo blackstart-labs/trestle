@@ -179,3 +179,15 @@ Updates require CSRF and take `public_origin` plus the last saved value as
 `previous_origin`. An empty origin clears notification links. A stale
 `previous_origin` returns `409 Conflict`. The current user's response includes
 `instance_operator: true` when granted.
+
+## Workspace documents
+
+The versioned Markdown document API, authorization, pagination, restore protocol
+and limits are documented in [Documents](documents.md#api).
+
+## Planning, reports and paused timers
+
+See [planning and reports](planning-and-reports.md) for the Workspace planning
+CRUD/relations API, date-filtered time-report JSON/CSV API, permissions,
+pagination/size bounds and `POST /api/v1/timer/pause` contract. Workspace JSON
+exports now contain `planning` items with `task_ids`, as well as `documents`.

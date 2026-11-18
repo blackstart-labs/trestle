@@ -47,10 +47,12 @@ new runtime dependency or relaxed CSP is required.
 - Export the complete editable draft as versioned Trestle JSON, and the whole
   drawing as SVG or PNG in its current theme colors. Import creates an unsaved
   copy in the current Workspace, never overwrites an existing board.
-- Owners/admins can archive and restore a saved board from the Export menu.
-  Archive is reversible; permanent deletion is intentionally not offered. Save
-  or discard changes before archiving. Archived boards remain readable and
+- Owners/admins can archive and restore a saved board from the Export menu,
+  or permanently delete a board with a confirmation dialog. Save
+  or discard changes before archiving or deleting. Archived boards remain readable and
   exportable.
+- The boards gallery supports both **Grid view** (default) and **List view**, with
+  Open and Delete actions aligned to the right side, and last modified timestamps.
 
 All Workspace roles can read active and archived boards. Owners, admins and
 members can create/edit; guests are read-only. Boards are Workspace-wide, not
@@ -98,6 +100,7 @@ access returns a concealed 404. Guest writes return 403.
 | POST | `/api/v1/workspaces/{ws}/boards` | `{title, kind, scene, creation_key}`; kind `diagram` or `whiteboard`, UUID creation key |
 | GET | `/api/v1/workspaces/{ws}/boards/{id}` | Full board including scene, archived flag and version |
 | PUT | `/api/v1/workspaces/{ws}/boards/{id}` | `{title, kind, scene, version, archived}`; kind immutable, version required |
+| DELETE | `/api/v1/workspaces/{ws}/boards/{id}` | Permanently delete board; emits security audit event (`board.deleted`) |
 
 Creation retries with the same key, actor and unchanged initial payload return
 the same board, without repeating its audit event. Reusing a creation key for a

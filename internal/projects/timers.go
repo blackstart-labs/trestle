@@ -21,14 +21,16 @@ import (
 // One active timer per user is enforced by a partial unique index. A stopped
 // timer keeps the time log it produced so a retried stop is idempotent.
 type Timer struct {
-	ID          uuid.UUID `json:"id"`
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	ProjectID   uuid.UUID `json:"project_id"`
-	TaskID      uuid.UUID `json:"task_id"`
-	TaskKey     string    `json:"task_key"`
-	TaskTitle   string    `json:"task_title"`
-	Note        string    `json:"note"`
-	StartedAt   time.Time `json:"started_at"`
+	PausedAt      *time.Time `json:"paused_at"`
+	PausedSeconds float64    `json:"paused_seconds"`
+	ID            uuid.UUID  `json:"id"`
+	WorkspaceID   uuid.UUID  `json:"workspace_id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	TaskKey       string     `json:"task_key"`
+	TaskTitle     string     `json:"task_title"`
+	Note          string     `json:"note"`
+	StartedAt     time.Time  `json:"started_at"`
 }
 
 // TimerTask is the minimum task context needed before checking membership.
@@ -50,7 +52,7 @@ var (
 )
 
 const timerColumns = `SELECT tm.id, tm.workspace_id, tm.project_id, tm.task_id,
-	p.key || '-' || t.task_number, t.title, tm.note, tm.started_at
+	p.key || '-' || t.task_number, t.title, tm.note, tm.started_at, tm.paused_at, tm.paused_seconds
 	FROM task_timers tm
 	JOIN tasks t ON t.id = tm.task_id
 	JOIN projects p ON p.id = tm.project_id`
@@ -58,7 +60,7 @@ const timerColumns = `SELECT tm.id, tm.workspace_id, tm.project_id, tm.task_id,
 func scanTimer(row pgx.Row) (Timer, error) {
 	var tm Timer
 	err := row.Scan(&tm.ID, &tm.WorkspaceID, &tm.ProjectID, &tm.TaskID,
-		&tm.TaskKey, &tm.TaskTitle, &tm.Note, &tm.StartedAt)
+		&tm.TaskKey, &tm.TaskTitle, &tm.Note, &tm.StartedAt, &tm.PausedAt, &tm.PausedSeconds)
 	return tm, err
 }
 
@@ -217,10 +219,12 @@ func StopTimer(ctx context.Context, pool *pgxpool.Pool, userID, timerID uuid.UUI
 	var workspaceID, projectID, taskID uuid.UUID
 	var state, storedNote string
 	var startedAt time.Time
+	var pausedAt *time.Time
+	var pausedSeconds float64
 	var logID *uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT workspace_id, project_id, task_id, state, note, started_at, time_log_id
+	err = tx.QueryRow(ctx, `SELECT workspace_id, project_id, task_id, state, note, started_at, time_log_id, paused_at, paused_seconds
 		FROM task_timers WHERE id = $1 AND user_id = $2 FOR UPDATE`, timerID, userID).
-		Scan(&workspaceID, &projectID, &taskID, &state, &storedNote, &startedAt, &logID)
+		Scan(&workspaceID, &projectID, &taskID, &state, &storedNote, &startedAt, &logID, &pausedAt, &pausedSeconds)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TimeLog{}, 0, ErrNotFound
 	}
@@ -250,7 +254,11 @@ func StopTimer(ctx context.Context, pool *pgxpool.Pool, userID, timerID uuid.UUI
 		storedNote = strings.TrimSpace(*note)
 	}
 	now := time.Now().UTC()
-	hours := math.Round(now.Sub(startedAt).Seconds()/36) / 100
+	end := now
+	if pausedAt != nil {
+		end = *pausedAt
+	}
+	hours := math.Round(math.Max(0, end.Sub(startedAt).Seconds()-pausedSeconds)/36) / 100
 	if hours < 0.01 {
 		hours = 0.01
 	}
@@ -335,4 +343,38 @@ func DiscardTimer(ctx context.Context, pool *pgxpool.Pool, userID, timerID uuid.
 		return ErrTimerStopped
 	}
 	return tx.Commit(ctx)
+}
+
+// SetTimerPaused uses an explicit desired state so retries never toggle twice.
+func SetTimerPaused(ctx context.Context, pool *pgxpool.Pool, user, id uuid.UUID, paused bool) (Timer, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return Timer{}, err
+	}
+	defer tx.Rollback(ctx)
+	var state string
+	var wasPaused *time.Time
+	err = tx.QueryRow(ctx, `SELECT tm.state,tm.paused_at FROM task_timers tm JOIN workspace_members m ON m.workspace_id=tm.workspace_id AND m.user_id=tm.user_id WHERE tm.id=$1 AND tm.user_id=$2 AND m.role<>'guest' FOR UPDATE OF tm`, id, user).Scan(&state, &wasPaused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Timer{}, ErrNotFound
+	}
+	if err != nil {
+		return Timer{}, err
+	}
+	if state != "active" {
+		return Timer{}, ErrTimerStopped
+	}
+	if paused && wasPaused == nil {
+		_, err = tx.Exec(ctx, "UPDATE task_timers SET paused_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1", id)
+	}
+	if !paused && wasPaused != nil {
+		_, err = tx.Exec(ctx, "UPDATE task_timers SET paused_seconds=paused_seconds+GREATEST(0,EXTRACT(EPOCH FROM clock_timestamp()-paused_at)),paused_at=NULL,updated_at=clock_timestamp() WHERE id=$1", id)
+	}
+	if err != nil {
+		return Timer{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Timer{}, err
+	}
+	return getTimerByID(ctx, pool, user, id)
 }
