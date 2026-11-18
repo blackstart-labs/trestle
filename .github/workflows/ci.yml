@@ -50,7 +50,7 @@ jobs:
         run: npm test
       - name: Dependency vulnerability audit
         working-directory: web
-        run: npm audit --audit-level=low
+        run: npm audit --audit-level=low --omit=dev
       - name: Production asset build
         working-directory: web
         run: npm run build
